@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.11</title>
+<title>Nexa · Gestión — v0.12</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.11</div>
+    <div class="marca-sub">Gestión · v0.12</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -115,7 +115,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.11';
+  var VER='v0.12';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -529,7 +529,7 @@
   // ── COBERTURA / RED ── (Leaflet: zonas + NAPs con ocupación + clientes desparramados + chequeo)
   var _MAP=null,_GEOP=[],_GEON=[],_CLI=[],_napOcc={},_napCli={},_lZonas=null,_lNaps=null,_lCli=null,_cbMk=null,_cliMarkers=[];
   function _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
-  function radCli(){ var z=_MAP?_MAP.getZoom():13; return Math.max(2.5, Math.min(7, (z-9)*0.95)); } // tamaño según zoom
+  function radCli(){ var z=_MAP?_MAP.getZoom():13; return Math.max(2, Math.min(5, 2 + Math.max(0, z-15)*1.0)); } // chico a nivel ciudad/barrio, crece suave solo al acercar mucho
   function vCobertura(){
     view.innerHTML='<h1>Cobertura / Red</h1><p class="sub">Zonas, cajas NAP (con ocupación) y clientes. Chequeá la cobertura de un domicilio.</p>'
       +'<div class="toolbar">'
