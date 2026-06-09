@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.10</title>
+<title>Nexa · Gestión — v0.11</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.10</div>
+    <div class="marca-sub">Gestión · v0.11</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -115,7 +115,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.10';
+  var VER='v0.11';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -527,8 +527,9 @@
   }
 
   // ── COBERTURA / RED ── (Leaflet: zonas + NAPs con ocupación + clientes desparramados + chequeo)
-  var _MAP=null,_GEOP=[],_GEON=[],_CLI=[],_napOcc={},_napCli={},_lZonas=null,_lNaps=null,_lCli=null,_cbMk=null;
+  var _MAP=null,_GEOP=[],_GEON=[],_CLI=[],_napOcc={},_napCli={},_lZonas=null,_lNaps=null,_lCli=null,_cbMk=null,_cliMarkers=[];
   function _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function radCli(){ var z=_MAP?_MAP.getZoom():13; return Math.max(2.5, Math.min(7, (z-9)*0.95)); } // tamaño según zoom
   function vCobertura(){
     view.innerHTML='<h1>Cobertura / Red</h1><p class="sub">Zonas, cajas NAP (con ocupación) y clientes. Chequeá la cobertura de un domicilio.</p>'
       +'<div class="toolbar">'
@@ -546,6 +547,7 @@
     _MAP=null;_lZonas=null;_lNaps=null;_lCli=null;_cbMk=null;
     _MAP=L.map('map').setView([-27.46,-55.89],12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_MAP);
+    _MAP.on('zoomend',function(){ var r=radCli(); for(var i=0;i<_cliMarkers.length;i++){ try{ _cliMarkers[i].setRadius(r); }catch(e){} } });
     setTimeout(function(){ if(_MAP) _MAP.invalidateSize(); },250);
     document.getElementById('cb-check').addEventListener('click',cbCheck);
     document.getElementById('cb-q').addEventListener('keydown',function(e){ if(e.key==='Enter') cbCheck(); });
@@ -593,8 +595,8 @@
     if(_lCli){ try{_MAP.removeLayer(_lCli);}catch(e){} _lCli=null; }
     var fe=document.getElementById('cb-cli').value, ft=document.getElementById('cb-tec').value;
     if(!fe) return;
-    _lCli=L.layerGroup().addTo(_MAP);
-    var rn=L.canvas(), col={activo:'#16a34a',bloqueado:'#dc2626',baja:'#94a3b8',suspendido:'#d97706',moroso:'#d97706'};
+    _lCli=L.layerGroup().addTo(_MAP); _cliMarkers=[];
+    var rn=L.canvas(), col={activo:'#16a34a',bloqueado:'#dc2626',baja:'#94a3b8',suspendido:'#d97706',moroso:'#d97706'}, R=radCli();
     _CLI.forEach(function(c){
       if(c.lat==null||c.lng==null) return;
       if(fe==='activo' && c.estado!=='activo') return;
@@ -602,10 +604,10 @@
       if(ft==='FTTH' && c.tecnologia!=='FTTH') return;
       if(ft==='WIRELESS' && c.tecnologia!=='INALAMBRICO') return;
       var p=_jit(c), cc=(col[c.estado]||'#2563eb');
-      L.circleMarker(p,{renderer:rn,radius:5,color:cc,weight:1,fillColor:cc,fillOpacity:.7})
+      var mk=L.circleMarker(p,{renderer:rn,radius:R,color:cc,weight:1,fillColor:cc,fillOpacity:.7})
         .bindPopup('<b>N° '+c.numero_cliente+'</b> '+esc(c.nombre||'')+'<br>Estado: <b>'+esc(c.estado)+'</b>'+(c.tecnologia?(' · '+esc(c.tecnologia)):'')+(c.caja_nap?('<br>NAP: '+esc(c.caja_nap)):'')+(c.geo_origen?('<br><span style="color:#64748b">ubicación: '+esc(c.geo_origen)+'</span>'):''))
-        .bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||''))
-        .addTo(_lCli);
+        .bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||''));
+      mk.addTo(_lCli); _cliMarkers.push(mk);
     });
   }
   function _jit(c){
