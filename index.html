@@ -525,48 +525,85 @@
     });
   }
 
-  // ── COBERTURA / RED ── (Leaflet: zonas de cobertura + NAPs + clientes + chequeo punto-en-polígono)
-  var _MAP=null, _GEOP=[], _GEON=[], _cliLayer=null, _cbMk=null;
+  // ── COBERTURA / RED ── (Leaflet: zonas + NAPs con ocupación + clientes desparramados + chequeo)
+  var _MAP=null,_GEOP=[],_GEON=[],_CLI=[],_napOcc={},_napCli={},_lZonas=null,_lNaps=null,_lCli=null,_cbMk=null;
+  function _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
   function vCobertura(){
-    view.innerHTML='<h1>Cobertura / Red</h1><p class="sub">Zonas de cobertura, cajas NAP y clientes geolocalizados. Chequeá si un domicilio tiene cobertura.</p>'
+    view.innerHTML='<h1>Cobertura / Red</h1><p class="sub">Zonas, cajas NAP (con ocupación) y clientes. Chequeá la cobertura de un domicilio.</p>'
       +'<div class="toolbar">'
-      +'<input id="cb-q" placeholder="Pegá &quot;lat, lng&quot; o N° de cliente" style="min-width:300px">'
+      +'<input id="cb-q" placeholder="Pegá &quot;lat, lng&quot; o N° de cliente" style="min-width:260px">'
       +'<button class="btn btn-pri" id="cb-check">Chequear cobertura</button>'
-      +'<label style="display:flex;align-items:center;gap:6px;margin-left:10px"><input type="checkbox" id="cb-cli"> Mostrar clientes ('+'3094'+')</label>'
-      +'<span id="cb-res" style="margin-left:6px;font-weight:700"></span>'
-      +'</div><div id="map"></div>';
+      +'<span style="margin-left:14px;font-size:12px;font-weight:700;color:var(--gris)">CAPAS:</span>'
+      +'<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="cb-zonas" checked> Zonas</label>'
+      +'<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="cb-naps" checked> NAPs</label>'
+      +'<label style="display:flex;align-items:center;gap:5px">Clientes:<select id="cb-cli" style="width:auto"><option value="">Ninguno</option><option value="todos">Todos</option><option value="activo">Activos</option><option value="bloqueado">Bloqueados/Baja</option></select></label>'
+      +'<span id="cb-res" style="margin-left:8px;font-weight:700"></span>'
+      +'</div><div id="map"></div><div id="cb-info" class="muted" style="margin-top:6px;font-size:12px"></div>';
     if(typeof L==='undefined'){ document.getElementById('map').innerHTML='<div class="center">No se pudo cargar el mapa (revisá tu conexión).</div>'; return; }
-    iniMapa();
-    document.getElementById('cb-check').addEventListener('click',cbCheck);
-    document.getElementById('cb-q').addEventListener('keydown',function(e){ if(e.key==='Enter') cbCheck(); });
-    document.getElementById('cb-cli').addEventListener('change',toggleClientes);
-  }
-  function iniMapa(){
     if(_MAP){ try{ _MAP.remove(); }catch(e){} }
-    _MAP=null; _cliLayer=null; _cbMk=null;
+    _MAP=null;_lZonas=null;_lNaps=null;_lCli=null;_cbMk=null;
     _MAP=L.map('map').setView([-27.46,-55.89],12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_MAP);
     setTimeout(function(){ if(_MAP) _MAP.invalidateSize(); },250);
+    document.getElementById('cb-check').addEventListener('click',cbCheck);
+    document.getElementById('cb-q').addEventListener('keydown',function(e){ if(e.key==='Enter') cbCheck(); });
+    document.getElementById('cb-zonas').addEventListener('change',function(e){ toggleLayer(_lZonas,e.target.checked); });
+    document.getElementById('cb-naps').addEventListener('change',function(e){ toggleLayer(_lNaps,e.target.checked); });
+    document.getElementById('cb-cli').addEventListener('change',function(e){ drawClientes(e.target.value); });
+    cargarGeo();
+  }
+  function toggleLayer(lyr,on){ if(!lyr||!_MAP) return; if(on) lyr.addTo(_MAP); else _MAP.removeLayer(lyr); }
+  function cargarGeo(){
+    var info=document.getElementById('cb-info'); if(info) info.textContent='Cargando red y clientes…';
     Promise.all([ sbGet('geo_poligonos?select=nombre,coords&activo=eq.true'), sbGet('geo_naps?select=codigo,lat,lng&activo=eq.true&limit=2000') ]).then(function(r){
       _GEOP=Array.isArray(r[0])?r[0]:[]; _GEON=Array.isArray(r[1])?r[1]:[];
-      var gp=L.layerGroup().addTo(_MAP);
-      _GEOP.forEach(function(p){ if(Array.isArray(p.coords)&&p.coords.length>2){ try{ L.polygon(p.coords,{color:'#2563eb',weight:1.2,fillColor:'#2563eb',fillOpacity:.08}).bindTooltip(esc(p.nombre)).addTo(gp); }catch(e){} } });
-      var rn=L.canvas(), gn=L.layerGroup().addTo(_MAP);
-      _GEON.forEach(function(n){ if(n.lat&&n.lng){ L.circleMarker([n.lat,n.lng],{renderer:rn,radius:3,color:'#15803d',weight:0,fillOpacity:.9}).bindTooltip('NAP '+esc(n.codigo)).addTo(gn); } });
+      _lZonas=L.layerGroup().addTo(_MAP);
+      _GEOP.forEach(function(p){ if(Array.isArray(p.coords)&&p.coords.length>2){ try{ L.polygon(p.coords,{color:'#2563eb',weight:1.2,fillColor:'#2563eb',fillOpacity:.07}).bindTooltip(esc(p.nombre)).addTo(_lZonas); }catch(e){} } });
+      _CLI=[]; _napOcc={}; _napCli={};
+      (function pag(p){
+        sbGet('clientes?select=numero_cliente,nombre,estado,lat,lng,caja_nap,geo_origen&or=(caja_nap.not.is.null,lat.not.is.null)&order=id.asc&limit=1000&offset='+(p*1000)).then(function(d){
+          if(Array.isArray(d)){ _CLI=_CLI.concat(d); if(d.length===1000){ pag(p+1); return; } }
+          _CLI.forEach(function(c){ if(c.caja_nap){ var k=_norm(c.caja_nap); var o=_napOcc[k]||(_napOcc[k]={total:0,activo:0,inact:0}); o.total++; (c.estado==='activo')?o.activo++:o.inact++; (_napCli[k]||(_napCli[k]=[])).push(c); } });
+          drawNaps();
+          if(info) info.textContent=_GEON.length+' NAP · '+_GEOP.length+' zonas · '+_CLI.length+' clientes con caja/ubicación. (Capacidad de NAP estimada en 16 hasta tener el dato real.)';
+        });
+      })(0);
     });
   }
-  function toggleClientes(e){
-    if(!_MAP) return;
-    if(!e.target.checked){ if(_cliLayer){ _MAP.removeLayer(_cliLayer); _cliLayer=null; } return; }
-    _cliLayer=L.layerGroup().addTo(_MAP);
+  function drawNaps(){
+    if(_lNaps){ try{_MAP.removeLayer(_lNaps);}catch(e){} }
+    _lNaps=L.layerGroup(); var CAP=16;
+    _GEON.forEach(function(n){ if(!(n.lat&&n.lng)) return;
+      var k=_norm(n.codigo), o=_napOcc[k]||{total:0,activo:0,inact:0}, libres=Math.max(0,CAP-o.total);
+      var color=o.total>=CAP?'#dc2626':(o.total>=CAP*0.75?'#d97706':'#15803d');
+      var lista=(_napCli[k]||[]).slice(0,15).map(function(c){ return 'N°'+c.numero_cliente+' '+esc(c.nombre||'')+' <b>('+c.estado+')</b>'; }).join('<br>');
+      var capStr = o.total>CAP
+        ? '<span style="color:#dc2626">⚠️ '+o.total+' conectados superan la capacidad estimada ('+CAP+') — revisar</span>'
+        : 'Capacidad est.: '+CAP+' → <b>'+libres+' puertos libres</b>';
+      L.circleMarker([n.lat,n.lng],{radius:6,color:'#fff',weight:1.5,fillColor:color,fillOpacity:1})
+        .bindPopup('<b>📦 NAP '+esc(n.codigo)+'</b><br>Conectados: <b>'+o.total+'</b> ('+o.activo+' activos · '+o.inact+' baja/bloq)<br>'+capStr+'<hr style="margin:6px 0;border:none;border-top:1px solid #e2e8f0"><div style="max-height:140px;overflow:auto;font-size:12px;color:#475569">'+(lista||'(sin clientes cargados)')+'</div>')
+        .addTo(_lNaps);
+    });
+    if(document.getElementById('cb-naps') && document.getElementById('cb-naps').checked) _lNaps.addTo(_MAP);
+  }
+  function drawClientes(filtro){
+    if(_lCli){ try{_MAP.removeLayer(_lCli);}catch(e){} _lCli=null; }
+    if(!filtro) return;
+    _lCli=L.layerGroup().addTo(_MAP);
     var rn=L.canvas(), col={activo:'#16a34a',bloqueado:'#dc2626',baja:'#94a3b8',suspendido:'#d97706',moroso:'#d97706'};
-    (function pag(p){
-      sbGet('clientes?select=numero_cliente,nombre,estado,lat,lng&lat=not.is.null&order=id.asc&limit=1000&offset='+(p*1000)).then(function(d){
-        if(!Array.isArray(d)||!_cliLayer) return;
-        d.forEach(function(c){ L.circleMarker([c.lat,c.lng],{renderer:rn,radius:3,color:(col[c.estado]||'#2563eb'),weight:0,fillOpacity:.85}).bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||'')+' ('+c.estado+')').addTo(_cliLayer); });
-        if(d.length===1000 && _cliLayer) pag(p+1);
-      });
-    })(0);
+    _CLI.forEach(function(c){
+      if(c.lat==null||c.lng==null) return;
+      if(filtro==='activo' && c.estado!=='activo') return;
+      if(filtro==='bloqueado' && c.estado==='activo') return;
+      var p=_jit(c);
+      L.circleMarker(p,{renderer:rn,radius:3,color:(col[c.estado]||'#2563eb'),weight:0,fillOpacity:.85})
+        .bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||'')+' ('+c.estado+')'+(c.caja_nap?(' · NAP '+esc(c.caja_nap)):'')).addTo(_lCli);
+    });
+  }
+  function _jit(c){
+    if(c.geo_origen!=='nap') return [c.lat,c.lng];   // GPS real (solicitud) = exacto
+    var s=(c.numero_cliente||0), ang=(s*97%360)*Math.PI/180, rad=0.00016+0.00032*((s*53%100)/100);
+    return [c.lat+rad*Math.cos(ang), c.lng+rad*Math.sin(ang)];  // desparramar alrededor de la NAP
   }
   function cbCheck(){
     var q=document.getElementById('cb-q').value.trim(), res=document.getElementById('cb-res');
