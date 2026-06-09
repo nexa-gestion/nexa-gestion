@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Solicitá tu conexión — Nexa</title>
+<!-- =====================================================================
+     NEXA — Solicitud de alta UNIFICADA (página pública para el cliente)
+     v2 (2026-06-08). Reemplaza los múltiples formularios por empresa/barrio.
+     - Selector de Barrio/Chacra (lista canónica) → autoasigna empresa.
+     - Planes reales + TV Online + Pack Fútbol.
+     - "¿Ya sos cliente?" + número.
+     - Ubicación GPS (clave: ISPcube casi no tiene coordenadas).
+     - Validación de email (formato + confirmación).
+     Escribe en solicitudes_alta del Supabase de Nexa por REST (anon key).
+====================================================================== -->
+<style>
+  :root{ --pri:#2563eb; --pri-d:#1d4ed8; --gris:#64748b; --bg:#f1f5f9; --card:#fff; --bord:#e2e8f0; --rojo:#dc2626; --ok:#16a34a; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#0f172a; }
+  .wrap{ max-width:480px; margin:0 auto; padding:18px 16px 40px; }
+  .top{ text-align:center; padding:22px 0 10px; }
+  .top .marca{ font-weight:800; font-size:24px; letter-spacing:1px; color:var(--pri-d); }
+  .top .sub{ color:var(--gris); font-size:13px; margin-top:2px; }
+  .card{ background:var(--card); border:1px solid var(--bord); border-radius:16px; padding:18px; margin-top:14px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
+  .saludo{ font-size:18px; font-weight:700; }
+  .desc{ color:#334155; font-size:15px; line-height:1.5; margin-top:8px; }
+  .label{ font-size:13px; font-weight:700; color:var(--gris); text-transform:uppercase; letter-spacing:.5px; margin:14px 0 6px; }
+  .label .req{ color:var(--rojo); }
+  input, select, textarea{ width:100%; border:2px solid var(--bord); border-radius:12px; padding:13px; font-size:16px; font-family:inherit; background:#fff; }
+  input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--pri); }
+  textarea{ min-height:64px; resize:vertical; }
+  .row{ display:flex; gap:8px; }
+  .row > div{ flex:1; }
+  .chk{ display:flex; align-items:center; gap:10px; margin-top:12px; padding:12px; border:2px solid var(--bord); border-radius:12px; cursor:pointer; }
+  .chk.on{ border-color:var(--pri); background:#eff6ff; }
+  .chk input{ width:20px; height:20px; flex:0 0 auto; }
+  .chk .t{ font-size:14px; font-weight:600; }
+  .chk .s{ font-size:12px; color:var(--gris); }
+  .btn{ width:100%; border:none; border-radius:14px; padding:16px; font-size:17px; font-weight:700; cursor:pointer; margin-top:18px; transition:.15s; }
+  .btn-ok{ background:var(--pri); color:#fff; }
+  .btn-ok:disabled{ background:#cbd5e1; cursor:not-allowed; }
+  .btn-ok:not(:disabled):active{ background:var(--pri-d); }
+  .btn-2{ background:#fff; color:#334155; border:2px solid var(--bord); }
+  .gpsbox{ background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:14px; margin-top:8px; }
+  .gpsbox.ok{ background:#f0fdf4; border-color:#bbf7d0; }
+  .hint{ color:var(--gris); font-size:13px; margin-top:6px; line-height:1.4; }
+  .pill{ display:inline-block; background:#eff6ff; color:var(--pri-d); border-radius:999px; padding:3px 10px; font-size:12px; font-weight:700; margin-top:8px; }
+  .estado{ text-align:center; padding:30px 16px; }
+  .estado .ico{ font-size:54px; }
+  .estado .ttl{ font-size:20px; font-weight:800; margin-top:10px; }
+  .estado .txt{ color:var(--gris); font-size:15px; margin-top:8px; line-height:1.5; }
+  .foot{ text-align:center; color:#94a3b8; font-size:12px; margin-top:24px; }
+  .err{ color:var(--rojo); font-size:13px; margin-top:6px; min-height:16px; }
+  .spin{ display:inline-block; width:34px; height:34px; border:4px solid #e2e8f0; border-top-color:var(--pri); border-radius:50%; animation:sp 1s linear infinite; }
+  @keyframes sp{ to{ transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="marca">NEXA</div>
+    <div class="sub">Internet · Solicitud de conexión</div>
+  </div>
+  <div id="app"></div>
+  <div class="foot">Nexa SAS · Tus datos se usan solo para coordinar la instalación.</div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  // ── CONFIG ────────────────────────────────────────────────────────────
+  var SB_URL = 'https://xlfntplfhdjoqrofhcwe.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
+  var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
+  var CONFIGURADO = SB_URL.indexOf('TU-PROYECTO') === -1;
+
+  var app = document.getElementById('app');
+  var PLANES = [], BARRIOS = [];
+  var f = { tv:false, futbol:false, yaCliente:false };
+  var gps = { lat:null, lng:null };
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function estado(ico, ttl, txt, extra){
+    app.innerHTML = '<div class="card estado"><div class="ico">'+ico+'</div><div class="ttl">'+esc(ttl)+'</div><div class="txt">'+txt+'</div>'+(extra||'')+'</div>';
+  }
+  function emailValido(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
+
+  // ── cargar referencia (planes + barrios) ──────────────────────────────
+  function cargarRef(cb){
+    if(!CONFIGURADO){ cb(); return; }
+    var p1 = fetch(SB_URL+'/rest/v1/planes?activo=eq.true&select=id,nombre,tecnologia,bajada_mbps,precio&order=bajada_mbps.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PLANES=Array.isArray(d)?d:[]; }).catch(function(){});
+    var p2 = fetch(SB_URL+'/rest/v1/barrios?activo=eq.true&select=nombre,tipo,empresa_sugerida&order=tipo.asc,nombre.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ BARRIOS=Array.isArray(d)?d:[]; }).catch(function(){});
+    Promise.all([p1,p2]).then(cb);
+  }
+
+  function optsBarrios(){
+    var ch = BARRIOS.filter(function(b){return b.tipo==='CHACRA';});
+    var ba = BARRIOS.filter(function(b){return b.tipo!=='CHACRA';});
+    var h = '<option value="">— Elegí tu barrio o chacra —</option>';
+    if(ba.length){ h+='<optgroup label="Barrios">'; ba.forEach(function(b){ h+='<option value="'+esc(b.nombre)+'">'+esc(b.nombre)+'</option>'; }); h+='</optgroup>'; }
+    if(ch.length){ h+='<optgroup label="Chacras">'; ch.forEach(function(b){ h+='<option value="'+esc(b.nombre)+'">'+esc(b.nombre)+'</option>'; }); h+='</optgroup>'; }
+    h += '<option value="__otro">Otro / no lo encuentro</option>';
+    return h;
+  }
+  function optsPlanes(){
+    var h = '<option value="">— Elegí un plan —</option>';
+    PLANES.forEach(function(p){
+      var et = p.nombre + (p.precio?(' · $'+p.precio):'');
+      h += '<option value="'+esc(p.id)+'">'+esc(et)+'</option>';
+    });
+    h += '<option value="__otro">No estoy seguro</option>';
+    return h;
+  }
+
+  // ── formulario ────────────────────────────────────────────────────────
+  function render(){
+    var barrioField = BARRIOS.length ? '<select id="barrio">'+optsBarrios()+'</select>' : '<input id="barrio_txt" placeholder="Tu barrio o chacra">';
+    var planField   = PLANES.length  ? '<select id="plan">'+optsPlanes()+'</select>'    : '<input id="plan_texto" placeholder="Ej: el de mayor velocidad">';
+
+    var h = '';
+    h += '<div class="card">';
+    h += '<div class="saludo">¡Hola! 👋 Sumate a Nexa</div>';
+    h += '<div class="desc">Completá tus datos y nos comunicamos para coordinar la instalación. Toma 1 minuto.</div>';
+    h += '</div>';
+
+    // Datos personales
+    h += '<div class="card">';
+    h += '<div class="label">Nombre y apellido <span class="req">*</span></div><div class="row"><div><input id="nombre" placeholder="Nombre" value="'+esc(f.nombre)+'"></div><div><input id="apellido" placeholder="Apellido" value="'+esc(f.apellido)+'"></div></div>';
+    h += '<div class="label">DNI <span class="req">*</span></div><input id="doc_numero" inputmode="numeric" placeholder="Sin puntos" value="'+esc(f.doc_numero)+'">';
+    h += '<div class="label">Teléfono / WhatsApp <span class="req">*</span></div><input id="telefono" type="tel" inputmode="tel" placeholder="Ej: 3764 123456" value="'+esc(f.telefono)+'">';
+    h += '<div class="label">Teléfono alternativo (opcional)</div><input id="telefono_alt" type="tel" inputmode="tel" placeholder="Otro número de contacto" value="'+esc(f.telefono_alt)+'">';
+    h += '</div>';
+
+    // Email con confirmación (las facturas van por mail)
+    h += '<div class="card">';
+    h += '<div class="label">Correo electrónico <span class="req">*</span></div><input id="email" type="email" inputmode="email" autocapitalize="off" placeholder="tucorreo@ejemplo.com" value="'+esc(f.email)+'">';
+    h += '<div class="hint">📩 Importante: las facturas se envían a este correo. Revisá que esté bien escrito.</div>';
+    h += '<div class="label">Repetí tu correo <span class="req">*</span></div><input id="email2" type="email" inputmode="email" autocapitalize="off" placeholder="Confirmá tu correo" value="'+esc(f.email2)+'">';
+    h += '</div>';
+
+    // Dirección + barrio + GPS
+    h += '<div class="card">';
+    h += '<div class="label">Barrio o chacra <span class="req">*</span></div>'+barrioField;
+    h += '<div id="empresa-pill"></div>';
+    h += '<div class="label">Dirección <span class="req">*</span></div>';
+    h += '<div class="row"><div style="flex:3"><input id="calle" placeholder="Calle" value="'+esc(f.calle)+'"></div><div style="flex:1"><input id="numero" placeholder="N°" value="'+esc(f.numero)+'"></div></div>';
+    h += '<div class="row" style="margin-top:8px"><div><input id="piso" placeholder="Piso/Lote (opc.)" value="'+esc(f.piso)+'"></div><div><input id="depto" placeholder="Depto/Casa (opc.)" value="'+esc(f.depto)+'"></div></div>';
+    h += '<div class="label">Referencia (opcional)</div><input id="referencia" placeholder="Ej: casa de rejas verdes, al lado del kiosco" value="'+esc(f.referencia)+'">';
+    h += '<div class="gpsbox'+(gps.lat!=null?' ok':'')+'">';
+    h += '<div style="font-weight:700;font-size:14px">'+(gps.lat!=null?'✓ Ubicación recibida':'📍 Compartí tu ubicación')+'</div>';
+    h += '<div class="hint">Así el técnico te encuentra fácil, sin importar cómo esté escrita la dirección. Tocá el botón parado en tu casa.</div>';
+    h += '<button class="btn btn-2" id="gps" style="margin-top:10px">'+(gps.lat!=null?'Reenviar ubicación':'Usar mi ubicación actual')+'</button>';
+    h += '</div>';
+    h += '</div>';
+
+    // Plan + add-ons
+    h += '<div class="card">';
+    h += '<div class="label">Plan de internet <span class="req">*</span></div>'+planField;
+    h += '<label class="chk'+(f.tv?' on':'')+'" id="chk-tv"><input type="checkbox" id="tv"'+(f.tv?' checked':'')+'><span><span class="t">Agregar TV Online</span><br><span class="s">Canales en vivo en tu tele/celular</span></span></label>';
+    h += '<label class="chk'+(f.futbol?' on':'')+'" id="chk-fut"><input type="checkbox" id="futbol"'+(f.futbol?' checked':'')+'><span><span class="t">Agregar Pack Fútbol</span><br><span class="s">Adicional sobre TV Online</span></span></label>';
+    h += '</div>';
+
+    // ¿Ya sos cliente?
+    h += '<div class="card">';
+    h += '<label class="chk'+(f.yaCliente?' on':'')+'" id="chk-cli"><input type="checkbox" id="yaCliente"'+(f.yaCliente?' checked':'')+'><span><span class="t">Ya soy cliente de Nexa</span><br><span class="s">Marcá esto si querés sumar un servicio a tu cuenta</span></span></label>';
+    if(f.yaCliente){ h += '<div class="label">Tu número de cliente (si lo sabés)</div><input id="numCli" inputmode="numeric" placeholder="N° de cliente" value="'+esc(f.numCli)+'">'; }
+    h += '</div>';
+
+    // Términos + enviar
+    h += '<div class="card">';
+    h += '<label class="chk'+(f.terminos?' on':'')+'" id="chk-ter"><input type="checkbox" id="terminos"'+(f.terminos?' checked':'')+'><span><span class="t">Acepto los términos y condiciones</span><br><span class="s">Autorizo el contacto para coordinar la instalación</span></span></label>';
+    h += '<div class="err" id="err"></div>';
+    h += '<button class="btn btn-ok" id="enviar">Enviar solicitud ✓</button>';
+    h += '</div>';
+
+    app.innerHTML = h;
+    wire();
+    pintarEmpresa();
+  }
+
+  function wire(){
+    document.getElementById('gps').addEventListener('click', pedirUbicacion);
+    document.getElementById('enviar').addEventListener('click', enviar);
+    var b=document.getElementById('barrio'); if(b) b.addEventListener('change', function(){ leer(); pintarEmpresa(); });
+    [['tv','tv','chk-tv'],['futbol','futbol','chk-fut'],['yaCliente','yaCliente','chk-cli'],['terminos','terminos','chk-ter']].forEach(function(t){
+      var el=document.getElementById(t[0]); if(el) el.addEventListener('change', function(){ leer(); if(t[0]==='yaCliente') render(); else document.getElementById(t[2]).classList.toggle('on', el.checked); });
+    });
+  }
+
+  function empresaDeBarrio(nombre){
+    var b = BARRIOS.filter(function(x){return x.nombre===nombre;})[0];
+    return b ? (b.empresa_sugerida||'') : '';
+  }
+  function pintarEmpresa(){
+    var cont=document.getElementById('empresa-pill'); if(!cont) return;
+    var emp = empresaDeBarrio(f.barrio);
+    cont.innerHTML = emp ? '<span class="pill">Zona: '+esc(emp)+'</span>' : '';
+  }
+
+  function leer(){
+    function v(id){ var e=document.getElementById(id); return e ? (e.type==='checkbox'? e.checked : e.value.trim()) : (id==='tv'||id==='futbol'||id==='yaCliente'||id==='terminos'?false:''); }
+    f.nombre=v('nombre'); f.apellido=v('apellido'); f.doc_numero=v('doc_numero');
+    f.telefono=v('telefono'); f.telefono_alt=v('telefono_alt');
+    f.email=v('email'); f.email2=v('email2');
+    f.calle=v('calle'); f.numero=v('numero'); f.piso=v('piso'); f.depto=v('depto'); f.referencia=v('referencia');
+    f.tv=v('tv'); f.futbol=v('futbol'); f.yaCliente=v('yaCliente'); f.terminos=v('terminos'); f.numCli=v('numCli');
+    var bs=document.getElementById('barrio'); var bt=document.getElementById('barrio_txt');
+    f.barrio = bs ? bs.value : (bt?bt.value.trim():'');
+    var ps=document.getElementById('plan'); f.plan_id = ps ? ps.value : '';
+    var pt=document.getElementById('plan_texto'); f.plan_texto = pt ? pt.value.trim() : '';
+  }
+
+  function pedirUbicacion(){
+    if(!navigator.geolocation){ alert('Tu navegador no permite compartir la ubicación.'); return; }
+    leer();
+    var b=document.getElementById('gps'); b.textContent='Obteniendo ubicación…'; b.disabled=true;
+    navigator.geolocation.getCurrentPosition(function(pos){
+      gps.lat=pos.coords.latitude; gps.lng=pos.coords.longitude; render();
+    }, function(){
+      b.disabled=false; b.textContent='Usar mi ubicación actual';
+      alert('No pudimos obtener tu ubicación. Permití el acceso e intentá de nuevo.');
+    }, {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+  }
+
+  function enviar(){
+    leer();
+    var err = document.getElementById('err');
+    if(!f.nombre || !f.apellido){ err.textContent='Completá nombre y apellido.'; return; }
+    if(!f.doc_numero){ err.textContent='Completá tu DNI.'; return; }
+    if(!f.telefono){ err.textContent='Necesitamos un teléfono para contactarte.'; return; }
+    if(!emailValido(f.email)){ err.textContent='Revisá tu correo electrónico, parece inválido.'; return; }
+    if(f.email.toLowerCase()!==(f.email2||'').toLowerCase()){ err.textContent='Los dos correos no coinciden.'; return; }
+    if(!f.barrio){ err.textContent='Elegí tu barrio o chacra.'; return; }
+    if(!f.calle || !f.numero){ err.textContent='Completá calle y número.'; return; }
+    if(!f.terminos){ err.textContent='Tenés que aceptar los términos para continuar.'; return; }
+    err.textContent='';
+
+    if(!CONFIGURADO){ estado('🛠️','Falta configurar','Esta página todavía no está conectada a la base de Nexa.'); return; }
+
+    var btn=document.getElementById('enviar'); btn.disabled=true; btn.textContent='Enviando…';
+    var planId = (f.plan_id && f.plan_id!=='__otro') ? Number(f.plan_id) : null;
+    var planTexto = f.plan_texto || (f.plan_id==='__otro' ? 'No está seguro' : null);
+    var barrio = (f.barrio==='__otro') ? null : f.barrio;
+    var domFull = [f.calle, f.numero, f.piso?('Piso/Lote '+f.piso):'', f.depto?('Casa/Depto '+f.depto):'', barrio].filter(Boolean).join(' ');
+
+    var body = {
+      nombre:f.nombre, apellido:f.apellido, doc_numero:f.doc_numero,
+      telefono:f.telefono, telefono_alt:f.telefono_alt||null,
+      email:f.email, calle:f.calle, numero:f.numero, piso:f.piso||null, depto:f.depto||null,
+      barrio:barrio, empresa:empresaDeBarrio(f.barrio)||null, domicilio_full:domFull,
+      observaciones:f.referencia||null,
+      lat:gps.lat, lng:gps.lng, plan_id:planId, plan_texto:planTexto,
+      tv_online:!!f.tv, pack_futbol:!!f.futbol,
+      ya_es_cliente:!!f.yaCliente, numero_cliente_existente:(f.yaCliente?(f.numCli||null):null),
+      terminos_aceptados:!!f.terminos, estado:'pendiente', origen:'link'
+    };
+
+    fetch(SB_URL + '/rest/v1/solicitudes_alta', {
+      method:'POST',
+      headers: Object.assign({}, H, { 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+      body: JSON.stringify(body)
+    }).then(function(r){
+      if(r.ok) exito();
+      else { btn.disabled=false; btn.textContent='Enviar solicitud ✓'; err.textContent='No se pudo enviar. Probá de nuevo en un momento.'; }
+    }).catch(function(){
+      btn.disabled=false; btn.textContent='Enviar solicitud ✓'; err.textContent='Sin conexión. Revisá tu internet e intentá de nuevo.';
+    });
+  }
+
+  function exito(){
+    estado('✅','¡Solicitud enviada!',
+      'Recibimos tus datos. Nos vamos a comunicar al teléfono que dejaste para coordinar la instalación. ¡Gracias por elegir Nexa!');
+  }
+
+  // arranque
+  estado('','', '<div class="spin"></div><div class="txt" style="margin-top:14px">Cargando…</div>');
+  cargarRef(render);
+})();
+</script>
+</body>
+</html>
