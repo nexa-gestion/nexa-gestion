@@ -174,7 +174,8 @@
       sbCount('clientes?empresa=eq.Nexa&select=id'),
       sbCount('solicitudes_alta?estado=eq.pendiente&select=id'),
       sbCount('ordenes_trabajo?estado=eq.PENDIENTE&select=id'),
-      sbCount('ordenes_trabajo?estado=eq.ASIGNADA&select=id')
+      sbCount('ordenes_trabajo?estado=eq.ASIGNADA&select=id'),
+      sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id')
     ]).then(function(c){
       view.innerHTML =
         '<h1>Dashboard</h1><p class="sub">Hola '+esc(USER.nombre)+'. Foto general de Nexa.</p>'
@@ -183,6 +184,7 @@
         +kpi(c[1],'Activos','g')+kpi(c[2],'Bloqueados','r')+kpi(c[3],'Baja','')
         +kpi(c[7],'Solicitudes pendientes','w')
         +kpi(c[8],'OT pendientes','w')+kpi(c[9],'OT asignadas','b')
+        +kpi(c[10],'⚠️ A cargar en ISPcube','r')
         +'</div>'
         +'<h1 style="font-size:17px;margin-top:24px">Por empresa</h1>'
         +'<div class="kpis">'+kpi(c[4],'FG Conexiones','')+kpi(c[5],'NOR-TEL','')+kpi(c[6],'Nexa','')+'</div>';
@@ -191,7 +193,7 @@
   function kpi(n,t,cls){ return '<div class="kpi '+(cls||'')+'"><div class="n">'+n+'</div><div class="t">'+t+'</div></div>'; }
 
   // ── CLIENTES ──
-  var clState={ q:'', estado:'', empresa:'', barrio:'', page:0, size:50, total:0 };
+  var clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0 };
   function vClientes(){
     view.innerHTML =
       '<h1>Clientes</h1><p class="sub">Base completa de Nexa.</p>'
@@ -201,9 +203,11 @@
       +'<select id="cl-empresa"><option value="">Todas las empresas</option>'+opt(REF.empresas.map(function(e){return e.nombre;}),clState.empresa)+'</select>'
       +'<select id="cl-barrio"><option value="">Todos los barrios</option>'+opt(REF.barrios.map(function(b){return b.nombre;}),clState.barrio)+'</select>'
       +'<button class="btn btn-pri" id="cl-buscar">Buscar</button>'
+      +'<button class="btn '+(clState.pend?'btn-x':'btn-2')+'" id="cl-pend" title="Solo clientes que faltan cargar en ISPcube">⚠️ Falta en ISPcube'+(clState.pend?' ✓':'')+'</button>'
       +'</div><div id="cl-tabla"></div>';
     document.getElementById('cl-buscar').addEventListener('click',function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); });
     document.getElementById('cl-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leerFiltrosCl(); clState.page=0; cargarClientes(); } });
+    document.getElementById('cl-pend').addEventListener('click',function(){ leerFiltrosCl(); clState.pend=!clState.pend; clState.page=0; vClientes(); });
     cargarClientes();
   }
   function leerFiltrosCl(){
@@ -213,10 +217,11 @@
     clState.barrio=document.getElementById('cl-barrio').value;
   }
   function clQuery(){
-    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,planes(nombre)','order=numero_cliente.desc'];
+    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,codigo_ispcube,planes(nombre)','order=numero_cliente.desc'];
     if(clState.estado) p.push('estado=eq.'+clState.estado);
     if(clState.empresa) p.push('empresa=eq.'+encodeURIComponent(clState.empresa));
     if(clState.barrio) p.push('barrio=eq.'+encodeURIComponent(clState.barrio));
+    if(clState.pend) p.push('codigo_ispcube=is.null');
     if(clState.q){
       var q=clState.q.replace(/[(),]/g,' ').trim();
       var ors=['nombre.ilike.*'+q+'*','doc_numero.ilike.*'+q+'*'];
@@ -234,7 +239,8 @@
       if(!Array.isArray(d)||!d.length){ cont.innerHTML='<div class="center">Sin resultados.</div>'; return; }
       var h='<table><thead><tr><th>N°</th><th>Nombre</th><th>DNI</th><th>Teléfono</th><th>Plan</th><th>Barrio</th><th>Empresa</th><th>Estado</th></tr></thead><tbody>';
       d.forEach(function(c){
-        h+='<tr data-id="'+c.id+'"><td><b>'+esc(c.numero_cliente)+'</b></td><td>'+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</td><td>'+esc(c.doc_numero||'')+'</td><td>'+esc(c.telefono||'')+'</td><td>'+esc(c.planes?c.planes.nombre:'')+'</td><td>'+esc(c.barrio||'')+'</td><td><span class="empresa-tag">'+esc(c.empresa||'')+'</span></td><td>'+pill(c.estado)+'</td></tr>';
+        var isp = c.codigo_ispcube ? '' : ' <span class="pill p-bloqueado" title="Falta cargar en ISPcube">⚠️ ISP</span>';
+        h+='<tr data-id="'+c.id+'"><td><b>'+esc(c.numero_cliente)+'</b></td><td>'+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</td><td>'+esc(c.doc_numero||'')+'</td><td>'+esc(c.telefono||'')+'</td><td>'+esc(c.planes?c.planes.nombre:'')+'</td><td>'+esc(c.barrio||'')+'</td><td><span class="empresa-tag">'+esc(c.empresa||'')+'</span></td><td>'+pill(c.estado)+isp+'</td></tr>';
       });
       h+='</tbody></table>';
       var pages=Math.ceil(clState.total/clState.size)||1;
@@ -252,14 +258,25 @@
     sbGet('clientes?id=eq.'+id+'&select=*,planes(nombre)&limit=1').then(function(d){
       var c=d[0]; if(!c) return;
       function fr(k,v){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+esc(v||'—')+'</span></div>'; }
+      var ispBlock = c.codigo_ispcube
+        ? fr('Código ISPcube',c.codigo_ispcube)
+        : '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px;margin-top:10px">'
+          +'<div style="font-weight:700;color:#991b1b">⚠️ Falta cargar este cliente en ISPcube</div>'
+          +'<div class="muted" style="margin:6px 0">Cuando lo des de alta en ISPcube, pegá acá su N° para marcarlo como cargado.</div>'
+          +'<div style="display:flex;gap:8px"><input id="f-isp" placeholder="N° de cliente en ISPcube" style="flex:1"><button class="btn btn-ok" id="f-isp-save">Guardar</button></div></div>';
       modal('<h2>Cliente N° '+esc(c.numero_cliente)+'</h2><p class="muted">'+esc(c.nombre||'')+' '+esc(c.apellido||'')+' · '+pill(c.estado)+'</p>'
         +fr('Empresa',c.empresa)+fr('Documento',(c.tipo_doc||'')+' '+(c.doc_numero||''))+fr('Teléfono',c.telefono)+fr('Email',c.email)
         +fr('Domicilio',c.domicilio_full)+fr('Barrio',c.barrio)+fr('Nodo',c.nodo)+fr('Plan',c.planes?c.planes.nombre:'')
         +fr('Tecnología',c.tecnologia)+fr('TV / Fútbol',(c.tv_online?'TV ':'')+(c.pack_futbol?'Fútbol':'')||'No')
-        +fr('Código ISPcube',c.codigo_ispcube)
+        +ispBlock
         +'<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-pri" id="f-ot">+ Generar OT</button><button class="btn btn-2" id="f-close">Cerrar</button></div>');
       document.getElementById('f-close').addEventListener('click',cerrarModal);
       document.getElementById('f-ot').addEventListener('click',function(){ cerrarModal(); nuevaOT(c); });
+      var ispSave=document.getElementById('f-isp-save');
+      if(ispSave) ispSave.addEventListener('click',function(){
+        var val=document.getElementById('f-isp').value.trim(); if(!val){ return; }
+        sbPatch('clientes?id=eq.'+c.id,{ codigo_ispcube:val }).then(function(){ cerrarModal(); toast('Cliente marcado como cargado en ISPcube ✓'); cargarClientes(); });
+      });
     });
   }
 
