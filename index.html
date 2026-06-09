@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nexa · Gestión — v0.1</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root{ --pri:#2563eb; --pri-d:#1d4ed8; --gris:#64748b; --bg:#f1f5f9; --card:#fff; --bord:#e2e8f0;
          --rojo:#dc2626; --ok:#16a34a; --warn:#d97706; --dark:#0f172a; }
@@ -68,6 +70,8 @@
   .muted{ color:var(--gris); } .center{ text-align:center; padding:30px; color:var(--gris); }
   .spin{ display:inline-block; width:26px; height:26px; border:3px solid #e2e8f0; border-top-color:var(--pri); border-radius:50%; animation:sp 1s linear infinite; }
   @keyframes sp{ to{ transform:rotate(360deg); } }
+  #map{ height:calc(100vh - 170px); min-height:420px; border:1px solid var(--bord); border-radius:12px; }
+  .leaflet-container{ font:inherit; }
 </style>
 </head>
 <body>
@@ -95,6 +99,7 @@
       <a data-v="clientes">👥 Clientes</a>
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
+      <a data-v="cobertura">📍 Cobertura / Red</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
     </div>
     <div class="user" id="side-user"></div>
@@ -160,7 +165,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,usuarios:vUsuarios}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   // accesos directos desde las tarjetas KPI del dashboard
@@ -519,6 +524,70 @@
         .catch(function(){ document.getElementById('us-err').textContent='No se pudo guardar (¿usuario repetido?).'; btn.disabled=false; });
     });
   }
+
+  // ── COBERTURA / RED ── (Leaflet: zonas de cobertura + NAPs + clientes + chequeo punto-en-polígono)
+  var _MAP=null, _GEOP=[], _GEON=[], _cliLayer=null, _cbMk=null;
+  function vCobertura(){
+    view.innerHTML='<h1>Cobertura / Red</h1><p class="sub">Zonas de cobertura, cajas NAP y clientes geolocalizados. Chequeá si un domicilio tiene cobertura.</p>'
+      +'<div class="toolbar">'
+      +'<input id="cb-q" placeholder="Pegá &quot;lat, lng&quot; o N° de cliente" style="min-width:300px">'
+      +'<button class="btn btn-pri" id="cb-check">Chequear cobertura</button>'
+      +'<label style="display:flex;align-items:center;gap:6px;margin-left:10px"><input type="checkbox" id="cb-cli"> Mostrar clientes ('+'3094'+')</label>'
+      +'<span id="cb-res" style="margin-left:6px;font-weight:700"></span>'
+      +'</div><div id="map"></div>';
+    if(typeof L==='undefined'){ document.getElementById('map').innerHTML='<div class="center">No se pudo cargar el mapa (revisá tu conexión).</div>'; return; }
+    iniMapa();
+    document.getElementById('cb-check').addEventListener('click',cbCheck);
+    document.getElementById('cb-q').addEventListener('keydown',function(e){ if(e.key==='Enter') cbCheck(); });
+    document.getElementById('cb-cli').addEventListener('change',toggleClientes);
+  }
+  function iniMapa(){
+    if(_MAP){ try{ _MAP.remove(); }catch(e){} }
+    _MAP=null; _cliLayer=null; _cbMk=null;
+    _MAP=L.map('map').setView([-27.46,-55.89],12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_MAP);
+    setTimeout(function(){ if(_MAP) _MAP.invalidateSize(); },250);
+    Promise.all([ sbGet('geo_poligonos?select=nombre,coords&activo=eq.true'), sbGet('geo_naps?select=codigo,lat,lng&activo=eq.true&limit=2000') ]).then(function(r){
+      _GEOP=Array.isArray(r[0])?r[0]:[]; _GEON=Array.isArray(r[1])?r[1]:[];
+      var gp=L.layerGroup().addTo(_MAP);
+      _GEOP.forEach(function(p){ if(Array.isArray(p.coords)&&p.coords.length>2){ try{ L.polygon(p.coords,{color:'#2563eb',weight:1.2,fillColor:'#2563eb',fillOpacity:.08}).bindTooltip(esc(p.nombre)).addTo(gp); }catch(e){} } });
+      var rn=L.canvas(), gn=L.layerGroup().addTo(_MAP);
+      _GEON.forEach(function(n){ if(n.lat&&n.lng){ L.circleMarker([n.lat,n.lng],{renderer:rn,radius:3,color:'#15803d',weight:0,fillOpacity:.9}).bindTooltip('NAP '+esc(n.codigo)).addTo(gn); } });
+    });
+  }
+  function toggleClientes(e){
+    if(!_MAP) return;
+    if(!e.target.checked){ if(_cliLayer){ _MAP.removeLayer(_cliLayer); _cliLayer=null; } return; }
+    _cliLayer=L.layerGroup().addTo(_MAP);
+    var rn=L.canvas(), col={activo:'#16a34a',bloqueado:'#dc2626',baja:'#94a3b8',suspendido:'#d97706',moroso:'#d97706'};
+    (function pag(p){
+      sbGet('clientes?select=numero_cliente,nombre,estado,lat,lng&lat=not.is.null&order=id.asc&limit=1000&offset='+(p*1000)).then(function(d){
+        if(!Array.isArray(d)||!_cliLayer) return;
+        d.forEach(function(c){ L.circleMarker([c.lat,c.lng],{renderer:rn,radius:3,color:(col[c.estado]||'#2563eb'),weight:0,fillOpacity:.85}).bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||'')+' ('+c.estado+')').addTo(_cliLayer); });
+        if(d.length===1000 && _cliLayer) pag(p+1);
+      });
+    })(0);
+  }
+  function cbCheck(){
+    var q=document.getElementById('cb-q').value.trim(), res=document.getElementById('cb-res');
+    function evaluar(lat,lng,label){
+      if(_cbMk){ _MAP.removeLayer(_cbMk); }
+      _cbMk=L.marker([lat,lng]).addTo(_MAP); _MAP.setView([lat,lng],16);
+      var cob=_GEOP.filter(function(p){ return Array.isArray(p.coords)&&pointInPoly(lat,lng,p.coords); }).map(function(p){return p.nombre;});
+      var best=null,bd=1e12; _GEON.forEach(function(n){ if(n.lat&&n.lng){ var dd=hav(lat,lng,n.lat,n.lng); if(dd<bd){bd=dd;best=n;} } });
+      _cbMk.bindPopup((label?('<b>'+esc(label)+'</b><br>'):'')
+        +(cob.length?('✅ En cobertura: '+esc(cob.join(', '))):'⚠️ Fuera de las zonas de cobertura')
+        +'<br>NAP más cercana: '+(best?(esc(best.codigo)+' · '+Math.round(bd)+' m'):'—')).openPopup();
+      res.innerHTML=cob.length?'<span style="color:var(--ok)">✅ En cobertura</span>':'<span style="color:var(--warn)">⚠️ Sin polígono (NAP a '+(best?Math.round(bd):'?')+' m)</span>';
+    }
+    var ll=parseCoords(q);
+    if(ll){ evaluar(ll.lat,ll.lng,'Punto consultado'); return; }
+    if(/^\d+$/.test(q)){ sbGet('clientes?numero_cliente=eq.'+q+'&select=nombre,lat,lng&limit=1').then(function(d){ var c=(d||[])[0]; if(!c){ res.textContent='No existe ese cliente.'; return; } if(c.lat==null){ res.textContent='Ese cliente no tiene ubicación.'; return; } evaluar(c.lat,c.lng,'N° '+q+' '+(c.nombre||'')); }); return; }
+    res.textContent='Pegá "lat, lng" o un N° de cliente.';
+  }
+  function parseCoords(t){ var m=String(t||'').match(/-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/); if(!m) return null; var p=m[0].split(/\s*,\s*/); var a=parseFloat(p[0]),b=parseFloat(p[1]); if(a<-90||a>90||b<-180||b>180) return null; return {lat:a,lng:b}; }
+  function pointInPoly(lat,lng,poly){ var inside=false; for(var i=0,j=poly.length-1;i<poly.length;j=i++){ var yi=poly[i][0],xi=poly[i][1],yj=poly[j][0],xj=poly[j][1]; if(((yi>lat)!==(yj>lat)) && (lng < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
+  function hav(la1,lo1,la2,lo2){ var R=6371000,d=Math.PI/180,s1=Math.sin((la2-la1)*d/2),s2=Math.sin((lo2-lo1)*d/2); var a=s1*s1+Math.cos(la1*d)*Math.cos(la2*d)*s2*s2; return 2*R*Math.asin(Math.sqrt(a)); }
 
   // ── util UI ──
   function opt(arr,sel){ return arr.map(function(x){return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>';}).join(''); }
