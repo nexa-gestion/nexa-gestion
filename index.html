@@ -280,47 +280,83 @@
     });
   }
 
-  // ── SOLICITUDES ──
+  // ── SOLICITUDES ── (módulo aislado: lista + ficha editable + convertir/rechazar)
   function vSolicitudes(){
     loading();
     sbGet('solicitudes_alta?estado=eq.pendiente&select=*&order=created_at.desc').then(function(d){
-      var h='<h1>Solicitudes de alta</h1><p class="sub">Pedidos del formulario público, pendientes de gestionar.</p>';
+      var h='<h1>Solicitudes de alta</h1><p class="sub">Pedidos del formulario público. Tocá una para revisar, editar y convertir.</p>';
       if(!d.length){ view.innerHTML=h+'<div class="center">No hay solicitudes pendientes. 🎉</div>'; return; }
-      h+='<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Teléfono</th><th>Barrio</th><th>Plan</th><th>Ubicación</th><th></th></tr></thead><tbody>';
+      h+='<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Teléfono</th><th>Barrio</th><th>Plan</th><th>Ubic.</th><th></th></tr></thead><tbody>';
       d.forEach(function(s){
         var fch=(s.created_at||'').substring(0,10);
-        h+='<tr><td>'+esc(fch)+'</td><td>'+esc(s.nombre||'')+' '+esc(s.apellido||'')+'<br><span class="muted">'+esc(s.empresa||'')+'</span></td><td>'+esc(s.telefono||'')+'</td><td>'+esc(s.barrio||'')+'</td><td>'+esc(s.plan_texto||'')+(s.tv_online?' +TV':'')+'</td><td>'+(s.lat?'📍 sí':'—')+'</td><td><button class="btn btn-ok" data-id="'+s.id+'">Convertir</button></td></tr>';
+        h+='<tr data-id="'+s.id+'"><td>'+esc(fch)+'</td><td>'+esc(s.nombre||'')+' '+esc(s.apellido||'')+'<br><span class="muted">'+esc(s.empresa||'')+'</span></td><td>'+esc(s.telefono||'')+'</td><td>'+esc(s.barrio||'')+'</td><td>'+esc(s.plan_texto||'')+(s.tv_online?' +TV':'')+'</td><td>'+(s.lat?'📍':'—')+'</td><td><button class="btn btn-2" data-id="'+s.id+'">Ver / Gestionar</button></td></tr>';
       });
       h+='</tbody></table>'; view.innerHTML=h;
-      Array.prototype.forEach.call(view.querySelectorAll('button[data-id]'),function(b){ b.addEventListener('click',function(){ convertirSolicitud(d.filter(function(x){return x.id==b.getAttribute('data-id');})[0]); }); });
+      function abrir(id){ fichaSolicitud(d.filter(function(x){return x.id==id;})[0]); }
+      Array.prototype.forEach.call(view.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(e){ if(e.target.tagName!=='BUTTON') abrir(tr.getAttribute('data-id')); }); });
+      Array.prototype.forEach.call(view.querySelectorAll('button[data-id]'),function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); abrir(b.getAttribute('data-id')); }); });
     });
   }
-  function convertirSolicitud(s){
-    var empOpts=opt(REF.empresas.map(function(e){return e.nombre;}), s.empresa||'');
-    var planOpts='<option value="">— sin asignar —</option>'+REF.planes.map(function(p){return '<option value="'+p.id+'">'+esc(p.nombre)+'</option>';}).join('');
-    modal('<h2>Convertir en cliente + OT</h2><p class="muted">'+esc(s.nombre||'')+' '+esc(s.apellido||'')+' · '+esc(s.telefono||'')+'</p>'
-      +'<label class="l">Empresa</label><select id="cv-emp">'+empOpts+'</select>'
-      +'<label class="l">Plan</label><select id="cv-plan">'+planOpts+'</select>'
-      +'<label class="l">Tipo de OT</label><select id="cv-tipo"><option>INSTALACION</option></select>'
-      +'<div id="cv-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
-      +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ok" id="cv-go">Crear cliente y OT</button><button class="btn btn-2" id="cv-cancel">Cancelar</button></div>');
-    document.getElementById('cv-cancel').addEventListener('click',cerrarModal);
-    document.getElementById('cv-go').addEventListener('click',function(){
-      var emp=document.getElementById('cv-emp').value;
-      var planId=document.getElementById('cv-plan').value;
-      var btn=document.getElementById('cv-go'); btn.disabled=true; btn.textContent='Creando…';
-      var cli={ nombre:s.nombre, apellido:s.apellido, tipo_doc:'DNI', doc_numero:s.doc_numero, telefono:s.telefono, telefono_alt:s.telefono_alt,
-        email:s.email, calle:s.calle, numero:s.numero, piso:s.piso, depto:s.depto, barrio:s.barrio, domicilio_full:s.domicilio_full,
-        lat:s.lat, lng:s.lng, empresa:emp||null, plan_id:planId?Number(planId):null, tv_online:s.tv_online, pack_futbol:s.pack_futbol,
-        estado:'prospecto', fecha_alta:new Date().toISOString().substring(0,10) };
-      sbPost('clientes',cli).then(function(r){
-        var c=r[0]; if(!c){ throw 0; }
-        return sbPost('ordenes_trabajo',{ cliente_id:c.id, solicitud_id:s.id, tipo:document.getElementById('cv-tipo').value, estado:'PENDIENTE', prioridad:'NORMAL', plan_id:planId?Number(planId):null, descripcion:'Instalación nueva (desde solicitud web)', created_by:USER.id })
-          .then(function(){ return sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'convertida', cliente_id:c.id, gestionado_por:USER.id, gestionado_at:new Date().toISOString() }); })
+  // Ficha editable de una solicitud (corroborar/modificar antes de convertir)
+  function fichaSolicitud(s){
+    function inp(id,val,ph){ return '<input id="fs-'+id+'" placeholder="'+esc(ph||'')+'" value="'+esc(val||'')+'">'; }
+    function selFrom(id,names,cur){ var a=names.slice(); if(cur&&a.indexOf(cur)===-1) a.unshift(cur); return '<select id="fs-'+id+'"><option value="">—</option>'+a.map(function(n){return '<option'+(n===cur?' selected':'')+'>'+esc(n)+'</option>';}).join('')+'</select>'; }
+    var planOpts='<option value="">— sin asignar —</option>'+REF.planes.map(function(p){return '<option value="'+p.id+'"'+(s.plan_id==p.id?' selected':'')+'>'+esc(p.nombre)+'</option>';}).join('');
+    var maps=(s.lat&&s.lng)?'<a href="https://www.google.com/maps?q='+esc(s.lat)+','+esc(s.lng)+'" target="_blank">📍 Ver ubicación en el mapa</a>':'<span class="muted">📍 Sin ubicación GPS</span>';
+    var aviso=s.ya_es_cliente?'<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px;margin-top:8px;font-size:13px">⚠️ El solicitante dice que YA es cliente'+(s.numero_cliente_existente?(' (N° '+esc(s.numero_cliente_existente)+')'):'')+'. Verificá antes de crear uno nuevo.</div>':'';
+    var h='<h2>Solicitud de '+esc(s.nombre||'')+' '+esc(s.apellido||'')+'</h2>'
+      +'<p class="muted">'+esc((s.created_at||'').substring(0,16).replace('T',' '))+' · origen: '+esc(s.origen||'—')+(s.plan_texto?(' · pidió: '+esc(s.plan_texto)):'')+'</p>'+aviso
+      +'<div class="row"><div><label class="l">Nombre</label>'+inp('nombre',s.nombre)+'</div><div><label class="l">Apellido</label>'+inp('apellido',s.apellido)+'</div></div>'
+      +'<div class="row"><div><label class="l">DNI</label>'+inp('doc_numero',s.doc_numero)+'</div><div><label class="l">Teléfono</label>'+inp('telefono',s.telefono)+'</div></div>'
+      +'<div class="row"><div><label class="l">Tel. alternativo</label>'+inp('telefono_alt',s.telefono_alt)+'</div><div><label class="l">Email</label>'+inp('email',s.email)+'</div></div>'
+      +'<div class="row"><div style="flex:3"><label class="l">Calle</label>'+inp('calle',s.calle)+'</div><div><label class="l">N°</label>'+inp('numero',s.numero)+'</div></div>'
+      +'<div class="row"><div><label class="l">Piso/Lote</label>'+inp('piso',s.piso)+'</div><div><label class="l">Depto/Casa</label>'+inp('depto',s.depto)+'</div></div>'
+      +'<div class="row"><div><label class="l">Barrio</label>'+selFrom('barrio',REF.barrios.map(function(b){return b.nombre;}),s.barrio)+'</div><div><label class="l">Empresa</label>'+selFrom('empresa',REF.empresas.map(function(e){return e.nombre;}),s.empresa)+'</div></div>'
+      +'<label class="l">Plan</label><select id="fs-plan">'+planOpts+'</select>'
+      +'<div style="display:flex;gap:16px;margin-top:10px"><label style="font-weight:600"><input type="checkbox" id="fs-tv"'+(s.tv_online?' checked':'')+'> TV Online</label><label style="font-weight:600"><input type="checkbox" id="fs-fut"'+(s.pack_futbol?' checked':'')+'> Pack Fútbol</label></div>'
+      +'<label class="l">Observaciones</label><textarea id="fs-obs">'+esc(s.observaciones||'')+'</textarea>'
+      +'<div style="margin-top:8px;font-size:13px">'+maps+'</div>'
+      +'<div id="fs-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-ok" id="fs-conv">✓ Convertir a cliente + OT</button><button class="btn btn-pri" id="fs-save">💾 Guardar cambios</button><button class="btn btn-x" id="fs-rej">✗ Rechazar</button><button class="btn btn-2" id="fs-close">Cerrar</button></div>';
+    modal(h);
+    function leer(){
+      function v(id){ var e=document.getElementById('fs-'+id); return e?(e.type==='checkbox'?e.checked:e.value.trim()):''; }
+      var o={ nombre:v('nombre'),apellido:v('apellido'),doc_numero:v('doc_numero')||null,telefono:v('telefono'),telefono_alt:v('telefono_alt')||null,
+        email:v('email')||null,calle:v('calle'),numero:v('numero'),piso:v('piso')||null,depto:v('depto')||null,
+        barrio:v('barrio')||null,empresa:v('empresa')||null,observaciones:v('obs')||null,tv_online:v('tv'),pack_futbol:v('fut') };
+      var pid=document.getElementById('fs-plan').value; o.plan_id=pid?Number(pid):null;
+      o.domicilio_full=[o.calle,o.numero,o.piso?('Piso/Lote '+o.piso):'',o.depto?('Casa/Depto '+o.depto):'',o.barrio].filter(Boolean).join(' ');
+      return o;
+    }
+    document.getElementById('fs-close').addEventListener('click',cerrarModal);
+    document.getElementById('fs-save').addEventListener('click',function(){
+      var btn=this; btn.disabled=true; var o=leer();
+      sbPatch('solicitudes_alta?id=eq.'+s.id,o).then(function(){ Object.assign(s,o); btn.disabled=false; toast('Cambios guardados ✓'); })
+        .catch(function(){ btn.disabled=false; document.getElementById('fs-err').textContent='No se pudo guardar.'; });
+    });
+    document.getElementById('fs-rej').addEventListener('click',function(){
+      if(!confirm('¿Rechazar esta solicitud?')) return;
+      var motivo=prompt('Motivo del rechazo (opcional):');
+      sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'rechazada', observaciones:(motivo||s.observaciones||null), gestionado_por:USER.id, gestionado_at:new Date().toISOString() })
+        .then(function(){ cerrarModal(); toast('Solicitud rechazada'); vSolicitudes(); });
+    });
+    document.getElementById('fs-conv').addEventListener('click',function(){
+      var err=document.getElementById('fs-err'); var o=leer();
+      if(!o.nombre||!o.telefono){ err.textContent='Nombre y teléfono son obligatorios.'; return; }
+      var btn=this; btn.disabled=true; btn.textContent='Creando…';
+      sbPatch('solicitudes_alta?id=eq.'+s.id,o).then(function(){
+        var cli={ nombre:o.nombre,apellido:o.apellido,tipo_doc:'DNI',doc_numero:o.doc_numero,telefono:o.telefono,telefono_alt:o.telefono_alt,
+          email:o.email,calle:o.calle,numero:o.numero,piso:o.piso,depto:o.depto,barrio:o.barrio,domicilio_full:o.domicilio_full,
+          lat:s.lat,lng:s.lng,empresa:o.empresa,plan_id:o.plan_id,tv_online:o.tv_online,pack_futbol:o.pack_futbol,
+          estado:'prospecto',fecha_alta:new Date().toISOString().substring(0,10) };
+        return sbPost('clientes',cli);
+      }).then(function(r){
+        var c=r[0]; if(!c) throw 0;
+        return sbPost('ordenes_trabajo',{ cliente_id:c.id,solicitud_id:s.id,tipo:'INSTALACION',estado:'PENDIENTE',prioridad:'NORMAL',plan_id:o.plan_id,descripcion:'Instalación nueva (desde solicitud web)',created_by:USER.id })
+          .then(function(){ return sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'convertida',cliente_id:c.id,gestionado_por:USER.id,gestionado_at:new Date().toISOString() }); })
           .then(function(){ return c; });
-      }).then(function(c){
-        cerrarModal(); toast('Cliente N° '+c.numero_cliente+' y OT creados ✓'); vSolicitudes();
-      }).catch(function(){ document.getElementById('cv-err').textContent='No se pudo completar. Revisá los datos.'; btn.disabled=false; btn.textContent='Crear cliente y OT'; });
+      }).then(function(c){ cerrarModal(); toast('Cliente N° '+c.numero_cliente+' y OT creados ✓'); vSolicitudes(); })
+      .catch(function(){ err.textContent='No se pudo completar. Revisá los datos.'; btn.disabled=false; btn.textContent='✓ Convertir a cliente + OT'; });
     });
   }
 
