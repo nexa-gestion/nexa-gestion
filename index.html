@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.1</title>
+<title>Nexa · Gestión — v0.7</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.1</div>
+    <div class="marca-sub">Gestión · v0.7</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -115,7 +115,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.1';
+  var VER='v0.7';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -537,6 +537,7 @@
       +'<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="cb-zonas" checked> Zonas</label>'
       +'<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="cb-naps" checked> NAPs</label>'
       +'<label style="display:flex;align-items:center;gap:5px">Clientes:<select id="cb-cli" style="width:auto"><option value="">Ninguno</option><option value="todos">Todos</option><option value="activo">Activos</option><option value="bloqueado">Bloqueados/Baja</option></select></label>'
+      +'<label style="display:flex;align-items:center;gap:5px">Tecnología:<select id="cb-tec" style="width:auto"><option value="">Todas</option><option value="FTTH">FTTH</option><option value="WIRELESS">Wireless</option></select></label>'
       +'<span id="cb-res" style="margin-left:8px;font-weight:700"></span>'
       +'</div><div id="map"></div><div id="cb-info" class="muted" style="margin-top:6px;font-size:12px"></div>';
     if(typeof L==='undefined'){ document.getElementById('map').innerHTML='<div class="center">No se pudo cargar el mapa (revisá tu conexión).</div>'; return; }
@@ -549,7 +550,8 @@
     document.getElementById('cb-q').addEventListener('keydown',function(e){ if(e.key==='Enter') cbCheck(); });
     document.getElementById('cb-zonas').addEventListener('change',function(e){ toggleLayer(_lZonas,e.target.checked); });
     document.getElementById('cb-naps').addEventListener('change',function(e){ toggleLayer(_lNaps,e.target.checked); });
-    document.getElementById('cb-cli').addEventListener('change',function(e){ drawClientes(e.target.value); });
+    document.getElementById('cb-cli').addEventListener('change',drawClientes);
+    document.getElementById('cb-tec').addEventListener('change',drawClientes);
     cargarGeo();
   }
   function toggleLayer(lyr,on){ if(!lyr||!_MAP) return; if(on) lyr.addTo(_MAP); else _MAP.removeLayer(lyr); }
@@ -561,7 +563,7 @@
       _GEOP.forEach(function(p){ if(Array.isArray(p.coords)&&p.coords.length>2){ try{ L.polygon(p.coords,{color:'#2563eb',weight:1.2,fillColor:'#2563eb',fillOpacity:.07}).bindTooltip(esc(p.nombre)).addTo(_lZonas); }catch(e){} } });
       _CLI=[]; _napOcc={}; _napCli={};
       (function pag(p){
-        sbGet('clientes?select=numero_cliente,nombre,estado,lat,lng,caja_nap,geo_origen&or=(caja_nap.not.is.null,lat.not.is.null)&order=id.asc&limit=1000&offset='+(p*1000)).then(function(d){
+        sbGet('clientes?select=numero_cliente,nombre,estado,tecnologia,lat,lng,caja_nap,geo_origen&or=(caja_nap.not.is.null,lat.not.is.null)&order=id.asc&limit=1000&offset='+(p*1000)).then(function(d){
           if(Array.isArray(d)){ _CLI=_CLI.concat(d); if(d.length===1000){ pag(p+1); return; } }
           _CLI.forEach(function(c){ if(c.caja_nap){ var k=_norm(c.caja_nap); var o=_napOcc[k]||(_napOcc[k]={total:0,activo:0,inact:0}); o.total++; (c.estado==='activo')?o.activo++:o.inact++; (_napCli[k]||(_napCli[k]=[])).push(c); } });
           drawNaps();
@@ -586,18 +588,21 @@
     });
     if(document.getElementById('cb-naps') && document.getElementById('cb-naps').checked) _lNaps.addTo(_MAP);
   }
-  function drawClientes(filtro){
+  function drawClientes(){
     if(_lCli){ try{_MAP.removeLayer(_lCli);}catch(e){} _lCli=null; }
-    if(!filtro) return;
+    var fe=document.getElementById('cb-cli').value, ft=document.getElementById('cb-tec').value;
+    if(!fe) return;
     _lCli=L.layerGroup().addTo(_MAP);
     var rn=L.canvas(), col={activo:'#16a34a',bloqueado:'#dc2626',baja:'#94a3b8',suspendido:'#d97706',moroso:'#d97706'};
     _CLI.forEach(function(c){
       if(c.lat==null||c.lng==null) return;
-      if(filtro==='activo' && c.estado!=='activo') return;
-      if(filtro==='bloqueado' && c.estado==='activo') return;
+      if(fe==='activo' && c.estado!=='activo') return;
+      if(fe==='bloqueado' && c.estado==='activo') return;
+      if(ft==='FTTH' && c.tecnologia!=='FTTH') return;
+      if(ft==='WIRELESS' && c.tecnologia!=='INALAMBRICO') return;
       var p=_jit(c);
       L.circleMarker(p,{renderer:rn,radius:3,color:(col[c.estado]||'#2563eb'),weight:0,fillOpacity:.85})
-        .bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||'')+' ('+c.estado+')'+(c.caja_nap?(' · NAP '+esc(c.caja_nap)):'')).addTo(_lCli);
+        .bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||'')+' ('+c.estado+(c.tecnologia?' · '+c.tecnologia:'')+')'+(c.caja_nap?(' · NAP '+esc(c.caja_nap)):'')).addTo(_lCli);
     });
   }
   function _jit(c){
