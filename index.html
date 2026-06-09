@@ -40,6 +40,7 @@
   .kpi .n{ font-size:30px; font-weight:800; } .kpi .t{ color:var(--gris); font-size:13px; margin-top:2px; }
   .kpi.b{ border-left:4px solid var(--pri); } .kpi.g{ border-left:4px solid var(--ok); }
   .kpi.r{ border-left:4px solid var(--rojo); } .kpi.w{ border-left:4px solid var(--warn); }
+  .kpi-link{ cursor:pointer; transition:.12s; } .kpi-link:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(37,99,235,.13); }
   /* Tabla */
   .toolbar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
   .toolbar input,.toolbar select{ width:auto; min-width:120px; padding:9px; }
@@ -94,6 +95,7 @@
       <a data-v="clientes">👥 Clientes</a>
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
+      <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
     </div>
     <div class="user" id="side-user"></div>
   </div>
@@ -142,6 +144,7 @@
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('side-user').innerHTML = esc(USER.nombre)+'<br><span style="color:#64748b">'+esc(USER.rol)+'</span> · '+VER;
+    if(USER.rol==='superadmin'){ var nu=document.getElementById('nav-usuarios'); if(nu) nu.style.display=''; }
     // precargar referencias
     Promise.all([
       sbGet('empresas?select=*&order=nombre'),
@@ -157,7 +160,20 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,usuarios:vUsuarios}[v]||vDashboard)(); }
+  function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
+  function navTo(v){ setNav(v); ir(v); }
+  // accesos directos desde las tarjetas KPI del dashboard
+  function goKpi(act){
+    var p=String(act).split('|'); var v=p[0];
+    if(v==='cl'){
+      clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0 };
+      if(p[1]==='pend') clState.pend=true;
+      else if(p[1]){ var kv=p[1].split('='); clState[kv[0]]=kv[1]; }
+      navTo('clientes');
+    } else if(v==='sol'){ navTo('solicitudes'); }
+    else if(v==='ot'){ otState.estado=p[1]||''; otState.page=0; navTo('ordenes'); }
+  }
   var view=document.getElementById('view');
   function loading(){ view.innerHTML='<div class="center"><div class="spin"></div></div>'; }
 
@@ -180,17 +196,18 @@
       view.innerHTML =
         '<h1>Dashboard</h1><p class="sub">Hola '+esc(USER.nombre)+'. Foto general de Nexa.</p>'
         +'<div class="kpis">'
-        +kpi(c[0],'Clientes totales','b')
-        +kpi(c[1],'Activos','g')+kpi(c[2],'Bloqueados','r')+kpi(c[3],'Baja','')
-        +kpi(c[7],'Solicitudes pendientes','w')
-        +kpi(c[8],'OT pendientes','w')+kpi(c[9],'OT asignadas','b')
-        +kpi(c[10],'⚠️ A cargar en ISPcube','r')
+        +kpi(c[0],'Clientes totales','b','cl')
+        +kpi(c[1],'Activos','g','cl|estado=activo')+kpi(c[2],'Bloqueados','r','cl|estado=bloqueado')+kpi(c[3],'Baja','','cl|estado=baja')
+        +kpi(c[7],'Solicitudes pendientes','w','sol')
+        +kpi(c[8],'OT pendientes','w','ot|PENDIENTE')+kpi(c[9],'OT asignadas','b','ot|ASIGNADA')
+        +kpi(c[10],'⚠️ A cargar en ISPcube','r','cl|pend')
         +'</div>'
         +'<h1 style="font-size:17px;margin-top:24px">Por empresa</h1>'
-        +'<div class="kpis">'+kpi(c[4],'FG Conexiones','')+kpi(c[5],'NOR-TEL','')+kpi(c[6],'Nexa','')+'</div>';
+        +'<div class="kpis">'+kpi(c[4],'FG Conexiones','','cl|empresa=FG Conexiones')+kpi(c[5],'NOR-TEL','','cl|empresa=NOR-TEL')+kpi(c[6],'Nexa','','cl|empresa=Nexa')+'</div>';
+      Array.prototype.forEach.call(view.querySelectorAll('.kpi-link'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
     });
   }
-  function kpi(n,t,cls){ return '<div class="kpi '+(cls||'')+'"><div class="n">'+n+'</div><div class="t">'+t+'</div></div>'; }
+  function kpi(n,t,cls,act){ return '<div class="kpi '+(cls||'')+(act?' kpi-link':'')+'"'+(act?' data-act="'+esc(act)+'"':'')+'><div class="n">'+n+'</div><div class="t">'+t+'</div></div>'; }
 
   // ── CLIENTES ──
   var clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0 };
@@ -302,7 +319,21 @@
     function inp(id,val,ph){ return '<input id="fs-'+id+'" placeholder="'+esc(ph||'')+'" value="'+esc(val||'')+'">'; }
     function selFrom(id,names,cur){ var a=names.slice(); if(cur&&a.indexOf(cur)===-1) a.unshift(cur); return '<select id="fs-'+id+'"><option value="">—</option>'+a.map(function(n){return '<option'+(n===cur?' selected':'')+'>'+esc(n)+'</option>';}).join('')+'</select>'; }
     var planOpts='<option value="">— sin asignar —</option>'+REF.planes.map(function(p){return '<option value="'+p.id+'"'+(s.plan_id==p.id?' selected':'')+'>'+esc(p.nombre)+'</option>';}).join('');
-    var maps=(s.lat&&s.lng)?'<a href="https://www.google.com/maps?q='+esc(s.lat)+','+esc(s.lng)+'" target="_blank">📍 Ver ubicación en el mapa</a>':'<span class="muted">📍 Sin ubicación GPS</span>';
+    function ubicHtml(){
+      var cur=(s.lat&&s.lng)
+        ? '<div style="font-size:13px;margin-bottom:6px">📍 <a href="https://www.google.com/maps?q='+esc(s.lat)+','+esc(s.lng)+'" target="_blank">Ver en el mapa</a> <span class="muted">('+esc((+s.lat).toFixed(5))+', '+esc((+s.lng).toFixed(5))+')</span></div>'
+        : '<div style="font-size:13px;color:var(--rojo);margin-bottom:6px">Sin ubicación GPS — pegá la que mande por WhatsApp 👇</div>';
+      return cur+'<div style="display:flex;gap:8px"><input id="fs-ubic-in" placeholder="Link de Maps/WhatsApp o lat, lng"><button class="btn btn-2" id="fs-ubic-save" type="button">Guardar ubic.</button></div>';
+    }
+    function parseLL(t){ var m=String(t||'').match(/-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/); if(!m) return null; var p=m[0].split(/\s*,\s*/); var la=parseFloat(p[0]), ln=parseFloat(p[1]); if(la<-90||la>90||ln<-180||ln>180) return null; return { lat:la, lng:ln }; }
+    function wireUbic(){
+      var b=document.getElementById('fs-ubic-save'); if(!b) return;
+      b.addEventListener('click',function(){
+        var ll=parseLL(document.getElementById('fs-ubic-in').value);
+        if(!ll){ toast('No pude leer la ubicación. Pegá un link de Maps o "lat, lng".'); return; }
+        sbPatch('solicitudes_alta?id=eq.'+s.id,{ lat:ll.lat, lng:ll.lng }).then(function(){ s.lat=ll.lat; s.lng=ll.lng; var c=document.getElementById('fs-ubic'); if(c){ c.innerHTML=ubicHtml(); wireUbic(); } toast('Ubicación guardada ✓'); });
+      });
+    }
     var aviso=s.ya_es_cliente?'<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px;margin-top:8px;font-size:13px">⚠️ El solicitante dice que YA es cliente'+(s.numero_cliente_existente?(' (N° '+esc(s.numero_cliente_existente)+')'):'')+'. Verificá antes de crear uno nuevo.</div>':'';
     var h='<h2>Solicitud de '+esc(s.nombre||'')+' '+esc(s.apellido||'')+'</h2>'
       +'<p class="muted">'+esc((s.created_at||'').substring(0,16).replace('T',' '))+' · origen: '+esc(s.origen||'—')+(s.plan_texto?(' · pidió: '+esc(s.plan_texto)):'')+'</p>'+aviso
@@ -315,10 +346,11 @@
       +'<label class="l">Plan</label><select id="fs-plan">'+planOpts+'</select>'
       +'<div style="display:flex;gap:16px;margin-top:10px"><label style="font-weight:600"><input type="checkbox" id="fs-tv"'+(s.tv_online?' checked':'')+'> TV Online</label><label style="font-weight:600"><input type="checkbox" id="fs-fut"'+(s.pack_futbol?' checked':'')+'> Pack Fútbol</label></div>'
       +'<label class="l">Observaciones</label><textarea id="fs-obs">'+esc(s.observaciones||'')+'</textarea>'
-      +'<div style="margin-top:8px;font-size:13px">'+maps+'</div>'
+      +'<label class="l">Ubicación GPS</label><div id="fs-ubic">'+ubicHtml()+'</div>'
       +'<div id="fs-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-ok" id="fs-conv">✓ Convertir a cliente + OT</button><button class="btn btn-pri" id="fs-save">💾 Guardar cambios</button><button class="btn btn-x" id="fs-rej">✗ Rechazar</button><button class="btn btn-2" id="fs-close">Cerrar</button></div>';
     modal(h);
+    wireUbic();
     function leer(){
       function v(id){ var e=document.getElementById('fs-'+id); return e?(e.type==='checkbox'?e.checked:e.value.trim()):''; }
       var o={ nombre:v('nombre'),apellido:v('apellido'),doc_numero:v('doc_numero')||null,telefono:v('telefono'),telefono_alt:v('telefono_alt')||null,
@@ -446,6 +478,45 @@
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
         sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ cerrarModal(); toast('OT actualizada ✓'); cargarOT(); });
       });
+    });
+  }
+
+  // ── USUARIOS ── (solo superadmin: ABM de accesos; los técnicos usan su usuario en la PWA)
+  function vUsuarios(){
+    if(!USER||USER.rol!=='superadmin'){ view.innerHTML='<h1>Usuarios</h1><div class="center">Solo disponible para superadmin.</div>'; return; }
+    loading();
+    sbGet('usuarios?select=*&order=id.asc').then(function(d){
+      var h='<h1>Usuarios</h1><p class="sub">Crear y administrar accesos. Roles: superadmin, gerencial, administrativo, técnico (PWA).</p>'
+        +'<div class="toolbar"><button class="btn btn-ok" id="us-nuevo">+ Nuevo usuario</button></div>'
+        +'<table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>PIN</th><th>Estado</th></tr></thead><tbody>';
+      d.forEach(function(u){
+        h+='<tr data-id="'+u.id+'"><td>'+esc(u.nombre)+'</td><td>'+esc(u.email)+'</td><td>'+esc(u.rol)+'</td><td>'+esc(u.pin)+'</td><td>'+(u.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">inactivo</span>')+'</td></tr>';
+      });
+      h+='</tbody></table>'; view.innerHTML=h;
+      document.getElementById('us-nuevo').addEventListener('click',function(){ formUsuario(null); });
+      Array.prototype.forEach.call(view.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ formUsuario(d.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+    });
+  }
+  function formUsuario(u){
+    u=u||{};
+    var roles=['administrativo','tecnico','gerencial','superadmin'];
+    modal('<h2>'+(u.id?'Editar':'Nuevo')+' usuario</h2>'
+      +'<label class="l">Nombre</label><input id="us-nombre" value="'+esc(u.nombre||'')+'" placeholder="Nombre y apellido">'
+      +'<label class="l">Usuario (para iniciar sesión)</label><input id="us-email" value="'+esc(u.email||'')+'" placeholder="ej: juan" autocapitalize="off">'
+      +'<label class="l">PIN</label><input id="us-pin" value="'+esc(u.pin||'')+'" placeholder="ej: 1234">'
+      +'<label class="l">Rol</label><select id="us-rol">'+roles.map(function(r){return '<option'+(u.rol===r?' selected':'')+'>'+r+'</option>';}).join('')+'</select>'
+      +'<label class="l" style="display:flex;align-items:center;gap:8px;text-transform:none"><input type="checkbox" id="us-activo"'+(u.activo!==false?' checked':'')+'> Usuario activo</label>'
+      +'<div id="us-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ok" id="us-save">Guardar</button><button class="btn btn-2" id="us-cancel">Cancelar</button></div>');
+    document.getElementById('us-cancel').addEventListener('click',cerrarModal);
+    document.getElementById('us-save').addEventListener('click',function(){
+      var body={ nombre:document.getElementById('us-nombre').value.trim(), email:document.getElementById('us-email').value.trim(),
+        pin:document.getElementById('us-pin').value.trim(), rol:document.getElementById('us-rol').value, activo:document.getElementById('us-activo').checked };
+      if(!body.nombre||!body.email||!body.pin){ document.getElementById('us-err').textContent='Completá nombre, usuario y PIN.'; return; }
+      var btn=this; btn.disabled=true;
+      var prom=u.id? sbPatch('usuarios?id=eq.'+u.id,body) : sbPost('usuarios',body);
+      prom.then(function(r){ if(!u.id && (!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Usuario guardado ✓'); vUsuarios(); })
+        .catch(function(){ document.getElementById('us-err').textContent='No se pudo guardar (¿usuario repetido?).'; btn.disabled=false; });
     });
   }
 
