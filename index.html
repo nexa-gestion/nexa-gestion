@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.8</title>
+<title>Nexa · Gestión — v0.10</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.8</div>
+    <div class="marca-sub">Gestión · v0.10</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -115,7 +115,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.8';
+  var VER='v0.10';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -140,7 +140,7 @@
     document.getElementById('lg-btn').disabled=true;
     sbGet('usuarios?email=eq.'+encodeURIComponent(u)+'&activo=eq.true&select=*&limit=1').then(function(d){
       document.getElementById('lg-btn').disabled=false;
-      if(Array.isArray(d)&&d.length&&String(d[0].pin)===p){ USER=d[0]; iniciar(); }
+      if(Array.isArray(d)&&d.length&&String(d[0].pin)===p){ USER=d[0]; try{ var _su=Object.assign({},USER); delete _su.pin; localStorage.setItem('nexa_sesion', JSON.stringify({u:_su,t:Date.now()})); }catch(e){} iniciar(); }
       else err.textContent='Usuario o PIN incorrecto.';
     }).catch(function(){ document.getElementById('lg-btn').disabled=false; err.textContent='Error de conexión.'; });
   }
@@ -148,7 +148,8 @@
   function iniciar(){
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
-    document.getElementById('side-user').innerHTML = esc(USER.nombre)+'<br><span style="color:#64748b">'+esc(USER.rol)+'</span> · '+VER;
+    document.getElementById('side-user').innerHTML = esc(USER.nombre)+'<br><span style="color:#64748b">'+esc(USER.rol)+'</span> · '+VER+' · <a href="#" id="logout" style="color:#94a3b8;text-decoration:underline">Salir</a>';
+    var _lo=document.getElementById('logout'); if(_lo) _lo.addEventListener('click',function(e){ e.preventDefault(); try{ localStorage.removeItem('nexa_sesion'); }catch(_){} location.reload(); });
     if(USER.rol==='superadmin'){ var nu=document.getElementById('nav-usuarios'); if(nu) nu.style.display=''; }
     // precargar referencias
     Promise.all([
@@ -560,7 +561,7 @@
     Promise.all([ sbGet('geo_poligonos?select=nombre,coords&activo=eq.true'), sbGet('geo_naps?select=codigo,lat,lng&activo=eq.true&limit=2000') ]).then(function(r){
       _GEOP=Array.isArray(r[0])?r[0]:[]; _GEON=Array.isArray(r[1])?r[1]:[];
       _lZonas=L.layerGroup().addTo(_MAP);
-      _GEOP.forEach(function(p){ if(Array.isArray(p.coords)&&p.coords.length>2){ try{ L.polygon(p.coords,{color:'#2563eb',weight:1.2,fillColor:'#2563eb',fillOpacity:.07}).bindTooltip(esc(p.nombre)).addTo(_lZonas); }catch(e){} } });
+      _GEOP.forEach(function(p){ if(Array.isArray(p.coords)&&p.coords.length>2){ try{ L.polygon(p.coords,{color:'#2563eb',weight:1.2,fillColor:'#2563eb',fillOpacity:.07,interactive:false}).addTo(_lZonas); }catch(e){} } });
       _CLI=[]; _napOcc={}; _napCli={};
       (function pag(p){
         sbGet('clientes?select=numero_cliente,nombre,estado,tecnologia,lat,lng,caja_nap,geo_origen&or=(caja_nap.not.is.null,lat.not.is.null)&order=id.asc&limit=1000&offset='+(p*1000)).then(function(d){
@@ -601,7 +602,7 @@
       if(ft==='FTTH' && c.tecnologia!=='FTTH') return;
       if(ft==='WIRELESS' && c.tecnologia!=='INALAMBRICO') return;
       var p=_jit(c), cc=(col[c.estado]||'#2563eb');
-      L.circle(p,{renderer:rn,radius:18,color:cc,weight:1,fillColor:cc,fillOpacity:.55})
+      L.circleMarker(p,{renderer:rn,radius:5,color:cc,weight:1,fillColor:cc,fillOpacity:.7})
         .bindPopup('<b>N° '+c.numero_cliente+'</b> '+esc(c.nombre||'')+'<br>Estado: <b>'+esc(c.estado)+'</b>'+(c.tecnologia?(' · '+esc(c.tecnologia)):'')+(c.caja_nap?('<br>NAP: '+esc(c.caja_nap)):'')+(c.geo_origen?('<br><span style="color:#64748b">ubicación: '+esc(c.geo_origen)+'</span>'):''))
         .bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||''))
         .addTo(_lCli);
@@ -640,6 +641,8 @@
 
   document.getElementById('lg-btn').addEventListener('click',login);
   document.getElementById('lg-pin').addEventListener('keydown',function(e){ if(e.key==='Enter')login(); });
+  // restaurar sesión: no desconectar al refrescar (vence a las 24 h)
+  try{ var _s=JSON.parse(localStorage.getItem('nexa_sesion')||'null'); if(_s && _s.u && (Date.now()-_s.t < 86400000)){ USER=_s.u; iniciar(); } }catch(e){}
 })();
 </script>
 </body>
