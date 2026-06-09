@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.7</title>
+<title>Nexa · Gestión — v0.8</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.7</div>
+    <div class="marca-sub">Gestión · v0.8</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -115,7 +115,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.7';
+  var VER='v0.8';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -600,9 +600,11 @@
       if(fe==='bloqueado' && c.estado==='activo') return;
       if(ft==='FTTH' && c.tecnologia!=='FTTH') return;
       if(ft==='WIRELESS' && c.tecnologia!=='INALAMBRICO') return;
-      var p=_jit(c);
-      L.circleMarker(p,{renderer:rn,radius:3,color:(col[c.estado]||'#2563eb'),weight:0,fillOpacity:.85})
-        .bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||'')+' ('+c.estado+(c.tecnologia?' · '+c.tecnologia:'')+')'+(c.caja_nap?(' · NAP '+esc(c.caja_nap)):'')).addTo(_lCli);
+      var p=_jit(c), cc=(col[c.estado]||'#2563eb');
+      L.circle(p,{renderer:rn,radius:18,color:cc,weight:1,fillColor:cc,fillOpacity:.55})
+        .bindPopup('<b>N° '+c.numero_cliente+'</b> '+esc(c.nombre||'')+'<br>Estado: <b>'+esc(c.estado)+'</b>'+(c.tecnologia?(' · '+esc(c.tecnologia)):'')+(c.caja_nap?('<br>NAP: '+esc(c.caja_nap)):'')+(c.geo_origen?('<br><span style="color:#64748b">ubicación: '+esc(c.geo_origen)+'</span>'):''))
+        .bindTooltip('N°'+c.numero_cliente+' '+esc(c.nombre||''))
+        .addTo(_lCli);
     });
   }
   function _jit(c){
