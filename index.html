@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.30</title>
+<title>Nexa · Gestión — v0.31</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.30</div>
+    <div class="marca-sub">Gestión · v0.31</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -131,7 +131,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.30';
+  var VER='v0.31';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -252,7 +252,7 @@
     view.innerHTML =
       '<h1>Clientes</h1><p class="sub">Base completa de Nexa.</p>'
       +'<div class="toolbar">'
-      +'<input id="cl-q" placeholder="Buscar nombre, N° cliente o DNI…" value="'+esc(clState.q)+'" style="min-width:240px">'
+      +'<input id="cl-q" placeholder="Buscar nombre, DNI, N° cliente o N° ISPcube…" value="'+esc(clState.q)+'" style="min-width:260px">'
       +'<select id="cl-estado"><option value="">Todos los estados</option>'+opt(['activo','bloqueado','baja','suspendido','moroso','prospecto'],clState.estado)+'</select>'
       +'<select id="cl-empresa"><option value="">Todas las empresas</option>'+opt(REF.empresas.map(function(e){return e.nombre;}),clState.empresa)+'</select>'
       +'<select id="cl-barrio"><option value="">Todos los barrios</option>'+opt(REF.barrios.map(function(b){return b.nombre;}),clState.barrio)+'</select>'
@@ -271,7 +271,7 @@
     clState.barrio=document.getElementById('cl-barrio').value;
   }
   function clQuery(){
-    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,codigo_ispcube,planes(nombre)','order=numero_cliente.desc'];
+    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,domicilio_full,codigo_ispcube,planes(nombre)','order=numero_cliente.desc'];
     if(clState.estado) p.push('estado=eq.'+clState.estado);
     if(clState.empresa) p.push('empresa=eq.'+encodeURIComponent(clState.empresa));
     if(clState.barrio) p.push('barrio=eq.'+encodeURIComponent(clState.barrio));
@@ -279,7 +279,11 @@
     if(clState.q){
       var q=clState.q.replace(/[(),]/g,' ').trim();
       var ors=['nombre.ilike.*'+q+'*','doc_numero.ilike.*'+q+'*'];
-      if(/^\d+$/.test(q)) ors.push('numero_cliente.eq.'+q);
+      if(/^\d+$/.test(q)){
+        ors.push('numero_cliente.eq.'+q);
+        ors.push('codigo_ispcube.eq.'+q);                 // por si lo escriben sin ceros
+        ors.push('codigo_ispcube.eq.'+('000000'+q).slice(-6)); // ISPcube guarda con ceros (ej 006356)
+      }
       p.push('or=('+ors.join(',')+')');
     }
     return p.join('&');
@@ -291,10 +295,10 @@
     fetch(SB_URL+'/rest/v1/clientes?'+base,{headers:Object.assign({},H,{'Range':(clState.page*clState.size)+'-'+((clState.page+1)*clState.size-1)})})
      .then(function(r){return r.json();}).then(function(d){
       if(!Array.isArray(d)||!d.length){ cont.innerHTML='<div class="center">Sin resultados.</div>'; return; }
-      var h='<table><thead><tr><th>N°</th><th>Nombre</th><th>DNI</th><th>Teléfono</th><th>Plan</th><th>Barrio</th><th>Empresa</th><th>Estado</th></tr></thead><tbody>';
+      var h='<table><thead><tr><th>N°</th><th>Nombre</th><th>DNI</th><th>Dirección</th><th>Teléfono</th><th>Plan</th><th>Barrio</th><th>Empresa</th><th>Estado</th></tr></thead><tbody>';
       d.forEach(function(c){
         var isp = c.codigo_ispcube ? '' : ' <span class="pill p-bloqueado" title="Falta cargar en ISPcube">⚠️ ISP</span>';
-        h+='<tr data-id="'+c.id+'"><td><b>'+esc(c.numero_cliente)+'</b></td><td>'+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</td><td>'+esc(c.doc_numero||'')+'</td><td>'+esc(c.telefono||'')+'</td><td>'+esc(c.planes?c.planes.nombre:'')+'</td><td>'+esc(c.barrio||'')+'</td><td><span class="empresa-tag">'+esc(c.empresa||'')+'</span></td><td>'+pill(c.estado)+isp+'</td></tr>';
+        h+='<tr data-id="'+c.id+'"><td><b>'+esc(c.numero_cliente)+'</b></td><td>'+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</td><td>'+esc(c.doc_numero||'')+'</td><td style="max-width:220px;font-size:12px">'+esc(c.domicilio_full||'')+'</td><td>'+esc(c.telefono||'')+'</td><td>'+esc(c.planes?c.planes.nombre:'')+'</td><td>'+esc(c.barrio||'')+'</td><td><span class="empresa-tag">'+esc(c.empresa||'')+'</span></td><td>'+pill(c.estado)+isp+'</td></tr>';
       });
       h+='</tbody></table>';
       var pages=Math.ceil(clState.total/clState.size)||1;
