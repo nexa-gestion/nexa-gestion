@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.2</title>
+<title>Nexa · Técnico — v0.4</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -51,6 +51,10 @@
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;transition:.2s;z-index:99;max-width:90%}
   .toast.show{opacity:.95}
   .muted{color:var(--gris);font-size:13px}
+  .menu-ov{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:50;display:flex;justify-content:flex-end;align-items:flex-start}
+  .menu-card{background:#fff;margin:54px 10px 0 0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);overflow:hidden;min-width:210px}
+  .menu-card a{display:block;padding:15px 18px;border-bottom:1px solid var(--bord);font-weight:600;color:var(--tinta);cursor:pointer}
+  .menu-card a:last-child{border-bottom:0}
 </style>
 </head>
 <body>
@@ -59,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.2';
+  var VER='v0.4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -107,15 +111,28 @@
 
   // ── LISTA DE OTs ──
   function topBar(titulo, sub){
-    return '<div class="top"><div><div class="t">'+esc(titulo)+'</div>'+(sub?'<div class="s">'+esc(sub)+'</div>':'')+'</div><a id="top-salir">Salir</a></div>';
+    return '<div class="top"><div><div class="t">'+esc(titulo)+'</div>'+(sub?'<div class="s">'+esc(sub)+'</div>':'')+'</div><a id="top-menu" style="font-size:22px">☰</a></div>'
+      +'<div id="menu-ov" class="menu-ov" style="display:none"><div class="menu-card">'
+      +'<a data-m="lista">📋 Mis órdenes</a><a data-m="buscar">🔎 Buscar cliente</a><a data-m="descon">🔌 Desconexiones</a><a data-m="salir">🚪 Salir</a>'
+      +'</div></div>';
   }
+  function wireTop(){
+    var m=document.getElementById('top-menu'); if(m) m.addEventListener('click',function(){ var o=document.getElementById('menu-ov'); o.style.display=(o.style.display==='none'?'flex':'none'); });
+    var ov=document.getElementById('menu-ov'); if(ov){
+      ov.addEventListener('click',function(e){ if(e.target===ov) ov.style.display='none'; });
+      Array.prototype.forEach.call(ov.querySelectorAll('[data-m]'),function(a){ a.addEventListener('click',function(){ ov.style.display='none'; var v=a.getAttribute('data-m'); ({lista:vLista,buscar:vBuscar,descon:vDescon,salir:salir}[v]||vLista)(); }); });
+    }
+  }
+  function waNum(t){ var d=String(t||'').replace(/\D/g,''); if(d.length===10) d='549'+d; else if(d.length===11&&d.charAt(0)==='0') d='549'+d.slice(1); return d; }
+  function haversine(la1,lo1,la2,lo2){ var R=6371,dLa=(la2-la1)*Math.PI/180,dLo=(lo2-lo1)*Math.PI/180,a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)*Math.sin(dLo/2); return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
+  function pillCli(e){ var m={activo:'p-curso',bloqueado:'p-pend',baja:'p-cerr',prospecto:'p-asig'}; return '<span class="pill '+(m[e]||'p-pend')+'">'+esc(e||'—')+'</span>'; }
   var ESTADOS_ACT=['PENDIENTE','ASIGNADA','EN_CURSO'];
   function vLista(){
     app.innerHTML=topBar('Mis órdenes', CUAD.nombre)+'<div class="wrap">'
       +'<div class="tabs" id="ls-tabs">'
       +[['activas','Por hacer'],['curso','En curso'],['cerradas','Cerradas']].map(function(t){return '<button data-f="'+t[0]+'" class="'+(listState.filtro===t[0]?'on':'')+'">'+t[1]+'</button>';}).join('')
       +'</div><div id="ls-cont"><div class="center"><div class="spin"></div></div></div></div>';
-    document.getElementById('top-salir').addEventListener('click',salir);
+    wireTop();
     Array.prototype.forEach.call(document.querySelectorAll('#ls-tabs [data-f]'),function(b){ b.addEventListener('click',function(){ listState.filtro=b.getAttribute('data-f'); vLista(); }); });
     cargarOTs();
   }
@@ -165,7 +182,7 @@
       +(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA' ? '<div class="card" style="text-align:center;color:var(--cyan)">✅ Tarea cerrada por el técnico</div>' : '<button class="btn btn-ok" id="dt-cerrar">✅ Cerrar tarea</button>')
       +'<button class="btn btn-2" id="dt-volver" style="margin-top:10px">← Volver</button>'
       +'</div>';
-    document.getElementById('top-salir').addEventListener('click',salir);
+    wireTop();
     document.getElementById('dt-volver').addEventListener('click',vLista);
     var ini=document.getElementById('dt-iniciar'); if(ini) ini.addEventListener('click',function(){ iniciarTarea(o); });
     var cer=document.getElementById('dt-cerrar'); if(cer) cer.addEventListener('click',function(){ abrirCierre(o); });
@@ -246,7 +263,7 @@
   }
   function each(sel,fn){ Array.prototype.forEach.call(document.querySelectorAll(sel),fn); }
   function wireCierre(){
-    document.getElementById('top-salir').addEventListener('click',salir);
+    wireTop();
     document.getElementById('cie-volver').addEventListener('click',function(){ vDetalle(CIE.o); });
     var asi=document.getElementById('ac-si'), ano=document.getElementById('ac-no');
     if(asi) asi.addEventListener('click',function(){ CIE.accion='REALIZADA'; renderCierre(); });
@@ -303,6 +320,136 @@
         CIE.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'NO_REALIZADA'})); });
       }
       Promise.all(jobs).then(function(){ toast('Cierre guardado ✓'); CIE=null; listState.filtro='cerradas'; vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent='✔️ Confirmar cierre'; });
+    });
+  }
+
+  // ════════ BUSCADOR DE CLIENTE ════════
+  var buscState={ q:'' };
+  function cliCard(c){
+    var nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    return '<div class="ot cli-card" data-id="'+c.id+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span></div>'+pillCli(c.estado)+'</div>'
+      +'<div class="cli">'+esc(nom)+'</div>'+(c.domicilio_full?'<div class="dir">📍 '+esc(c.domicilio_full)+'</div>':'')+(c.barrio?'<div class="dir">'+esc(c.barrio)+'</div>':'')+'</div>';
+  }
+  function vBuscar(){
+    app.innerHTML=topBar('Buscar cliente','')+'<div class="wrap">'
+      +'<div class="card"><input id="bs-q" placeholder="Nombre, N° cliente o DNI" value="'+esc(buscState.q)+'"><button class="btn btn-pri" id="bs-go" style="margin-top:8px">Buscar</button></div>'
+      +'<div id="bs-res"></div></div>';
+    wireTop();
+    document.getElementById('bs-go').addEventListener('click',doBuscar);
+    document.getElementById('bs-q').addEventListener('keydown',function(e){ if(e.key==='Enter')doBuscar(); });
+    if(buscState.q) doBuscar();
+  }
+  function doBuscar(){
+    var q=document.getElementById('bs-q').value.trim(); buscState.q=q; var res=document.getElementById('bs-res');
+    if(q.length<2){ res.innerHTML='<div class="center">Escribí al menos 2 letras o el N°.</div>'; return; }
+    res.innerHTML='<div class="center"><div class="spin"></div></div>';
+    var qq=q.replace(/[(),]/g,' ');
+    var ors=['nombre.ilike.*'+qq+'*','apellido.ilike.*'+qq+'*','doc_numero.ilike.*'+qq+'*'];
+    if(/^\d+$/.test(q)){ ors.push('numero_cliente.eq.'+q); ors.push('codigo_ispcube.eq.'+q); ors.push('codigo_ispcube.eq.'+('000000'+q).slice(-6)); }
+    sbGet('clientes?or=('+ors.join(',')+')&select=id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,estado,caja_nap,puerto,precinto,lat,lng,codigo_ispcube&limit=30').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(!d.length){ res.innerHTML='<div class="center">Sin resultados.</div>'; return; }
+      res.innerHTML='<div class="muted" style="margin:6px 0">'+d.length+' resultado(s)</div>'+d.map(cliCard).join('');
+      Array.prototype.forEach.call(res.querySelectorAll('.cli-card'),function(el){ el.addEventListener('click',function(){ fichaCli(d.filter(function(x){return x.id==el.getAttribute('data-id');})[0], vBuscar); }); });
+    });
+  }
+  function fichaCli(c,volver){
+    var nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    app.innerHTML=topBar('Cliente N° '+c.numero_cliente,'')+'<div class="wrap">'
+      +'<div class="card"><div style="margin-bottom:8px">'+pillCli(c.estado)+'</div>'
+      +fila('Nombre',nom)+(c.codigo_ispcube?fila('Código ISP',c.codigo_ispcube):'')+(c.domicilio_full?fila('Domicilio',c.domicilio_full):'')+(c.barrio?fila('Barrio',c.barrio):'')+(c.telefono?fila('Teléfono',c.telefono):'')+'</div>'
+      +'<div class="card"><div class="label">📡 Conexión</div>'+fila('Caja (NAP)',c.caja_nap)+fila('Puerto',c.puerto)+fila('Precinto',c.precinto)+'</div>'
+      +((c.lat!=null||c.domicilio_full)?'<a class="btn btn-2" target="_blank" href="'+mapsUrl(c)+'">🚗 Cómo llegar</a>':'')
+      +(c.telefono?'<a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(c.telefono)+'" style="margin-top:8px">💬 WhatsApp</a>':'')
+      +(c.estado==='bloqueado'?'<button class="btn btn-ok" id="cl-cortar" style="margin-top:10px;background:var(--rojo)">✂️ Cortar / Desconectar</button>':'')
+      +'<button class="btn btn-2" id="cl-volver" style="margin-top:10px">← Volver</button></div>';
+    wireTop();
+    document.getElementById('cl-volver').addEventListener('click',volver||vBuscar);
+    var ct=document.getElementById('cl-cortar'); if(ct) ct.addEventListener('click',function(){ vCortar(c); });
+  }
+
+  // ════════ DESCONEXIONES (bloqueados por cercanía) ════════
+  var desconState={ q:'', list:null, gps:null };
+  function vDescon(){
+    app.innerHTML=topBar('Desconexiones','clientes bloqueados')+'<div class="wrap">'
+      +'<div class="card"><div class="muted" style="font-size:13px">Ordenados por cercanía a tu ubicación. Buscá el equipo y cortá.</div>'
+      +'<input id="dx-q" placeholder="Filtrar por nombre o barrio" value="'+esc(desconState.q)+'" style="margin-top:8px"></div>'
+      +'<div id="dx-res"><div class="center"><div class="spin"></div></div></div></div>';
+    wireTop();
+    document.getElementById('dx-q').addEventListener('input',function(){ desconState.q=this.value; renderDescon(); });
+    if(desconState.list) renderDescon(); else cargarDescon();
+  }
+  function cargarDescon(){
+    getGPS().then(function(g){ desconState.gps=g;
+      sbGet('clientes?estado=eq.bloqueado&select=id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube&limit=1000').then(function(d){
+        d=Array.isArray(d)?d:[];
+        if(g) d.forEach(function(c){ c._dist=(c.lat!=null&&c.lng!=null)?haversine(g.lat,g.lng,c.lat,c.lng):1e9; });
+        else d.forEach(function(c){ c._dist=null; });
+        if(g) d.sort(function(a,b){ return a._dist-b._dist; });
+        desconState.list=d; renderDescon();
+      }).catch(function(){ var r=document.getElementById('dx-res'); if(r)r.innerHTML='<div class="center">Error al cargar.</div>'; });
+    });
+  }
+  function desconCard(c){
+    var nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    var dist=(c._dist!=null&&c._dist<1e8)?('<span class="badge-tt">'+(c._dist<1?(Math.round(c._dist*1000)+' m'):(c._dist.toFixed(1)+' km'))+'</span>'):'';
+    return '<div class="ot cli-card" data-id="'+c.id+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+'</div></div>'
+      +'<div class="cli">'+esc(nom)+'</div>'+(c.domicilio_full?'<div class="dir">📍 '+esc(c.domicilio_full)+'</div>':'')+(c.barrio?'<div class="dir">'+esc(c.barrio)+'</div>':'')
+      +'<div class="dir" style="margin-top:4px">📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
+      +'<div class="acc">'+((c.lat!=null||c.domicilio_full)?'<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(c)+'">🚗 Ir</a>':'')
+      +(c.telefono?'<a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(c.telefono)+'">💬</a>':'')+'</div></div>';
+  }
+  function renderDescon(){
+    var res=document.getElementById('dx-res'); if(!res||!desconState.list) return;
+    var q=desconState.q.toLowerCase();
+    var list=desconState.list.filter(function(c){ if(!q)return true; return (((c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.numero_cliente||'')).toLowerCase()).indexOf(q)>=0; });
+    res.innerHTML='<div class="muted" style="margin:6px 0">'+list.length+' bloqueados'+(desconState.gps?' · por cercanía':' · (sin GPS)')+'</div>'+list.slice(0,150).map(desconCard).join('');
+    Array.prototype.forEach.call(res.querySelectorAll('.cli-card'),function(el){ el.addEventListener('click',function(ev){ if(ev.target.closest('a'))return; fichaCli(desconState.list.filter(function(x){return x.id==el.getAttribute('data-id');})[0], vDescon); }); });
+  }
+
+  // ════════ CORTE / DESCONEXIÓN ════════
+  var CORTE=null;
+  function vCortar(c){ CORTE={ c:c, fotos:[] }; renderCortar(); }
+  function renderCorteFotos(){ if(!CORTE.fotos.length) return '<span class="muted">Sin fotos.</span>'; return '<div style="display:flex;flex-wrap:wrap;gap:8px">'+CORTE.fotos.map(function(f,i){return '<div style="position:relative"><img src="'+f.preview+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px"><button class="btn cofoto-del" data-i="'+i+'" style="position:absolute;top:-7px;right:-7px;width:22px;height:22px;padding:0;background:var(--rojo);color:#fff;border-radius:50%;line-height:1">×</button><div style="font-size:10px;text-align:center;color:'+(f.url?'var(--verde)':'var(--ambar)')+'">'+(f.url?'✓':'…')+'</div></div>';}).join('')+'</div>'; }
+  function renderCortar(){
+    var c=CORTE.c, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    app.innerHTML=topBar('Cortar N° '+c.numero_cliente, nom)+'<div class="wrap">'
+      +'<div class="card"><div class="muted" style="font-size:13px">Registrás el corte y el cliente queda <b>desconectado</b> (sale de bloqueados; avisar en ISPcube para borrar la conexión).</div></div>'
+      +'<div class="card"><div class="label">📡 Conexión</div>'+fila('Caja (NAP)',c.caja_nap)+fila('Puerto',c.puerto)+fila('Precinto',c.precinto)+'</div>'
+      +'<div class="card"><div class="label">Equipo retirado (serial / MAC)</div><input id="co-serial" placeholder="Serial o MAC del equipo"></div>'
+      +'<div class="card"><div class="label">Foto (opcional)</div><div id="co-fotos">'+renderCorteFotos()+'</div><input type="file" accept="image/*" multiple id="co-foto-in" style="margin-top:8px;border:0;padding:6px 0"></div>'
+      +'<div class="card"><div class="label">Observación</div><textarea id="co-obs" rows="2" style="width:100%"></textarea></div>'
+      +'<div class="err" id="co-err"></div>'
+      +'<button class="btn btn-ok" id="co-confirmar" style="background:var(--rojo)">✂️ Confirmar corte</button>'
+      +'<button class="btn btn-2" id="co-volver" style="margin-top:10px">← Cancelar</button></div>';
+    wireTop();
+    document.getElementById('co-volver').addEventListener('click',function(){ fichaCli(CORTE.c, vDescon); });
+    var fin=document.getElementById('co-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirCorteFotos(e.target.files); });
+    Array.prototype.forEach.call(document.querySelectorAll('.cofoto-del'),function(b){ b.onclick=function(){ CORTE.fotos.splice(+b.getAttribute('data-i'),1); renderCortar(); }; });
+    document.getElementById('co-confirmar').addEventListener('click',confirmarCorte);
+  }
+  function subirCorteFotos(files){
+    Array.prototype.forEach.call(files,function(file){
+      comprimir(file).then(function(blob){
+        var f={ preview:URL.createObjectURL(blob), url:null }; CORTE.fotos.push(f); renderCortar();
+        var nombre='descon/'+CORTE.c.id+'/'+Date.now()+'_'+Math.floor(Math.random()*1000)+'.jpg';
+        fetch(SB_URL+'/storage/v1/object/ot-fotos/'+nombre,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'image/jpeg','x-upsert':'true'},body:blob})
+          .then(function(r){ if(!r.ok)throw 0; f.url=SB_URL+'/storage/v1/object/public/ot-fotos/'+nombre; renderCortar(); })
+          .catch(function(){ toast('No se pudo subir la foto (¿bucket ot-fotos?)'); });
+      });
+    });
+  }
+  function confirmarCorte(){
+    var c=CORTE.c, err=document.getElementById('co-err'); err.textContent='';
+    if(CORTE.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá que terminen de subir las fotos.'; return; }
+    var btn=document.getElementById('co-confirmar'); btn.disabled=true; btn.textContent='Cortando…';
+    var serial=document.getElementById('co-serial').value.trim(), obs=document.getElementById('co-obs').value.trim();
+    getGPS().then(function(g){
+      var rec={ cliente_id:c.id, cuadrilla_id:CUAD.id, equipo_serial:serial||null, caja_nap:c.caja_nap||null, puerto:c.puerto||null, precinto:c.precinto||null, observacion:obs||null, foto_url:(CORTE.fotos[0]?CORTE.fotos[0].url:null) };
+      if(g){ rec.lat=g.lat; rec.lng=g.lng; }
+      var jobs=[ sbPost('desconexiones',rec), sbPatch('clientes?id=eq.'+c.id,{estado:'desconectado'}) ];
+      if(serial) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial),{estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}));
+      Promise.all(jobs).then(function(){ toast('Corte registrado ✓ — cliente desconectado'); if(desconState.list) desconState.list=desconState.list.filter(function(x){return x.id!==c.id;}); CORTE=null; vDescon(); }).catch(function(){ err.textContent='Error al registrar el corte.'; btn.disabled=false; btn.textContent='✂️ Confirmar corte'; });
     });
   }
 
