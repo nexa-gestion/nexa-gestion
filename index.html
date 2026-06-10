@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.34</title>
+<title>Nexa · Gestión — v0.35</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.34</div>
+    <div class="marca-sub">Gestión · v0.35</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -132,7 +132,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.34';
+  var VER='v0.35';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -592,8 +592,9 @@
     });
   }
   function validarOT(o,mats){
-    if(!confirm('¿Validar y finalizar la OT N° '+o.numero+'? Se descontará el stock de los materiales usados (sin serial).')) return;
-    var vb=document.getElementById('ot-validar'); if(vb){ vb.disabled=true; vb.textContent='Validando…'; }
+    var vb=document.getElementById('ot-validar');
+    if(vb && vb.getAttribute('data-ok')!=='1'){ vb.setAttribute('data-ok','1'); vb.textContent='¿Seguro? Tocá otra vez para validar y descontar stock'; return; }
+    if(vb){ vb.disabled=true; vb.textContent='Validando…'; }
     var jobs=[ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id }) ];
     var noSer=(mats||[]).filter(function(m){ return !m.serial && m.material_id; });
     if(o.cuadrilla_id) noSer.forEach(function(m){
