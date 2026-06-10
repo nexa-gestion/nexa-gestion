@@ -76,7 +76,8 @@
   var CONFIGURADO = SB_URL.indexOf('TU-PROYECTO') === -1;
 
   var app = document.getElementById('app');
-  var PLANES = [], BARRIOS = [];
+  var PLANES = [], BARRIOS = [], PROMOS = [], CONFIG = {};
+  function fmtPesos(n){ if(n==null||n==='') return ''; var x=Number(n); if(isNaN(x)) return ''; return '$'+x.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
   var f = { tv:false, futbol:false, yaCliente:false };
   var gps = { lat:null, lng:null };
 
@@ -89,9 +90,11 @@
   // ── cargar referencia (planes + barrios) ──────────────────────────────
   function cargarRef(cb){
     if(!CONFIGURADO){ cb(); return; }
-    var p1 = fetch(SB_URL+'/rest/v1/planes?activo=eq.true&select=id,nombre,tecnologia,bajada_mbps,precio&order=bajada_mbps.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PLANES=Array.isArray(d)?d:[]; }).catch(function(){});
+    var p1 = fetch(SB_URL+'/rest/v1/planes?activo=eq.true&select=id,nombre,tecnologia,bajada_mbps,precio,mostrar_form&order=bajada_mbps.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PLANES=Array.isArray(d)?d:[]; }).catch(function(){});
     var p2 = fetch(SB_URL+'/rest/v1/barrios?activo=eq.true&select=nombre,tipo,empresa_sugerida&order=tipo.asc,nombre.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ BARRIOS=Array.isArray(d)?d:[]; }).catch(function(){});
-    Promise.all([p1,p2]).then(cb);
+    var p3 = fetch(SB_URL+'/rest/v1/promos?activo=eq.true&select=nombre,meses,descuento_pct,tecnologia,orden&order=orden.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PROMOS=Array.isArray(d)?d:[]; }).catch(function(){});
+    var p4 = fetch(SB_URL+'/rest/v1/config_comercial?id=eq.1&select=*', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ CONFIG=(Array.isArray(d)&&d[0])||{}; }).catch(function(){});
+    Promise.all([p1,p2,p3,p4]).then(cb);
   }
 
   function optsBarrios(){
@@ -105,12 +108,33 @@
   }
   function optsPlanes(){
     var h = '<option value="">— Elegí un plan —</option>';
-    PLANES.forEach(function(p){
-      var et = p.nombre + (p.precio?(' · $'+p.precio):'');
+    PLANES.filter(function(p){return p.mostrar_form!==false;}).forEach(function(p){
+      var et = p.nombre + (p.precio?(' · '+fmtPesos(p.precio)+'/mes'):'');
       h += '<option value="'+esc(p.id)+'">'+esc(et)+'</option>';
     });
     h += '<option value="__otro">No estoy seguro</option>';
     return h;
+  }
+  function planById(id){ return PLANES.filter(function(p){return String(p.id)===String(id);})[0]; }
+  function addonItem(tec){ return PLANES.filter(function(p){return p.tecnologia===tec;})[0]; }
+  function promoDe(plan){ if(!plan) return null; var ps=PROMOS.filter(function(pr){return !pr.tecnologia||pr.tecnologia===plan.tecnologia;}).sort(function(a,b){return (a.orden||0)-(b.orden||0);}); return ps[0]||null; }
+  function pintarPlanDetalle(){
+    var cont=document.getElementById('plan-detalle'); var tp=document.getElementById('terms-precio');
+    var pl=planById(f.plan_id), html='', total=0, totalPromo=0, hayPromo=false;
+    if(pl && pl.precio){
+      total+=Number(pl.precio); totalPromo+=Number(pl.precio);
+      html+='<div style="display:flex;justify-content:space-between;padding:3px 0"><b>'+esc(pl.nombre)+'</b><span><b>'+fmtPesos(pl.precio)+'</b>/mes</span></div>';
+      var pr=promoDe(pl);
+      if(pr){ hayPromo=true; var pp=Math.round(Number(pl.precio)*(1-Number(pr.descuento_pct)/100)); totalPromo=pp;
+        html+='<div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:14px">🎁 '+esc(pr.nombre)+(pr.meses?(' ('+pr.meses+' meses)'):'')+': <b>'+fmtPesos(pp)+'/mes</b> · luego '+fmtPesos(pl.precio)+'/mes</div>'; }
+    }
+    var tvI=addonItem('TV'); if(f.tv && tvI && tvI.precio){ total+=Number(tvI.precio); totalPromo+=Number(tvI.precio); html+='<div style="display:flex;justify-content:space-between;padding:3px 0">+ '+esc(tvI.nombre)+'<span>'+fmtPesos(tvI.precio)+'/mes</span></div>'; }
+    var pkI=addonItem('PACK'); if(f.futbol && pkI && pkI.precio){ total+=Number(pkI.precio); totalPromo+=Number(pkI.precio); html+='<div style="display:flex;justify-content:space-between;padding:3px 0">+ '+esc(pkI.nombre)+'<span>'+fmtPesos(pkI.precio)+'/mes</span></div>'; }
+    var instTxt;
+    if(CONFIG && CONFIG.instalacion_cobrar){ instTxt=fmtPesos(CONFIG.instalacion_precio); html+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #e2e8f0;margin-top:4px">Instalación (una vez)<span>'+instTxt+'</span></div>'; }
+    else { instTxt='sin cargo'; html+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #e2e8f0;margin-top:4px;color:#15803d">Instalación<span>sin cargo</span></div>'; }
+    if(cont) cont.innerHTML = html ? ('<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-top:10px">'+html+'<div style="font-size:12px;color:#64748b;margin-top:8px">Precios sujetos a modificación. El detalle final se confirma al coordinar la instalación.</div></div>') : '';
+    if(tp){ if(pl&&pl.precio){ tp.style.display='block'; tp.innerHTML='Tu pedido: <b>'+esc(pl.nombre)+'</b> · '+(hayPromo?(fmtPesos(totalPromo)+'/mes los primeros meses, luego '):'')+fmtPesos(total)+'/mes · instalación '+instTxt+'.'; } else { tp.style.display='none'; tp.innerHTML=''; } }
   }
 
   // ── formulario ────────────────────────────────────────────────────────
@@ -156,9 +180,13 @@
 
     // Plan + add-ons
     h += '<div class="card">';
+    var tvI=addonItem('TV'), pkI=addonItem('PACK');
+    var tvP=(tvI&&tvI.precio)?(' — '+fmtPesos(tvI.precio)+'/mes'):'';
+    var pkP=(pkI&&pkI.precio)?(' — '+fmtPesos(pkI.precio)+'/mes'):'';
     h += '<div class="label">Plan de internet <span class="req">*</span></div>'+planField;
-    h += '<label class="chk'+(f.tv?' on':'')+'" id="chk-tv"><input type="checkbox" id="tv"'+(f.tv?' checked':'')+'><span><span class="t">Agregar TV Online</span><br><span class="s">Canales en vivo en tu tele/celular</span></span></label>';
-    h += '<label class="chk'+(f.futbol?' on':'')+'" id="chk-fut"><input type="checkbox" id="futbol"'+(f.futbol?' checked':'')+'><span><span class="t">Agregar Pack Fútbol</span><br><span class="s">Adicional sobre TV Online</span></span></label>';
+    h += '<div id="plan-detalle"></div>';
+    h += '<label class="chk'+(f.tv?' on':'')+'" id="chk-tv"><input type="checkbox" id="tv"'+(f.tv?' checked':'')+'><span><span class="t">Agregar TV Online'+tvP+'</span><br><span class="s">Canales en vivo en tu tele/celular</span></span></label>';
+    h += '<label class="chk'+(f.futbol?' on':'')+'" id="chk-fut"><input type="checkbox" id="futbol"'+(f.futbol?' checked':'')+'><span><span class="t">Agregar Pack Fútbol'+pkP+'</span><br><span class="s">Adicional sobre TV Online</span></span></label>';
     h += '</div>';
 
     // ¿Ya sos cliente?
@@ -169,6 +197,7 @@
 
     // Términos + enviar
     h += '<div class="card">';
+    h += '<div id="terms-precio" style="font-size:14px;color:#1e3a5f;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;margin-bottom:10px;display:none"></div>';
     h += '<label class="chk'+(f.terminos?' on':'')+'" id="chk-ter"><input type="checkbox" id="terminos"'+(f.terminos?' checked':'')+'><span><span class="t">Acepto los términos y condiciones</span><br><span class="s">Autorizo el contacto para coordinar la instalación</span></span></label>';
     h += '<div class="err" id="err"></div>';
     h += '<button class="btn btn-ok" id="enviar">Enviar solicitud ✓</button>';
@@ -177,14 +206,16 @@
     app.innerHTML = h;
     wire();
     pintarEmpresa();
+    pintarPlanDetalle();
   }
 
   function wire(){
     document.getElementById('gps').addEventListener('click', pedirUbicacion);
     document.getElementById('enviar').addEventListener('click', enviar);
     var b=document.getElementById('barrio'); if(b) b.addEventListener('change', function(){ leer(); pintarEmpresa(); });
+    var pp=document.getElementById('plan'); if(pp) pp.addEventListener('change', function(){ leer(); pintarPlanDetalle(); });
     [['tv','tv','chk-tv'],['futbol','futbol','chk-fut'],['yaCliente','yaCliente','chk-cli'],['terminos','terminos','chk-ter']].forEach(function(t){
-      var el=document.getElementById(t[0]); if(el) el.addEventListener('change', function(){ leer(); if(t[0]==='yaCliente') render(); else document.getElementById(t[2]).classList.toggle('on', el.checked); });
+      var el=document.getElementById(t[0]); if(el) el.addEventListener('change', function(){ leer(); if(t[0]==='yaCliente') render(); else { document.getElementById(t[2]).classList.toggle('on', el.checked); if(t[0]==='tv'||t[0]==='futbol') pintarPlanDetalle(); } });
     });
   }
 

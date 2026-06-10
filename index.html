@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.32</title>
+<title>Nexa · Gestión — v0.33</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.32</div>
+    <div class="marca-sub">Gestión · v0.33</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -115,6 +115,7 @@
       <a data-v="cuadrillas-adm">🔧 Cuadrillas</a>
       <a data-v="manoobra">🧰 Tipos de trabajo</a>
       <a data-v="cuentastv">📺 Cuentas TV</a>
+      <a data-v="precios">💲 Precios</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
     </div>
@@ -131,7 +132,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.32';
+  var VER='v0.33';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -146,6 +147,7 @@
   // Fecha en formato argentino DD-MM-AAAA (y con hora). Recibe ISO o YYYY-MM-DD.
   function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10), p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
   function fmtFechaHora(v){ if(!v) return '—'; var s=String(v), hm=s.substring(11,16); return fmtFecha(s)+(hm?(' '+hm):''); }
+  function fmtPesos(n){ if(n==null||n==='') return '—'; var x=Number(n); if(isNaN(x)) return '—'; return '$'+x.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function pill(estado){ return '<span class="pill p-'+esc(estado)+'">'+esc(estado)+'</span>'; }
 
   var USER=null, REF={ empresas:[], barrios:[], planes:[], cuadrillas:[], motivos:[], tiposTrab:[] };
@@ -187,7 +189,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   // accesos directos desde las tarjetas KPI del dashboard
@@ -1430,6 +1432,131 @@
     });
     var bj=document.getElementById('tv-baja'); if(bj) bj.addEventListener('click',function(){ sbPatch('cuentas_tv?id=eq.'+t.id,{estado:'BAJA_PENDIENTE',fecha_baja:new Date().toISOString().substring(0,10)}).then(function(){ cerrarModal(); toast('Cuenta en baja · cambiá la clave en Gigared'); vCuentasTV(); }); });
     var li=document.getElementById('tv-lista'); if(li) li.addEventListener('click',function(){ sbPatch('cuentas_tv?id=eq.'+t.id,{estado:'DISPONIBLE',cliente_id:null,fecha_baja:null}).then(function(){ cerrarModal(); toast('Cuenta liberada ✓ → Disponible'); vCuentasTV(); }); });
+  }
+
+  // ── PRECIOS / PLANES ── (planes vigentes, aumento %, promos, instalación)
+  var precState={ tab:'planes' };
+  var TECS_PLAN=['FTTH','INALAMBRICO','TV','PACK'];
+  function tecLbl(t){ return {FTTH:'FTTH',INALAMBRICO:'Wireless',TV:'TV',PACK:'Pack'}[t]||esc(t||'—'); }
+  function vPrecios(){
+    view.innerHTML='<h1>Precios y planes</h1><p class="sub">Planes vigentes, aumentos, promos e instalación. Lo que cargás acá se ve en la solicitud pública.</p>'
+      +'<div class="toolbar" id="prec-tabs">'
+      +['planes|📋 Planes','aumento|📈 Aumento %','promos|🎁 Promos','instal|🔧 Instalación']
+        .map(function(t){ var p=t.split('|'); return '<button class="btn '+(precState.tab===p[0]?'btn-pri':'btn-2')+'" data-tab="'+p[0]+'">'+p[1]+'</button>'; }).join('')
+      +'</div><div id="prec-cont"></div>';
+    Array.prototype.forEach.call(document.querySelectorAll('#prec-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ precState.tab=b.getAttribute('data-tab'); vPrecios(); }); });
+    ({planes:precPlanes,aumento:precAumento,promos:precPromos,instal:precInstal}[precState.tab]||precPlanes)();
+  }
+  function precPlanes(){
+    var cont=document.getElementById('prec-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('planes?select=*&order=mostrar_form.desc,tecnologia.asc,precio.asc').then(function(d){ d=Array.isArray(d)?d:[];
+      var h='<div class="toolbar"><button class="btn btn-ok" id="pl-nuevo">+ Nuevo plan</button><span class="muted">'+d.length+' planes (tocá uno para editar)</span></div>';
+      h+='<table><thead><tr><th>Plan</th><th>Tecnología</th><th>Precio de lista</th><th>En formulario</th><th>Vigente</th></tr></thead><tbody>';
+      d.forEach(function(p){ h+='<tr data-id="'+p.id+'" style="cursor:pointer"><td><b>'+esc(p.nombre)+'</b></td><td>'+tecLbl(p.tecnologia)+'</td><td>'+fmtPesos(p.precio)+'</td><td>'+(p.mostrar_form?'sí':'<span class="muted">no (add-on)</span>')+'</td><td>'+(p.activo?'<span class="pill p-activo">vigente</span>':'<span class="pill p-baja">no vigente</span>')+'</td></tr>'; });
+      cont.innerHTML=h+'</tbody></table>';
+      document.getElementById('pl-nuevo').addEventListener('click',function(){ formPlan(null); });
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ formPlan(d.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+    });
+  }
+  function formPlan(p){ p=p||{};
+    modal('<h2>'+(p.id?'Editar plan':'Nuevo plan')+'</h2>'
+      +'<label class="l">Nombre</label><input id="pl-nom" value="'+esc(p.nombre||'')+'">'
+      +'<div class="row"><div><label class="l">Tecnología</label><select id="pl-tec">'+opt(TECS_PLAN,p.tecnologia||'FTTH')+'</select></div><div><label class="l">Bajada (Mbps)</label><input id="pl-baj" type="number" value="'+esc(p.bajada_mbps==null?'':p.bajada_mbps)+'"></div></div>'
+      +'<label class="l">Precio de lista ($)</label><input id="pl-precio" type="number" step="0.01" value="'+esc(p.precio==null?'':p.precio)+'">'
+      +'<div style="display:flex;gap:18px;margin-top:10px;flex-wrap:wrap"><label style="font-weight:600"><input type="checkbox" id="pl-activo"'+(p.activo!==false?' checked':'')+'> Vigente</label><label style="font-weight:600"><input type="checkbox" id="pl-form"'+(p.mostrar_form!==false?' checked':'')+'> Plan de internet (mostrar en el formulario)</label></div>'
+      +'<p class="muted" style="font-size:12px;margin-top:6px">Destildá "Plan de internet" para add-ons como TV o Pack Fútbol (tienen precio pero no son plan de internet).</p>'
+      +'<div id="pl-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-ok" id="pl-save">Guardar</button>'+(p.id?'<button class="btn btn-x" id="pl-del">🗑️ Borrar</button>':'')+'<button class="btn btn-2" id="pl-x">Cerrar</button></div>');
+    document.getElementById('pl-x').addEventListener('click',cerrarModal);
+    document.getElementById('pl-save').addEventListener('click',function(){
+      var nom=document.getElementById('pl-nom').value.trim(); if(!nom){ document.getElementById('pl-err').textContent='Poné un nombre.'; return; }
+      var baj=document.getElementById('pl-baj').value, precio=document.getElementById('pl-precio').value;
+      var body={ nombre:nom, tecnologia:document.getElementById('pl-tec').value, bajada_mbps:baj===''?null:Number(baj), precio:precio===''?null:Number(precio), activo:document.getElementById('pl-activo').checked, mostrar_form:document.getElementById('pl-form').checked };
+      var btn=this; btn.disabled=true;
+      var prom=p.id? sbPatch('planes?id=eq.'+p.id,body) : sbPost('planes',body);
+      prom.then(function(r){ if(!p.id&&(!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Plan guardado ✓'); precPlanes(); }).catch(function(){ document.getElementById('pl-err').textContent='No se pudo guardar.'; btn.disabled=false; });
+    });
+    var del=document.getElementById('pl-del'); if(del) del.addEventListener('click',function(){
+      if(!confirm('¿Borrar el plan "'+(p.nombre||'')+'"? Si tiene clientes/solicitudes asociados no se podrá borrar (conviene desactivarlo).')) return;
+      fetch(SB_URL+'/rest/v1/planes?id=eq.'+p.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Plan borrado'); precPlanes(); }).catch(function(){ document.getElementById('pl-err').textContent='No se pudo borrar (tiene clientes/solicitudes). Desactivalo en su lugar.'; });
+    });
+  }
+  function precAumento(){
+    var cont=document.getElementById('prec-cont');
+    cont.innerHTML='<div style="max-width:560px"><p>Aplicá un aumento porcentual al <b>precio de lista</b>. Las promos se ajustan solas (son % sobre la lista).</p>'
+      +'<label class="l">Porcentaje de aumento (%)</label><input id="au-pct" type="number" step="0.1" placeholder="ej 12">'
+      +'<label class="l">Aplicar a</label><select id="au-alcance"><option value="todos">Todos los planes</option><option value="tec">Por tecnología</option><option value="uno">Un plan</option></select>'
+      +'<div id="au-extra" style="margin-top:8px"></div>'
+      +'<div id="au-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<button class="btn btn-ok" id="au-aplicar" style="margin-top:10px">Aplicar aumento</button></div>'
+      +'<h3 style="margin-top:22px">Precios actuales</h3><div id="au-tabla"><div class="center"><div class="spin"></div></div></div>';
+    function pintarExtra(){ var a=document.getElementById('au-alcance').value, ex=document.getElementById('au-extra');
+      if(a==='tec'){ ex.innerHTML='<label class="l">Tecnología</label><select id="au-tec">'+opt(TECS_PLAN,'FTTH')+'</select>'; }
+      else if(a==='uno'){ ex.innerHTML='<span class="muted">cargando…</span>'; sbGet('planes?select=id,nombre&order=nombre').then(function(d){ ex.innerHTML='<label class="l">Plan</label><select id="au-plan">'+(d||[]).map(function(p){return '<option value="'+p.id+'">'+esc(p.nombre)+'</option>';}).join('')+'</select>'; }); }
+      else ex.innerHTML=''; }
+    document.getElementById('au-alcance').addEventListener('change',pintarExtra); pintarExtra();
+    function recargarTabla(){ sbGet('planes?select=id,nombre,tecnologia,precio,activo&order=tecnologia.asc,precio.asc').then(function(d){ d=Array.isArray(d)?d:[]; var h='<table><thead><tr><th>Plan</th><th>Tec</th><th>Precio</th><th>Vigente</th></tr></thead><tbody>'; d.forEach(function(p){ h+='<tr><td>'+esc(p.nombre)+'</td><td>'+tecLbl(p.tecnologia)+'</td><td>'+fmtPesos(p.precio)+'</td><td>'+(p.activo?'sí':'no')+'</td></tr>'; }); document.getElementById('au-tabla').innerHTML=h+'</tbody></table>'; }); }
+    recargarTabla();
+    document.getElementById('au-aplicar').addEventListener('click',function(){
+      var pct=parseFloat(document.getElementById('au-pct').value), err=document.getElementById('au-err'); err.textContent='';
+      if(isNaN(pct)){ err.textContent='Poné un porcentaje.'; return; }
+      var a=document.getElementById('au-alcance').value, q='planes?select=id,nombre,precio&precio=not.is.null';
+      if(a==='tec'){ q+='&tecnologia=eq.'+document.getElementById('au-tec').value; }
+      else if(a==='uno'){ q+='&id=eq.'+document.getElementById('au-plan').value; }
+      var btn=this; btn.disabled=true;
+      sbGet(q).then(function(d){ d=Array.isArray(d)?d:[]; if(!d.length){ err.textContent='No hay planes con precio para ese alcance.'; btn.disabled=false; return; }
+        if(!confirm('Vas a aumentar '+pct+'% a '+d.length+' plan(es). ¿Confirmás?')){ btn.disabled=false; return; }
+        Promise.all(d.map(function(p){ var nuevo=Math.round(Number(p.precio)*(1+pct/100)*100)/100; return sbPatch('planes?id=eq.'+p.id,{precio:nuevo}); })).then(function(){ toast('Aumento aplicado a '+d.length+' plan(es) ✓'); btn.disabled=false; recargarTabla(); }).catch(function(){ err.textContent='Error al aplicar.'; btn.disabled=false; });
+      });
+    });
+  }
+  function precPromos(){
+    var cont=document.getElementById('prec-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('promos?select=*&order=orden.asc').then(function(d){ d=Array.isArray(d)?d:[];
+      var h='<div class="toolbar"><button class="btn btn-ok" id="pr-nuevo">+ Nueva promo</button><span class="muted">Descuentos para clientes nuevos, sobre el precio de lista.</span></div>';
+      h+='<table><thead><tr><th>Orden</th><th>Nombre</th><th>Meses</th><th>Descuento</th><th>Aplica a</th><th>Activa</th></tr></thead><tbody>';
+      d.forEach(function(p){ h+='<tr data-id="'+p.id+'" style="cursor:pointer"><td>'+esc(p.orden)+'</td><td><b>'+esc(p.nombre)+'</b></td><td>'+(p.meses==null?'—':esc(p.meses))+'</td><td><b>'+esc(p.descuento_pct)+'%</b></td><td>'+(p.tecnologia?tecLbl(p.tecnologia):'Todas')+'</td><td>'+(p.activo?'<span class="pill p-activo">sí</span>':'<span class="pill p-baja">no</span>')+'</td></tr>'; });
+      cont.innerHTML=h+'</tbody></table>';
+      document.getElementById('pr-nuevo').addEventListener('click',function(){ formPromo(null); });
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ formPromo(d.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+    });
+  }
+  function formPromo(p){ p=p||{};
+    modal('<h2>'+(p.id?'Editar promo':'Nueva promo')+'</h2>'
+      +'<label class="l">Nombre</label><input id="prm-nom" value="'+esc(p.nombre||'')+'">'
+      +'<div class="row"><div><label class="l">Meses que dura</label><input id="prm-meses" type="number" value="'+esc(p.meses==null?'':p.meses)+'"></div><div><label class="l">Descuento (%)</label><input id="prm-desc" type="number" step="0.1" value="'+esc(p.descuento_pct==null?'':p.descuento_pct)+'"></div></div>'
+      +'<div class="row"><div><label class="l">Aplica a</label><select id="prm-tec"><option value="">Todas</option>'+opt(TECS_PLAN,p.tecnologia||'')+'</select></div><div><label class="l">Orden</label><input id="prm-orden" type="number" value="'+esc(p.orden==null?0:p.orden)+'"></div></div>'
+      +'<label style="font-weight:600;display:block;margin-top:10px"><input type="checkbox" id="prm-activo"'+(p.activo!==false?' checked':'')+'> Activa</label>'
+      +'<div id="prm-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-ok" id="prm-save">Guardar</button>'+(p.id?'<button class="btn btn-x" id="prm-del">🗑️ Borrar</button>':'')+'<button class="btn btn-2" id="prm-x">Cerrar</button></div>');
+    document.getElementById('prm-x').addEventListener('click',cerrarModal);
+    document.getElementById('prm-save').addEventListener('click',function(){
+      var nom=document.getElementById('prm-nom').value.trim(), desc=document.getElementById('prm-desc').value;
+      if(!nom||desc===''){ document.getElementById('prm-err').textContent='Nombre y descuento son obligatorios.'; return; }
+      var mv=document.getElementById('prm-meses').value;
+      var body={ nombre:nom, meses:(mv===''?null:Number(mv)), descuento_pct:Number(desc), tecnologia:document.getElementById('prm-tec').value||null, orden:Number(document.getElementById('prm-orden').value)||0, activo:document.getElementById('prm-activo').checked };
+      var btn=this; btn.disabled=true;
+      var prom=p.id? sbPatch('promos?id=eq.'+p.id,body) : sbPost('promos',body);
+      prom.then(function(r){ if(!p.id&&(!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Promo guardada ✓'); precPromos(); }).catch(function(){ document.getElementById('prm-err').textContent='No se pudo guardar.'; btn.disabled=false; });
+    });
+    var del=document.getElementById('prm-del'); if(del) del.addEventListener('click',function(){ if(!confirm('¿Borrar esta promo?'))return; fetch(SB_URL+'/rest/v1/promos?id=eq.'+p.id,{method:'DELETE',headers:H}).then(function(){ cerrarModal(); toast('Promo borrada'); precPromos(); }); });
+  }
+  function precInstal(){
+    var cont=document.getElementById('prec-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('config_comercial?id=eq.1&select=*').then(function(d){ var c=(Array.isArray(d)&&d[0])||{instalacion_precio:0,instalacion_cobrar:false};
+      cont.innerHTML='<div style="max-width:520px"><h3>Costo de instalación</h3>'
+        +'<label style="font-weight:600;display:block;margin:10px 0"><input type="checkbox" id="ins-cobrar"'+(c.instalacion_cobrar?' checked':'')+'> Cobrar instalación</label>'
+        +'<label class="l">Precio de instalación ($)</label><input id="ins-precio" type="number" step="0.01" value="'+esc(c.instalacion_precio==null?'':c.instalacion_precio)+'">'
+        +'<p class="muted" style="font-size:13px;margin-top:6px">Si "Cobrar instalación" está activo, el monto aparece en la solicitud y en las condiciones. Si está desactivado, figura como instalación sin cargo.</p>'
+        +'<div id="ins-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+        +'<button class="btn btn-ok" id="ins-save" style="margin-top:8px">Guardar</button></div>';
+      document.getElementById('ins-save').addEventListener('click',function(){
+        var pv=document.getElementById('ins-precio').value;
+        var body={ instalacion_precio:(pv===''?0:Number(pv)), instalacion_cobrar:document.getElementById('ins-cobrar').checked, updated_at:new Date().toISOString() };
+        var btn=this; btn.disabled=true;
+        sbPatch('config_comercial?id=eq.1',body).then(function(){ toast('Instalación guardada ✓'); btn.disabled=false; }).catch(function(){ document.getElementById('ins-err').textContent='No se pudo guardar.'; btn.disabled=false; });
+      });
+    });
   }
 
   // ── util UI ──
