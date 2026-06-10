@@ -156,7 +156,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.40';
+  var VER='v0.41';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -534,9 +534,11 @@
           +'<div class="row"><div><label class="l">Caja (NAP)</label><input id="f-caja" value="'+esc(c.caja_nap||'')+'"></div><div><label class="l">Puerto</label><input id="f-puerto" value="'+esc(c.puerto||'')+'"></div><div><label class="l">Precinto</label><input id="f-precinto" value="'+esc(c.precinto||'')+'"></div></div>'
           +'<button class="btn btn-ok" id="f-conx-save" style="margin-top:8px">Guardar conexión</button></div>'
         +ispBlock
+        +'<div id="f-hist" style="margin-top:14px"></div>'
         +'<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-pri" id="f-ot">+ Generar OT</button><button class="btn btn-2" id="f-close">Cerrar</button></div>');
       document.getElementById('f-close').addEventListener('click',cerrarModal);
       document.getElementById('f-ot').addEventListener('click',function(){ cerrarModal(); nuevaOT(c); });
+      cargarHistCliente(c.id);
       document.getElementById('f-conx-save').addEventListener('click',function(){
         var b={ caja_nap:document.getElementById('f-caja').value.trim()||null, puerto:document.getElementById('f-puerto').value.trim()||null, precinto:document.getElementById('f-precinto').value.trim()||null };
         var btn=this; btn.disabled=true; sbPatch('clientes?id=eq.'+c.id,b).then(function(){ c.caja_nap=b.caja_nap; c.puerto=b.puerto; c.precinto=b.precinto; btn.disabled=false; toast('Datos de conexión guardados ✓'); }).catch(function(){ btn.disabled=false; toast('No se pudo guardar.'); });
@@ -547,6 +549,23 @@
         var code=/^\d+$/.test(val)?('000000'+val).slice(-6):val;   // mismo formato que el sync (6 dígitos)
         sbPatch('clientes?id=eq.'+c.id,{ codigo_ispcube:code }).then(function(){ cerrarModal(); toast('Cliente marcado como cargado en ISPcube ✓'); cargarClientes(); });
       });
+    });
+  }
+  // Historial de servicios del cliente: todas sus OTs (las finalizadas muestran fotos/cierre al tocarlas)
+  function cargarHistCliente(cliId){
+    var cont=document.getElementById('f-hist'); if(!cont) return;
+    cont.innerHTML='<div class="muted" style="font-size:13px">Cargando historial…</div>';
+    sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,created_at,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var hechos=d.filter(function(o){return o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO';}).length;
+      var h='<div style="border-top:2px solid #e2e8f0;padding-top:10px"><h3 style="margin:0 0 6px;color:var(--azul)">🧰 Historial de servicios <span class="muted" style="font-weight:400;font-size:13px">('+d.length+' OT · '+hechos+' con cierre)</span></h3>';
+      if(!d.length){ cont.innerHTML=h+'<div class="muted">Este cliente todavía no tiene órdenes.</div></div>'; return; }
+      h+='<table style="width:100%"><thead><tr><th>Fecha</th><th>N° OT</th><th>Tipo</th><th>Trabajo</th><th>Cuadrilla</th><th>Estado</th></tr></thead><tbody>';
+      d.forEach(function(o){ var f=o.fin_tec_at||o.fecha_agendada||o.created_at; var cerr=(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO');
+        h+='<tr data-ot="'+o.id+'" style="cursor:pointer"><td class="muted">'+esc(fmtFecha(f))+'</td><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(o.tipos_trabajo?o.tipos_trabajo.nombre:'—')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+pill(o.estado)+(cerr?' 📷':'')+'</td></tr>'; });
+      h+='</tbody></table><div class="muted" style="font-size:12px;margin-top:4px">Tocá un servicio para ver el cierre (fotos, materiales, datos de la visita).</div></div>';
+      cont.innerHTML=h;
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-ot]'),function(tr){ tr.addEventListener('click',function(){ cerrarModal(); detalleOT(tr.getAttribute('data-ot')); }); });
     });
   }
 
@@ -654,15 +673,17 @@
   var OT_COLS=[
     {k:'numero',t:'N° OT',ord:'numero',r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
     {k:'tipo',t:'Tipo',ord:'tipo',r:function(o){return esc(o.tipo);}},
-    {k:'cliente',t:'Cliente',ord:null,r:function(o){return esc(o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'—');}},
-    {k:'barrio',t:'Barrio',ord:null,r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
+    {k:'cliente',t:'Cliente',ord:null,r:function(o){return esc(o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)');}},
+    {k:'cli_nexa',t:'N° Nexa',ord:null,r:function(o){return o.clientes?'<b>'+esc(o.clientes.numero_cliente)+'</b>':'—';}},
+    {k:'cli_isp',t:'Cód. ISP',ord:null,r:function(o){return o.clientes&&o.clientes.codigo_ispcube?esc(o.clientes.codigo_ispcube):'<span class="muted">—</span>';}},
+    {k:'barrio',t:'Barrio',ord:null,def:false,r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
     {k:'cuadrilla',t:'Cuadrilla',ord:null,r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
     {k:'prioridad',t:'Prioridad',ord:'prioridad',def:false,r:function(o){return esc(o.prioridad||'');}},
     {k:'agendada',t:'Agendada',ord:'fecha_agendada',r:function(o){return esc(fmtFecha(o.fecha_agendada));}},
     {k:'creada',t:'Creada',ord:'created_at',def:false,r:function(o){return esc(fmtFecha(o.created_at));}},
     {k:'estado',t:'Estado',ord:'estado',r:function(o){return pill(o.estado);}}
   ];
-  var OT_COLS_DEF=['numero','tipo','cliente','barrio','cuadrilla','agendada','estado'];
+  var OT_COLS_DEF=['numero','tipo','cliente','cli_nexa','cli_isp','cuadrilla','agendada','estado'];
   function otCols(){ if(!otState.cols){ try{ otState.cols=JSON.parse(localStorage.getItem('ot_cols')||'null'); }catch(e){} if(!otState.cols||!otState.cols.length) otState.cols=OT_COLS_DEF.slice(); } return otState.cols; }
   function otColVis(k){ return otCols().indexOf(k)>=0; }
   function otToggleCol(k){ var v=otCols(),i=v.indexOf(k); if(i>=0)v.splice(i,1); else v.push(k); try{localStorage.setItem('ot_cols',JSON.stringify(v));}catch(e){} cargarOT(); }
@@ -681,7 +702,7 @@
   }
   function cargarOT(){
     var cont=document.getElementById('ot-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,clientes(numero_cliente,nombre,apellido,barrio),cuadrillas(nombre)&order='+(otState.orderBy||'created_at')+'.'+(otState.orderDir||'desc');
+    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,clientes(numero_cliente,codigo_ispcube,nombre,apellido,barrio),cuadrillas(nombre)&order='+(otState.orderBy||'created_at')+'.'+(otState.orderDir||'desc');
     if(otState.estado) base+='&estado=eq.'+otState.estado;
     if(otState.tipo) base+='&tipo=eq.'+otState.tipo;
     sbCount('ordenes_trabajo?select=id'+(otState.estado?'&estado=eq.'+otState.estado:'')+(otState.tipo?'&tipo=eq.'+otState.tipo:'')).then(function(t){ otState.total=t; });
@@ -745,13 +766,14 @@
     });
   }
   function detalleOT(id){
-    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(numero_cliente,nombre,apellido,telefono,domicilio_full,barrio,caja_nap,puerto,precinto),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
+    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(numero_cliente,codigo_ispcube,nombre,apellido,telefono,domicilio_full,barrio,caja_nap,puerto,precinto),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
       var o=d[0]; if(!o)return;
       function fr(k,v){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+esc(v||'—')+'</span></div>'; }
       var cuadOpts='<option value="">— sin asignar —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(o.cuadrilla_id==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
-      var cli=o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'—';
+      var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)';
+      var nums=o.clientes?('N° Nexa '+o.clientes.numero_cliente+(o.clientes.codigo_ispcube?(' · Cód. ISPcube '+o.clientes.codigo_ispcube):' · sin cargar en ISPcube')):'';
       modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+'</p>'
-        +fr('Cliente',cli)+fr('Teléfono',o.clientes?o.clientes.telefono:'')+fr('Domicilio',o.clientes?o.clientes.domicilio_full:'')+fr('Barrio',o.clientes?o.clientes.barrio:'')
+        +fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+fr('Teléfono',o.clientes?o.clientes.telefono:'')+fr('Domicilio',o.clientes?o.clientes.domicilio_full:'')+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
         +(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))
         +'<label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select>'
