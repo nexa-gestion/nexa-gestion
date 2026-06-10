@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.33</title>
+<title>Nexa · Gestión — v0.34</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.33</div>
+    <div class="marca-sub">Gestión · v0.34</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -132,7 +132,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.33';
+  var VER='v0.34';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -534,9 +534,10 @@
         +'<div class="row"><div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
         +'<label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select>'
         +'<label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select>'
-        +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-pri" id="ot-save">Guardar</button><button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>');
+        +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button><button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
       document.getElementById('ot-print').addEventListener('click',function(){ imprimirOT(id); });
+      if(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'||o.estado==='NO_REALIZADA') cargarCierreOT(o);
       document.getElementById('ot-save').addEventListener('click',function(){
         var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
         var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null) };
@@ -551,6 +552,57 @@
         }).catch(function(){ toast('No se pudo eliminar.'); });
       });
     });
+  }
+
+  function ispRow(k,v){ return '<div style="display:flex;justify-content:space-between;padding:2px 0"><span class="muted">'+esc(k)+'</span><span style="font-weight:600;font-family:monospace">'+esc(v||'—')+'</span></div>'; }
+  function cargarCierreOT(o){
+    var after=document.getElementById('ot-cierre-after'); if(!after) return;
+    var cont=document.getElementById('ot-cierre'); if(!cont){ cont=document.createElement('div'); cont.id='ot-cierre'; after.parentNode.insertBefore(cont,after); }
+    cont.innerHTML='<div class="muted" style="margin-top:10px">Cargando cierre…</div>';
+    Promise.all([
+      sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=material_id,cantidad,serial,descripcion,catalogo_materiales(nombre)'),
+      sbGet('ot_mano_obra?ot_id=eq.'+o.id+'&select=nombre,cantidad'),
+      sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&origen=eq.TECNICO&select=clave,valor'),
+      sbGet('ot_fotos?ot_id=eq.'+o.id+'&select=url')
+    ]).then(function(r){
+      var mats=r[0]||[], mos=r[1]||[], datos=r[2]||[], fotos=r[3]||[], dm={};
+      datos.forEach(function(x){ dm[x.clave]=x.valor; });
+      var h='<div style="border-top:2px solid #dbeafe;margin-top:14px;padding-top:10px"><h3 style="margin:0 0 4px;color:var(--azul)">📥 Cierre del técnico</h3>'
+        +'<div class="muted" style="font-size:13px">Cerrada por técnico: '+fmtFechaHora(o.fin_tec_at)+(o.lat_fin?(' · 📍'+o.lat_fin+','+o.lng_fin):'')+'</div>';
+      if(o.observaciones_tec) h+='<div style="margin:6px 0"><b>Observaciones:</b> '+esc(o.observaciones_tec)+'</div>';
+      if(o.motivo_cancelacion) h+='<div style="margin:6px 0;color:var(--rojo)"><b>No realizada — motivo:</b> '+esc(o.motivo_cancelacion)+'</div>';
+      h+='<div style="margin-top:8px"><b>Materiales:</b> '+(mats.length?'':'—')+'</div>';
+      if(mats.length) h+='<ul style="margin:4px 0 0 18px">'+mats.map(function(m){return '<li>'+esc(m.catalogo_materiales?m.catalogo_materiales.nombre:(m.descripcion||'Material'))+' ×'+m.cantidad+(m.serial?(' <span class="muted">('+esc(m.serial)+')</span>'):'')+'</li>';}).join('')+'</ul>';
+      h+='<div style="margin-top:6px"><b>Mano de obra:</b> '+(mos.length?'':'—')+'</div>';
+      if(mos.length) h+='<ul style="margin:4px 0 0 18px">'+mos.map(function(m){return '<li>'+esc(m.nombre)+' ×'+m.cantidad+'</li>';}).join('')+'</ul>';
+      if(fotos.length) h+='<div style="margin-top:6px"><b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">📷 '+(i+1)+'</a>';}).join(' · ')+'</div>';
+      h+='<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px;margin-top:10px"><div style="font-weight:700;margin-bottom:4px">📋 Datos para ISPcube</div>'
+        +ispRow('Precinto',dm.precinto)+ispRow('Caja (NAP)',dm.caja_nap)+ispRow('Puerto',dm.puerto)+ispRow('Access Point',dm.access_point)+ispRow('MAC',dm.mac)+ispRow('Serial/Modelo',dm.serial);
+      if((dm.caja_nap||dm.puerto||dm.precinto)&&o.cliente_id) h+='<button class="btn btn-2" id="ot-cli-copy" style="margin-top:8px;width:100%">⬇️ Guardar caja/puerto/precinto en el cliente</button>';
+      h+='</div>';
+      if(o.estado==='CERRADA_TECNICO') h+='<button class="btn btn-ok" id="ot-validar" style="margin-top:10px;width:100%">✅ Validar y finalizar</button>';
+      else if(o.estado==='FINALIZADA') h+='<div class="muted" style="margin-top:8px">✓ Validada'+(o.validado_admin_at?(' el '+fmtFechaHora(o.validado_admin_at)):'')+'</div>';
+      h+='</div>';
+      cont.innerHTML=h;
+      var cp=document.getElementById('ot-cli-copy'); if(cp) cp.addEventListener('click',function(){
+        var upd={}; if(dm.caja_nap)upd.caja_nap=dm.caja_nap; if(dm.puerto)upd.puerto=dm.puerto; if(dm.precinto)upd.precinto=dm.precinto;
+        cp.disabled=true; sbPatch('clientes?id=eq.'+o.cliente_id,upd).then(function(){ toast('Datos guardados en el cliente ✓'); }).catch(function(){ toast('No se pudo guardar.'); cp.disabled=false; });
+      });
+      var vb=document.getElementById('ot-validar'); if(vb) vb.addEventListener('click',function(){ validarOT(o,mats); });
+    });
+  }
+  function validarOT(o,mats){
+    if(!confirm('¿Validar y finalizar la OT N° '+o.numero+'? Se descontará el stock de los materiales usados (sin serial).')) return;
+    var vb=document.getElementById('ot-validar'); if(vb){ vb.disabled=true; vb.textContent='Validando…'; }
+    var jobs=[ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id }) ];
+    var noSer=(mats||[]).filter(function(m){ return !m.serial && m.material_id; });
+    if(o.cuadrilla_id) noSer.forEach(function(m){
+      jobs.push(sbGet('stock_cuadrillas?cuadrilla_id=eq.'+o.cuadrilla_id+'&material_id=eq.'+m.material_id+'&select=id,cantidad').then(function(s){
+        if(s&&s[0]){ var nueva=Math.max(0,Number(s[0].cantidad)-Number(m.cantidad)); return sbPatch('stock_cuadrillas?id=eq.'+s[0].id,{ cantidad:nueva, updated_at:new Date().toISOString() }); }
+      }));
+      jobs.push(sbPost('stock_movimientos',{ material_id:m.material_id, tipo:'CONSUMO_OT', cantidad:m.cantidad, ot_id:o.id, cuadrilla_id:o.cuadrilla_id, usuario_id:USER.id, observaciones:'Consumo OT N° '+o.numero }));
+    });
+    Promise.all(jobs).then(function(){ cerrarModal(); toast('OT N° '+o.numero+' validada y finalizada ✓'); cargarOT(); }).catch(function(){ toast('Error al validar.'); if(vb){vb.disabled=false;vb.textContent='✅ Validar y finalizar';} });
   }
 
   // ── TIPOS DE TRABAJO ── (FTTH, Wireless, Tendido, Fusiones… c/u con materiales + mano de obra + cuadrillas)
