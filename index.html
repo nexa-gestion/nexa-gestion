@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.15</title>
+<title>Nexa · Gestión — v0.16</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.15</div>
+    <div class="marca-sub">Gestión · v0.16</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -117,7 +117,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.15';
+  var VER='v0.16';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -729,7 +729,7 @@
   function _matById(id){ return (window._depMats||[]).filter(function(m){return m.id==id;})[0]; }
   function depIngreso(){
     var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('catalogo_materiales?select=id,nombre,unidad,serial_tipo&activo=eq.true&order=orden.asc').then(function(d){
+    sbGet('catalogo_materiales?select=id,nombre,unidad,serial_tipo,cant_por_paquete,nombre_paquete&activo=eq.true&order=orden.asc').then(function(d){
       var mats=Array.isArray(d)?d:[]; window._depMats=mats;
       var matOpts='<option value="">— elegí un material —</option>'+mats.map(function(m){return '<option value="'+m.id+'">'+esc(m.nombre)+'</option>';}).join('');
       cont.innerHTML='<div class="kpi" style="margin-bottom:14px"><b>Ingreso de material al depósito.</b> <span class="muted">Cargá uno o varios y confirmá al final.</span></div>'
@@ -753,7 +753,12 @@
     if(!m){ dyn.innerHTML=''; add.disabled=true; return; }
     add.disabled=false;
     if(m.serial_tipo==='NINGUNO'){
-      dyn.innerHTML='<label class="l">Cantidad</label><input id="ing-cant" type="number" min="1" value="1">';
+      if(m.cant_por_paquete>1){
+        dyn.innerHTML='<label class="l">Cantidad de '+esc(m.nombre_paquete||'paquetes')+' <span class="muted">(× '+m.cant_por_paquete+' '+esc(m.unidad||'un')+' c/u)</span></label><input id="ing-paq" type="number" min="1" value="1"><div id="ing-prev" class="muted" style="margin-top:4px;font-size:12px">= '+m.cant_por_paquete+' '+esc(m.unidad||'un')+'</div>';
+        dyn.querySelector('#ing-paq').addEventListener('input',function(){ var p=parseInt(this.value,10)||0; document.getElementById('ing-prev').textContent='= '+(p*m.cant_por_paquete)+' '+(m.unidad||'un'); });
+      } else {
+        dyn.innerHTML='<label class="l">Cantidad</label><input id="ing-cant" type="number" min="1" value="1">';
+      }
     } else if(m.serial_tipo==='CORRELATIVO'){
       dyn.innerHTML='<div class="row"><div><label class="l">Primer número</label><input id="ing-ini" type="number" min="0" placeholder="Ej: 100"></div><div><label class="l">Cantidad</label><input id="ing-cant" type="number" min="1" placeholder="Ej: 50"></div></div><div id="ing-prev" class="muted" style="margin-top:6px;font-size:12px"></div>';
       var upd=function(){ var i=parseInt(document.getElementById('ing-ini').value,10), c=parseInt(document.getElementById('ing-cant').value,10); var p=document.getElementById('ing-prev'); p.textContent=(i>=0&&c>0)?('→ del '+pad6(i)+' al '+pad6(i+c-1)+' ('+c+' precintos)'):''; };
@@ -766,7 +771,10 @@
   function ingAdd(){
     var m=_matById(document.getElementById('ing-mat').value); if(!m) return;
     var item={ material_id:m.id, nombre:m.nombre, unidad:m.unidad, serial_tipo:m.serial_tipo, cantidad:0, seriales:[] };
-    if(m.serial_tipo==='NINGUNO'){ var c=parseInt(document.getElementById('ing-cant').value,10); if(!(c>0)){ toast('Cantidad inválida.'); return; } item.cantidad=c; }
+    if(m.serial_tipo==='NINGUNO'){
+      if(m.cant_por_paquete>1){ var paq=parseInt(document.getElementById('ing-paq').value,10); if(!(paq>0)){ toast('Cantidad de paquetes inválida.'); return; } item.cantidad=paq*m.cant_por_paquete; item.detalle=paq+' '+(m.nombre_paquete||'paq')+' × '+m.cant_por_paquete; }
+      else { var c=parseInt(document.getElementById('ing-cant').value,10); if(!(c>0)){ toast('Cantidad inválida.'); return; } item.cantidad=c; }
+    }
     else if(m.serial_tipo==='CORRELATIVO'){ var i=parseInt(document.getElementById('ing-ini').value,10), c2=parseInt(document.getElementById('ing-cant').value,10); if(!(i>=0)||!(c2>0)){ toast('Completá número inicial y cantidad.'); return; } for(var k=0;k<c2;k++) item.seriales.push(pad6(i+k)); item.cantidad=c2; }
     else { var ss=_parseSeriales(document.getElementById('ing-ser').value); if(!ss.length){ toast('Pegá al menos un serial.'); return; } item.seriales=ss; item.cantidad=ss.length; }
     INGRESO_TEMP.push(item); ingRenderLista();
@@ -777,7 +785,7 @@
     var cf=document.getElementById('ing-confirm');
     if(!INGRESO_TEMP.length){ c.innerHTML='<div class="muted" style="padding:10px">Todavía no agregaste nada.</div>'; if(cf) cf.disabled=true; return; }
     var h='<table><thead><tr><th>Material</th><th>Tipo</th><th>Cant.</th><th></th></tr></thead><tbody>';
-    INGRESO_TEMP.forEach(function(it,idx){ h+='<tr><td><b>'+esc(it.nombre)+'</b></td><td>'+stipPill(it.serial_tipo)+'</td><td><b>'+it.cantidad+'</b> '+esc(it.unidad||'')+'</td><td><button class="btn btn-x ing-del" data-i="'+idx+'" style="padding:2px 8px">✕</button></td></tr>'; });
+    INGRESO_TEMP.forEach(function(it,idx){ h+='<tr><td><b>'+esc(it.nombre)+'</b>'+(it.detalle?(' <span class="muted">('+esc(it.detalle)+')</span>'):'')+'</td><td>'+stipPill(it.serial_tipo)+'</td><td><b>'+it.cantidad+'</b> '+esc(it.unidad||'')+'</td><td><button class="btn btn-x ing-del" data-i="'+idx+'" style="padding:2px 8px">✕</button></td></tr>'; });
     h+='</tbody></table>'; c.innerHTML=h;
     Array.prototype.forEach.call(c.querySelectorAll('.ing-del'),function(b){ b.addEventListener('click',function(){ INGRESO_TEMP.splice(Number(b.getAttribute('data-i')),1); ingRenderLista(); }); });
     if(cf) cf.disabled=false;
