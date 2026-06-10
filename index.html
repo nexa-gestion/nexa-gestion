@@ -3,9 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.36</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<title>Nexa · Gestión — v0.37</title>
 <style>
   :root{ --pri:#2563eb; --pri-d:#1d4ed8; --gris:#64748b; --bg:#eef2f7; --card:#fff; --bord:rgba(15,23,42,.1); --border2:rgba(15,23,42,.06);
          --rojo:#dc2626; --ok:#16a34a; --warn:#d97706; --dark:#0f172a; --card-shadow:0 1px 3px rgba(15,23,42,.04),0 4px 12px rgba(15,23,42,.05); }
@@ -82,23 +80,23 @@
   #map{ height:calc(100vh - 170px); min-height:420px; border:1px solid var(--bord); border-radius:12px; }
   .leaflet-container{ font:inherit; }
   /* Dashboard estilo FG */
-  .dhead{ background:#fff; border:1px solid var(--bord); border-radius:16px; padding:18px 22px; display:flex; align-items:center; gap:16px; margin-bottom:16px; box-shadow:var(--card-shadow); }
-  .dhead-logo{ width:54px; height:54px; background:#1e3a5f; color:#fff; border-radius:14px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; flex:0 0 auto; }
-  .dhead-eyebrow{ font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
-  .dhead-saludo{ font-size:22px; font-weight:800; line-height:1.1; }
-  .dhead-fecha{ font-size:12px; color:#64748b; margin-top:2px; text-transform:capitalize; }
-  .dhead-reloj{ margin-left:auto; font-size:30px; font-weight:800; color:#1e40af; font-variant-numeric:tabular-nums; }
-  .qbar{ background:#fff; border:1px solid var(--bord); border-radius:14px; padding:12px; display:flex; flex-wrap:wrap; gap:4px; margin-bottom:16px; box-shadow:var(--card-shadow); }
-  .qbtn{ display:flex; flex-direction:column; align-items:center; gap:7px; padding:10px 10px; border-radius:10px; cursor:pointer; min-width:80px; flex:1; }
+  .dhead{ background:#fff; border:1px solid var(--bord); border-radius:14px; padding:11px 18px; display:flex; align-items:center; gap:13px; margin-bottom:14px; box-shadow:var(--card-shadow); }
+  .dhead-logo{ width:42px; height:42px; background:#1e3a5f; color:#fff; border-radius:11px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; flex:0 0 auto; }
+  .dhead-eyebrow{ font-size:10px; color:#94a3b8; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
+  .dhead-saludo{ font-size:19px; font-weight:800; line-height:1.1; }
+  .dhead-fecha{ font-size:12px; color:#64748b; margin-top:1px; text-transform:capitalize; }
+  .dhead-reloj{ margin-left:auto; font-size:26px; font-weight:800; color:#1e40af; font-variant-numeric:tabular-nums; }
+  .qbar{ background:#fff; border:1px solid var(--bord); border-radius:14px; padding:10px; display:flex; flex-wrap:wrap; gap:2px; margin-bottom:14px; box-shadow:var(--card-shadow); }
+  .qbtn{ display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 8px; border-radius:10px; cursor:pointer; min-width:76px; flex:1; }
   .qbtn:hover{ background:#f1f5f9; }
-  .qbtn .qico{ width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; }
+  .qbtn .qico{ width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:19px; position:relative; }
   .qbtn .qlbl{ font-size:12px; font-weight:600; color:#475569; white-space:nowrap; }
   .qbtn .qbadge{ position:absolute; top:-5px; right:-5px; background:var(--rojo); color:#fff; font-size:10px; font-weight:800; min-width:18px; height:18px; padding:0 4px; border-radius:99px; display:flex; align-items:center; justify-content:center; }
-  .dkpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(186px,1fr)); gap:14px; margin-bottom:18px; }
-  .dkpi{ background:#fff; border:1px solid var(--bord); border-left:4px solid #64748b; border-radius:12px; padding:15px 18px; box-shadow:var(--card-shadow); }
+  .dkpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+  .dkpi{ background:#fff; border:1px solid var(--bord); border-left:4px solid #64748b; border-radius:12px; padding:12px 15px; box-shadow:var(--card-shadow); }
   .dkpi.kl{ cursor:pointer; transition:.12s; } .dkpi.kl:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(37,99,235,.10); }
   .dkpi-lbl{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; }
-  .dkpi-n{ font-size:30px; font-weight:800; line-height:1.1; margin-top:3px; }
+  .dkpi-n{ font-size:26px; font-weight:800; line-height:1.1; margin-top:2px; }
   .dkpi-sub{ font-size:11px; color:#94a3b8; margin-top:6px; }
   .dkpi-link{ font-size:11px; font-weight:700; margin-top:2px; }
   .dash-sec{ font-size:13px; font-weight:800; color:#334155; margin:22px 0 10px; text-transform:uppercase; letter-spacing:.5px; }
@@ -110,7 +108,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.36</div>
+    <div class="marca-sub">Gestión · v0.37</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -154,10 +152,21 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.36';
+  var VER='v0.37';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
+  function sbCountEst(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:Object.assign({},H,{'Prefer':'count=estimated','Range':'0-0'})}).then(function(r){ var cr=r.headers.get('content-range')||'/0'; return parseInt(cr.split('/')[1])||0; }); }
+  var _leafletLoading=false, _leafletCbs=[];
+  function ensureLeaflet(cb){
+    if(window.L){ cb(); return; }
+    _leafletCbs.push(cb); if(_leafletLoading) return; _leafletLoading=true;
+    var css=document.createElement('link'); css.rel='stylesheet'; css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+    var s=document.createElement('script'); s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    s.onload=function(){ _leafletLoading=false; _leafletCbs.forEach(function(f){f();}); _leafletCbs=[]; };
+    s.onerror=function(){ _leafletLoading=false; _leafletCbs=[]; };
+    document.head.appendChild(s);
+  }
   function sbCount(path){
     return fetch(SB_URL+'/rest/v1/'+path,{headers:Object.assign({},H,{'Prefer':'count=exact','Range':'0-0'})})
       .then(function(r){ var cr=r.headers.get('content-range')||'/0'; return parseInt(cr.split('/')[1])||0; });
@@ -241,21 +250,18 @@
   function vDashboard(){
     loading();
     Promise.all([
-      sbCount('clientes?select=id'), sbCount('clientes?estado=eq.activo&select=id'),
-      sbCount('clientes?estado=eq.bloqueado&select=id'), sbCount('clientes?estado=eq.baja&select=id'),
-      sbCount('clientes?empresa=eq.'+encodeURIComponent('FG Conexiones')+'&select=id'),
-      sbCount('clientes?empresa=eq.NOR-TEL&select=id'), sbCount('clientes?empresa=eq.Nexa&select=id'),
-      sbCount('solicitudes_alta?estado=eq.pendiente&select=id'),
-      sbCount('ordenes_trabajo?estado=eq.ASIGNADA&select=id'), sbCount('ordenes_trabajo?estado=eq.EN_CURSO&select=id'),
-      sbCount('ordenes_trabajo?estado=eq.FINALIZADA&select=id'),
-      sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id'),
       sbGet('ordenes_trabajo?estado=eq.PENDIENTE&select=tipo,created_at&limit=2000'),
-      sbCount('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id')
+      sbCount('ordenes_trabajo?estado=eq.EN_CURSO&select=id'),
+      sbCount('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id'),
+      sbCount('ordenes_trabajo?estado=eq.FINALIZADA&select=id'),
+      sbCount('solicitudes_alta?estado=eq.pendiente&select=id'),
+      sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id')
     ]).then(function(c){
-      var pend=Array.isArray(c[12])?c[12]:[], totalPend=pend.length;
+      var pend=Array.isArray(c[0])?c[0]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var now=new Date(), nombre=(USER.nombre||'').split(' ')[0], aValidar=c[13]||0;
+      var enCurso=c[1]||0, aValidar=c[2]||0, finalizadas=c[3]||0, solic=c[4]||0, faltaIsp=c[5]||0;
+      var now=new Date(), nombre=(USER.nombre||'').split(' ')[0];
       var qa=[
         ['🛠️','Nueva OT','nuevaOT','#dbeafe'],['📋','Órdenes','nav|ordenes','#eef2f7'],['✅','Validar','val','#dcfce7'],
         ['📥','Solicitudes','nav|solicitudes','#cffafe'],['👥','Clientes','nav|clientes','#e0e7ff'],['📦','Depósito','nav|deposito','#ffedd5'],
@@ -265,21 +271,15 @@
       var tipos=[['INSTALACION','🔧 Instalaciones'],['REPARACION','🛠️ Reparac./Servis'],['DESCONEXION','🔌 Desconexiones'],['RETIRO_EQUIPOS','📦 Retiros'],['RECONEXION','🔁 Reconexiones'],['OTRO','⚙️ Otros']];
       function pct(x){ return Math.round(x/(totalPend||1)*100)+'% del total'; }
       view.innerHTML=
-        '<div class="dhead"><div class="dhead-logo">NX</div><div><div class="dhead-eyebrow">Nexa SAS · Inicio</div><div class="dhead-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dhead-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Posadas, Misiones</div></div><div class="dhead-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
+        '<div class="dhead"><div class="dhead-logo">NX</div><div style="flex:1"><div class="dhead-eyebrow">Nexa SAS · Inicio</div><div class="dhead-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dhead-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Posadas, Misiones</div></div><div class="dhead-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
         +'<div class="qbar">'+qa.map(function(q){ var bdg=(q[2]==='val'&&aValidar>0)?'<span class="qbadge">'+aValidar+'</span>':''; return '<div class="qbtn" data-act="'+esc(q[2])+'"><div class="qico" style="background:'+q[3]+'">'+q[0]+bdg+'</div><div class="qlbl">'+q[1]+'</div></div>'; }).join('')+'</div>'
         +'<div class="dkpis">'
           +dkpi(totalPend,'Pendientes','OTs sin asignar','amber','ot|PENDIENTE')
-          +dkpi(c[9],'En curso','OTs en proceso','blue','ot|EN_CURSO')
+          +dkpi(enCurso,'En curso','OTs en proceso','blue','ot|EN_CURSO')
           +dkpi(aValidar,'A validar','cierres del técnico','cyan','val')
-          +dkpi(c[10],'Finalizadas','validadas','green','ot|FINALIZADA')
-          +dkpi(c[11],'Falta ISPcube','clientes sin código','red','isp')
-        +'</div>'
-        +'<div class="dkpis">'
-          +dkpi(c[0],'Clientes','total','blue','cl')
-          +dkpi(c[1],'Activos','','green','cl|estado=activo')
-          +dkpi(c[2],'Bloqueados','','red','cl|estado=bloqueado')
-          +dkpi(c[3],'Baja','','gray','cl|estado=baja')
-          +dkpi(c[7],'Solicitudes','pendientes','amber','sol')
+          +dkpi(finalizadas,'Finalizadas','validadas','green','ot|FINALIZADA')
+          +dkpi(solic,'Solicitudes','pendientes','amber','sol')
+          +dkpi(faltaIsp,'Falta ISPcube','clientes sin código','red','isp')
         +'</div>'
         +'<div class="dash-sec">OT pendientes por tipo</div><div class="dkpis">'
           +tipos.map(function(t){ return dkpi(porTipo[t[0]]||0,t[1],'','gray','ot|PENDIENTE|'+t[0]); }).join('')
@@ -317,9 +317,18 @@
 
   // ── CLIENTES ──
   var clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0 };
+  var _clStats=null;
+  function cargarStatsCl(){
+    var cont=document.getElementById('cl-stats'); if(!cont) return;
+    function render(c){ cont.innerHTML=dkpi(c[0],'Clientes','total','blue','')+dkpi(c[1],'Activos','','green','cl|estado=activo')+dkpi(c[2],'Bloqueados','','red','cl|estado=bloqueado')+dkpi(c[3],'Baja','','gray','cl|estado=baja')+dkpi(c[4],'Desconectados','','amber','cl|estado=desconectado');
+      Array.prototype.forEach.call(cont.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); }); }
+    if(_clStats){ render(_clStats); return; }
+    Promise.all([ sbCountEst('clientes?select=id'), sbCount('clientes?estado=eq.activo&select=id'), sbCount('clientes?estado=eq.bloqueado&select=id'), sbCount('clientes?estado=eq.baja&select=id'), sbCount('clientes?estado=eq.desconectado&select=id') ]).then(function(c){ _clStats=c; render(c); });
+  }
   function vClientes(){
     view.innerHTML =
       '<h1>Clientes</h1><p class="sub">Base completa de Nexa.</p>'
+      +'<div id="cl-stats" class="dkpis" style="margin-bottom:14px"></div>'
       +'<div class="toolbar">'
       +'<input id="cl-q" placeholder="Buscar nombre, DNI, N° cliente o N° ISPcube…" value="'+esc(clState.q)+'" style="min-width:260px">'
       +'<select id="cl-estado"><option value="">Todos los estados</option>'+opt(['activo','bloqueado','baja','suspendido','moroso','prospecto'],clState.estado)+'</select>'
@@ -331,7 +340,7 @@
     document.getElementById('cl-buscar').addEventListener('click',function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); });
     document.getElementById('cl-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leerFiltrosCl(); clState.page=0; cargarClientes(); } });
     document.getElementById('cl-pend').addEventListener('click',function(){ leerFiltrosCl(); clState.pend=!clState.pend; clState.page=0; vClientes(); });
-    cargarClientes();
+    cargarStatsCl(); cargarClientes();
   }
   function leerFiltrosCl(){
     clState.q=document.getElementById('cl-q').value.trim();
@@ -909,7 +918,8 @@
   var _MAP=null,_GEOP=[],_GEON=[],_CLI=[],_napOcc={},_napCli={},_lZonas=null,_lNaps=null,_lCli=null,_cbMk=null,_cliMarkers=[];
   function _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
   function radCli(){ var z=_MAP?_MAP.getZoom():13; return Math.max(2, Math.min(5, 2 + Math.max(0, z-15)*1.0)); } // chico a nivel ciudad/barrio, crece suave solo al acercar mucho
-  function vCobertura(){
+  function vCobertura(){ loading(); ensureLeaflet(_coberturaRender); }
+  function _coberturaRender(){
     view.innerHTML='<h1>Cobertura / Red</h1><p class="sub">Zonas, cajas NAP (con ocupación) y clientes. Chequeá la cobertura de un domicilio.</p>'
       +'<div class="toolbar">'
       +'<input id="cb-q" placeholder="Pegá &quot;lat, lng&quot; o N° de cliente" style="min-width:260px">'
