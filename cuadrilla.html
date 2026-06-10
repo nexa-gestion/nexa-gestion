@@ -103,12 +103,12 @@
   }
 
   // ── LISTA DE OTs ──
-  function top(titulo, sub){
+  function topBar(titulo, sub){
     return '<div class="top"><div><div class="t">'+esc(titulo)+'</div>'+(sub?'<div class="s">'+esc(sub)+'</div>':'')+'</div><a id="top-salir">Salir</a></div>';
   }
   var ESTADOS_ACT=['PENDIENTE','ASIGNADA','EN_CURSO'];
   function vLista(){
-    app.innerHTML=top('Mis órdenes', CUAD.nombre)+'<div class="wrap">'
+    app.innerHTML=topBar('Mis órdenes', CUAD.nombre)+'<div class="wrap">'
       +'<div class="tabs" id="ls-tabs">'
       +[['activas','Por hacer'],['curso','En curso'],['cerradas','Cerradas']].map(function(t){return '<button data-f="'+t[0]+'" class="'+(listState.filtro===t[0]?'on':'')+'">'+t[1]+'</button>';}).join('')
       +'</div><div id="ls-cont"><div class="center"><div class="spin"></div></div></div></div>';
@@ -146,7 +146,7 @@
   // ── DETALLE OT (cierre = próxima tanda) ──
   function vDetalle(o){
     var cli=o.clientes||{}; var nom=((cli.nombre||'')+' '+(cli.apellido||'')).trim()||'(obra de red)';
-    app.innerHTML=top('OT N° '+o.numero, o.tipo)+'<div class="wrap">'
+    app.innerHTML=topBar('OT N° '+o.numero, o.tipo)+'<div class="wrap">'
       +'<div class="card"><div style="margin-bottom:8px">'+pillEstado(o.estado)+' · prioridad '+esc(o.prioridad||'NORMAL')+'</div>'
       +fila('Cliente',nom)
       +(cli.domicilio_full?fila('Domicilio',cli.domicilio_full):'')
