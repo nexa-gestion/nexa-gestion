@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.31</title>
+<title>Nexa · Gestión — v0.32</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.31</div>
+    <div class="marca-sub">Gestión · v0.32</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -131,7 +131,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.31';
+  var VER='v0.32';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -143,6 +143,9 @@
   function sbPatch(path,body){ return fetch(SB_URL+'/rest/v1/'+path,{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(body)}).then(function(r){return r.json();}); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2200); }
+  // Fecha en formato argentino DD-MM-AAAA (y con hora). Recibe ISO o YYYY-MM-DD.
+  function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10), p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
+  function fmtFechaHora(v){ if(!v) return '—'; var s=String(v), hm=s.substring(11,16); return fmtFecha(s)+(hm?(' '+hm):''); }
   function pill(estado){ return '<span class="pill p-'+esc(estado)+'">'+esc(estado)+'</span>'; }
 
   var USER=null, REF={ empresas:[], barrios:[], planes:[], cuadrillas:[], motivos:[], tiposTrab:[] };
@@ -348,13 +351,13 @@
   // ── SOLICITUDES ── (módulo aislado: lista + ficha editable + convertir/rechazar)
   function vSolicitudes(){
     loading();
-    sbGet('solicitudes_alta?estado=eq.pendiente&select=*&order=created_at.desc').then(function(d){
+    sbGet('solicitudes_alta?estado=eq.pendiente&select=*,planes(nombre)&order=created_at.desc').then(function(d){
       var h='<h1>Solicitudes de alta</h1><p class="sub">Pedidos del formulario público. Tocá una para revisar, editar y convertir.</p>';
       if(!d.length){ view.innerHTML=h+'<div class="center">No hay solicitudes pendientes. 🎉</div>'; return; }
-      h+='<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Teléfono</th><th>Barrio</th><th>Plan</th><th>Ubic.</th><th></th></tr></thead><tbody>';
+      h+='<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Teléfono</th><th>Barrio</th><th>Plan internet</th><th>TV</th><th>Fútbol</th><th>Ubic.</th><th></th></tr></thead><tbody>';
       d.forEach(function(s){
-        var fch=(s.created_at||'').substring(0,10);
-        h+='<tr data-id="'+s.id+'"><td>'+esc(fch)+'</td><td>'+esc(s.nombre||'')+' '+esc(s.apellido||'')+'<br><span class="muted">'+esc(s.empresa||'')+'</span></td><td>'+esc(s.telefono||'')+'</td><td>'+esc(s.barrio||'')+'</td><td>'+esc(s.plan_texto||'')+(s.tv_online?' +TV':'')+'</td><td>'+(s.lat?'📍':'—')+'</td><td><button class="btn btn-2" data-id="'+s.id+'">Ver / Gestionar</button></td></tr>';
+        var planNom = s.planes ? s.planes.nombre : (s.plan_texto||'—');
+        h+='<tr data-id="'+s.id+'"><td>'+esc(fmtFecha(s.created_at))+'</td><td>'+esc(s.nombre||'')+' '+esc(s.apellido||'')+'<br><span class="muted">'+esc(s.empresa||'')+'</span></td><td>'+esc(s.telefono||'')+'</td><td>'+esc(s.barrio||'')+'</td><td>'+esc(planNom)+'</td><td>'+(s.tv_online?'✓':'—')+'</td><td>'+(s.pack_futbol?'⚽':'—')+'</td><td>'+(s.lat?'📍':'—')+'</td><td><button class="btn btn-2" data-id="'+s.id+'">Ver / Gestionar</button></td></tr>';
       });
       h+='</tbody></table>'; view.innerHTML=h;
       function abrir(id){ fichaSolicitud(d.filter(function(x){return x.id==id;})[0]); }
@@ -384,7 +387,7 @@
     }
     var aviso=s.ya_es_cliente?'<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px;margin-top:8px;font-size:13px">⚠️ El solicitante dice que YA es cliente'+(s.numero_cliente_existente?(' (N° '+esc(s.numero_cliente_existente)+')'):'')+'. Verificá antes de crear uno nuevo.</div>':'';
     var h='<h2>Solicitud de '+esc(s.nombre||'')+' '+esc(s.apellido||'')+'</h2>'
-      +'<p class="muted">'+esc((s.created_at||'').substring(0,16).replace('T',' '))+' · origen: '+esc(s.origen||'—')+(s.plan_texto?(' · pidió: '+esc(s.plan_texto)):'')+'</p>'+aviso
+      +'<p class="muted">'+esc(fmtFechaHora(s.created_at))+' · origen: '+esc(s.origen||'—')+(s.plan_texto?(' · pidió: '+esc(s.plan_texto)):'')+'</p>'+aviso
       +'<div class="row"><div><label class="l">Nombre</label>'+inp('nombre',s.nombre)+'</div><div><label class="l">Apellido</label>'+inp('apellido',s.apellido)+'</div></div>'
       +'<div class="row"><div><label class="l">DNI</label>'+inp('doc_numero',s.doc_numero)+'</div><div><label class="l">Teléfono</label>'+inp('telefono',s.telefono)+'</div></div>'
       +'<div class="row"><div><label class="l">Tel. alternativo</label>'+inp('telefono_alt',s.telefono_alt)+'</div><div><label class="l">Email</label>'+inp('email',s.email)+'</div></div>'
@@ -466,7 +469,7 @@
       var h='<table><thead><tr><th>N° OT</th><th>Tipo</th><th>Cliente</th><th>Barrio</th><th>Cuadrilla</th><th>Agendada</th><th>Estado</th></tr></thead><tbody>';
       d.forEach(function(o){
         var cli=o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'—';
-        h+='<tr data-id="'+o.id+'"><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(cli)+'</td><td>'+esc(o.clientes?o.clientes.barrio||'':'')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+esc(o.fecha_agendada||'—')+'</td><td>'+pill(o.estado)+'</td></tr>';
+        h+='<tr data-id="'+o.id+'"><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(cli)+'</td><td>'+esc(o.clientes?o.clientes.barrio||'':'')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+esc(fmtFecha(o.fecha_agendada))+'</td><td>'+pill(o.estado)+'</td></tr>';
       });
       h+='</tbody></table>';
       var pages=Math.ceil(otState.total/otState.size)||1;
@@ -524,7 +527,7 @@
       modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+'</p>'
         +fr('Cliente',cli)+fr('Teléfono',o.clientes?o.clientes.telefono:'')+fr('Domicilio',o.clientes?o.clientes.domicilio_full:'')+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
-        +(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',o.fecha_agendada)
+        +(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))
         +'<label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select>'
         +'<div class="row"><div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
         +'<label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select>'
@@ -1249,7 +1252,7 @@
       if(!d.length){ cont.innerHTML='<div class="center">Todavía no hay movimientos de stock.</div>'; return; }
       var tip={INGRESO:'📦 Ingreso',ENTREGA_CUADRILLA:'🚚 A cuadrilla',CONSUMO_OT:'🔩 Consumo OT',DEVOLUCION:'↩️ Devolución',AJUSTE:'⚖️ Ajuste',EGRESO:'➖ Egreso'};
       var h='<p class="muted">Últimos 200 movimientos.</p><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Material</th><th>Cant.</th><th>Cuadrilla</th><th>Obs.</th></tr></thead><tbody>';
-      d.forEach(function(mv){ var f=(mv.created_at||'').substring(0,16).replace('T',' ');
+      d.forEach(function(mv){ var f=fmtFechaHora(mv.created_at);
         h+='<tr><td class="muted">'+esc(f)+'</td><td>'+esc(tip[mv.tipo]||mv.tipo)+'</td><td>'+esc(mv.catalogo_materiales?mv.catalogo_materiales.nombre:'')+'</td><td><b>'+esc(mv.cantidad)+'</b></td><td>'+esc(mv.cuadrillas?mv.cuadrillas.nombre:'—')+'</td><td class="muted">'+esc(mv.observaciones||'')+'</td></tr>'; });
       h+='</tbody></table>'; cont.innerHTML=h;
     });
