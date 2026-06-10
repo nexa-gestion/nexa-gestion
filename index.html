@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.38</title>
+<title>Nexa · Gestión — v0.39</title>
 <style>
   :root{ --pri:#2563eb; --pri-d:#1d4ed8; --gris:#64748b; --bg:#eef2f7; --card:#fff; --bord:rgba(15,23,42,.1); --border2:rgba(15,23,42,.06);
          --rojo:#dc2626; --ok:#16a34a; --warn:#d97706; --dark:#0f172a; --card-shadow:0 1px 3px rgba(15,23,42,.04),0 4px 12px rgba(15,23,42,.05); }
@@ -112,7 +112,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.38</div>
+    <div class="marca-sub">Gestión · v0.39</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -156,7 +156,19 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.38';
+  var VER='v0.40';
+  // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
+  var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
+  var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
+  function pedirSyncISP(btn){
+    if(!SYNC_PROXY){ toast('Falta configurar el proxy de sync (SYNC_PROXY).'); return; }
+    if(btn){ btn.disabled=true; btn.textContent='Actualizando…'; }
+    fetch(SYNC_PROXY+'?key='+encodeURIComponent(SYNC_KEY),{method:'POST'})
+      .then(function(r){ return r.json().catch(function(){return {ok:r.ok};}); })
+      .then(function(j){ if(j&&j.ok){ toast('🔄 Actualización iniciada · tarda ~1 min y se reflejan los cambios'); } else { toast('No se pudo iniciar la actualización'+(j&&j.error?': '+String(j.error).slice(0,60):'')); } })
+      .catch(function(){ toast('No se pudo conectar con el proxy de sync'); })
+      .then(function(){ if(btn){ btn.disabled=false; btn.textContent='🔄 Actualizar de ISPcube'; } });
+  }
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -178,6 +190,32 @@
   function sbPost(path,body){ return fetch(SB_URL+'/rest/v1/'+path,{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(body)}).then(function(r){return r.json();}); }
   function sbPatch(path,body){ return fetch(SB_URL+'/rest/v1/'+path,{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(body)}).then(function(r){return r.json();}); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  // ===== Tabla genérica reutilizable: orden por columna (click en cabecera) + selector ⚙️ de columnas con memoria =====
+  // cols: [{k, t, def(false=oculta por defecto), sort:function(row)->valor (omitir => no ordenable), r:function(row)->html}]
+  // opts: { key (clave única p/ memoria), onRow:function(row,ev), rowStyle:function(row)->css, note:'texto al pie' }
+  var _grid={};
+  function gridRender(cont, cols, rows, opts){
+    if(!cont) return; opts=opts||{}; var key=opts.key||'g', lsk='gcols_'+key;
+    var st=_grid[key]||(_grid[key]={by:null,dir:'asc'});
+    function vis(){ var v; try{ v=JSON.parse(localStorage.getItem(lsk)||'null'); }catch(e){} if(!v||!v.length) v=cols.filter(function(c){return c.def!==false;}).map(function(c){return c.k;}); return v; }
+    function isVis(k){ return vis().indexOf(k)>=0; }
+    function toggle(k){ var v=vis(),i=v.indexOf(k); if(i>=0)v.splice(i,1); else v.push(k); try{localStorage.setItem(lsk,JSON.stringify(v));}catch(e){} draw(); }
+    function sorted(){ if(!st.by) return rows; var c=cols.filter(function(x){return x.k===st.by;})[0]; if(!c||!c.sort) return rows; var a=rows.slice(); a.sort(function(x,y){ var vx=c.sort(x),vy=c.sort(y); if(vx==null)vx=''; if(vy==null)vy=''; if(typeof vx==='number'&&typeof vy==='number')return st.dir==='asc'?vx-vy:vy-vx; vx=(''+vx).toLowerCase(); vy=(''+vy).toLowerCase(); return vx<vy?(st.dir==='asc'?-1:1):(vx>vy?(st.dir==='asc'?1:-1):0); }); return a; }
+    function draw(){
+      var cs=cols.filter(function(c){return isVis(c.k);}), rs=sorted();
+      var h='<div class="toolbar" style="justify-content:flex-end;margin-bottom:8px"><div style="position:relative"><button class="btn btn-2" id="'+key+'-cb">⚙️ Columnas</button><div id="'+key+'-cm" class="colmenu" style="display:none"></div></div></div>';
+      h+='<table><thead><tr>'+cs.map(function(c){ var act=st.by===c.k, ar=act?(st.dir==='asc'?' ▲':' ▼'):(c.sort?' ⇅':''); return '<th'+(c.sort?' class="thsort" data-k="'+c.k+'" style="cursor:pointer;user-select:none"':'')+'>'+esc(c.t)+'<span style="color:#94a3b8;font-size:10px">'+ar+'</span></th>'; }).join('')+'</tr></thead><tbody>';
+      if(!rs.length){ h+='<tr><td colspan="'+cs.length+'" class="muted" style="text-align:center;padding:18px">Sin resultados.</td></tr>'; }
+      rs.forEach(function(row,i){ var stl=(opts.onRow?'cursor:pointer;':'')+(opts.rowStyle?opts.rowStyle(row):''); h+='<tr data-i="'+i+'"'+(stl?' style="'+stl+'"':'')+'>'+cs.map(function(c){ return '<td>'+c.r(row)+'</td>'; }).join('')+'</tr>'; });
+      h+='</tbody></table>'+(opts.note?('<div class="muted" style="margin-top:8px">'+opts.note+'</div>'):'');
+      cont.innerHTML=h;
+      Array.prototype.forEach.call(cont.querySelectorAll('.thsort'),function(th){ th.addEventListener('click',function(){ var k=th.getAttribute('data-k'); if(st.by===k)st.dir=st.dir==='asc'?'desc':'asc'; else{st.by=k;st.dir='asc';} draw(); }); });
+      if(opts.onRow) Array.prototype.forEach.call(cont.querySelectorAll('tr[data-i]'),function(tr){ tr.addEventListener('click',function(ev){ if(ev.target.closest('button,a,input,select'))return; opts.onRow(rs[+tr.getAttribute('data-i')],ev); }); });
+      var cb=document.getElementById(key+'-cb'), cm=document.getElementById(key+'-cm');
+      if(cb&&cm){ cb.addEventListener('click',function(e){ e.stopPropagation(); if(cm.style.display==='none'){ cm.innerHTML=cols.map(function(c){ return '<label><input type="checkbox" data-col="'+c.k+'"'+(isVis(c.k)?' checked':'')+'> '+esc(c.t)+'</label>'; }).join(''); cm.style.display='block'; Array.prototype.forEach.call(cm.querySelectorAll('input[data-col]'),function(ch){ ch.addEventListener('change',function(){ toggle(ch.getAttribute('data-col')); }); }); var cl=function(ev){ if(!ev.target.closest('#'+key+'-cm')&&!ev.target.closest('#'+key+'-cb')){ cm.style.display='none'; document.removeEventListener('click',cl);} }; document.addEventListener('click',cl); } else cm.style.display='none'; }); }
+    }
+    draw();
+  }
   function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2200); }
   // Fecha en formato argentino DD-MM-AAAA (y con hora). Recibe ISO o YYYY-MM-DD.
   function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10), p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
@@ -311,11 +349,16 @@
       d=Array.isArray(d)?d:[];
       var h='<h1>✅ Validación</h1><p class="sub">Cierres de los técnicos pendientes de aprobar. Tocá una OT para revisar el cierre y validar.</p>';
       if(!d.length){ view.innerHTML=h+'<div class="center">No hay cierres pendientes de validar. 🎉</div>'; return; }
-      h+='<table><thead><tr><th>N° OT</th><th>Tipo</th><th>Cliente</th><th>Barrio</th><th>Cuadrilla</th><th>Cerrada</th></tr></thead><tbody>';
-      d.forEach(function(o){ var cli=o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)';
-        h+='<tr data-id="'+o.id+'"><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(cli)+'</td><td>'+esc(o.clientes?o.clientes.barrio||'':'')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+esc(fmtFechaHora(o.fin_tec_at))+'</td></tr>'; });
-      h+='</tbody></table><div class="muted" style="margin-top:8px">'+d.length+' OT a validar</div>'; view.innerHTML=h;
-      Array.prototype.forEach.call(view.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ detalleOT(tr.getAttribute('data-id')); }); });
+      view.innerHTML=h+'<div id="val-tabla"></div>';
+      var cols=[
+        {k:'numero',t:'N° OT',sort:function(o){return o.numero;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
+        {k:'tipo',t:'Tipo',sort:function(o){return o.tipo;},r:function(o){return esc(o.tipo);}},
+        {k:'cliente',t:'Cliente',sort:function(o){return o.clientes?(o.clientes.nombre||''):'';},r:function(o){return esc(o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)');}},
+        {k:'barrio',t:'Barrio',sort:function(o){return o.clientes?(o.clientes.barrio||''):'';},r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
+        {k:'cuadrilla',t:'Cuadrilla',sort:function(o){return o.cuadrillas?o.cuadrillas.nombre:'';},r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
+        {k:'cerrada',t:'Cerrada',sort:function(o){return o.fin_tec_at||'';},r:function(o){return esc(fmtFechaHora(o.fin_tec_at));}}
+      ];
+      gridRender(document.getElementById('val-tabla'),cols,d,{key:'val',note:d.length+' OT a validar',onRow:function(o){ detalleOT(o.id); }});
     });
   }
 
@@ -361,10 +404,12 @@
       +'<select id="cl-barrio"><option value="">Todos los barrios</option>'+opt(REF.barrios.map(function(b){return b.nombre;}),clState.barrio)+'</select>'
       +'<button class="btn btn-pri" id="cl-buscar">Buscar</button>'
       +'<button class="btn '+(clState.pend?'btn-x':'btn-2')+'" id="cl-pend" title="Solo clientes que faltan cargar en ISPcube">⚠️ Falta en ISPcube'+(clState.pend?' ✓':'')+'</button>'
+      +'<button class="btn btn-2" id="cl-sync" title="Traer estado/deuda/caja/puerto/precinto de ISPcube ahora">🔄 Actualizar de ISPcube</button>'
       +'</div><div id="cl-tabla"></div>';
     document.getElementById('cl-buscar').addEventListener('click',function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); });
     document.getElementById('cl-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leerFiltrosCl(); clState.page=0; cargarClientes(); } });
     document.getElementById('cl-pend').addEventListener('click',function(){ leerFiltrosCl(); clState.pend=!clState.pend; clState.page=0; vClientes(); });
+    document.getElementById('cl-sync').addEventListener('click',function(){ pedirSyncISP(this); });
     cargarStatsCl(); cargarClientes();
   }
   function leerFiltrosCl(){
@@ -436,13 +481,38 @@
   function clDeleteSel(){
     var ids=Object.keys(clState.sel).filter(function(k){return clState.sel[k];});
     if(!ids.length) return;
-    modal('<h2>Eliminar '+ids.length+' cliente(s)</h2><p class="muted">Se borran de Nexa. Los que tengan OTs u otros datos asociados no se podrán borrar (en ese caso, mejor pasarlos a estado "baja").</p><div id="cd-err" style="color:var(--rojo);font-size:13px;min-height:16px"></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-x" id="cd-ok">🗑️ Eliminar definitivamente</button><button class="btn btn-2" id="cd-no">Cancelar</button></div>');
-    document.getElementById('cd-no').addEventListener('click',cerrarModal);
-    document.getElementById('cd-ok').addEventListener('click',function(){
-      var btn=this; btn.disabled=true; btn.textContent='Eliminando…'; var ok=0,fail=0;
-      Promise.all(ids.map(function(id){ return fetch(SB_URL+'/rest/v1/clientes?id=eq.'+id,{method:'DELETE',headers:H}).then(function(r){ if(r.ok)ok++; else fail++; }).catch(function(){fail++;}); })).then(function(){
-        ids.forEach(function(id){ delete clState.sel[id]; });
-        cerrarModal(); toast(ok+' eliminado(s)'+(fail?(' · '+fail+' no se pudo (tienen datos asociados)'):' ✓')); _clStats=null; cargarStatsCl(); cargarClientes();
+    var inq='in.('+ids.join(',')+')';
+    modal('<h2>Eliminar '+ids.length+' cliente(s)</h2><p class="muted">Analizando datos asociados…</p>');
+    Promise.all([
+      sbCount('ordenes_trabajo?cliente_id='+inq+'&select=id'),
+      sbCount('solicitudes_alta?cliente_id='+inq+'&select=id'),
+      sbCount('cuentas_tv?cliente_id='+inq+'&select=id'),
+      sbCount('desconexiones?cliente_id='+inq+'&select=id')
+    ]).then(function(c){
+      var ot=c[0],so=c[1],tv=c[2],dc=c[3], dep=[];
+      if(ot) dep.push(ot+' orden(es) de trabajo');
+      if(so) dep.push(so+' solicitud(es) de alta');
+      if(dc) dep.push(dc+' desconexión(es)');
+      var aviso = dep.length
+        ? '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px;margin:8px 0"><div style="font-weight:700;color:#991b1b">⚠️ Estos clientes tienen datos asociados que también se borrarán:</div><ul style="margin:6px 0 0 18px;color:#7f1d1d">'+dep.map(function(d){return '<li>'+d+'</li>';}).join('')+'</ul></div>'
+        : '<p class="muted">No tienen OTs ni solicitudes asociadas.</p>';
+      var tvNote = tv ? '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;margin:8px 0;color:#1e40af">📺 '+tv+' cuenta(s) de TV se van a <b>desvincular</b> (vuelven a DISPONIBLE para reusar, no se borran).</div>' : '';
+      modal('<h2>Eliminar '+ids.length+' cliente(s)</h2>'+aviso+tvNote+'<div id="cd-err" style="color:var(--rojo);font-size:13px;min-height:16px"></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-x" id="cd-ok">🗑️ Eliminar definitivamente</button><button class="btn btn-2" id="cd-no">Cancelar</button></div>');
+      document.getElementById('cd-no').addEventListener('click',cerrarModal);
+      document.getElementById('cd-ok').addEventListener('click',function(){
+        var btn=this; btn.disabled=true; btn.textContent='Eliminando…'; var ok=0,fail=0;
+        function delC(id){
+          return fetch(SB_URL+'/rest/v1/ordenes_trabajo?cliente_id=eq.'+id,{method:'DELETE',headers:H})
+            .then(function(){ return fetch(SB_URL+'/rest/v1/solicitudes_alta?cliente_id=eq.'+id,{method:'DELETE',headers:H}); })
+            .then(function(){ return fetch(SB_URL+'/rest/v1/desconexiones?cliente_id=eq.'+id,{method:'DELETE',headers:H}); })
+            .then(function(){ return fetch(SB_URL+'/rest/v1/cuentas_tv?cliente_id=eq.'+id,{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json'}),body:JSON.stringify({estado:'DISPONIBLE',cliente_id:null,fecha_baja:null})}); })
+            .then(function(){ return fetch(SB_URL+'/rest/v1/clientes?id=eq.'+id,{method:'DELETE',headers:H}); })
+            .then(function(r){ if(r.ok)ok++; else fail++; }).catch(function(){fail++;});
+        }
+        Promise.all(ids.map(delC)).then(function(){
+          ids.forEach(function(id){ delete clState.sel[id]; });
+          cerrarModal(); toast(ok+' eliminado(s)'+(fail?(' · '+fail+' no se pudo'):' ✓')); _clStats=null; cargarStatsCl(); cargarClientes();
+        });
       });
     });
   }
@@ -474,7 +544,8 @@
       var ispSave=document.getElementById('f-isp-save');
       if(ispSave) ispSave.addEventListener('click',function(){
         var val=document.getElementById('f-isp').value.trim(); if(!val){ return; }
-        sbPatch('clientes?id=eq.'+c.id,{ codigo_ispcube:val }).then(function(){ cerrarModal(); toast('Cliente marcado como cargado en ISPcube ✓'); cargarClientes(); });
+        var code=/^\d+$/.test(val)?('000000'+val).slice(-6):val;   // mismo formato que el sync (6 dígitos)
+        sbPatch('clientes?id=eq.'+c.id,{ codigo_ispcube:code }).then(function(){ cerrarModal(); toast('Cliente marcado como cargado en ISPcube ✓'); cargarClientes(); });
       });
     });
   }
@@ -485,15 +556,19 @@
     sbGet('solicitudes_alta?estado=eq.pendiente&select=*,planes(nombre)&order=created_at.desc').then(function(d){
       var h='<h1>Solicitudes de alta</h1><p class="sub">Pedidos del formulario público. Tocá una para revisar, editar y convertir.</p>';
       if(!d.length){ view.innerHTML=h+'<div class="center">No hay solicitudes pendientes. 🎉</div>'; return; }
-      h+='<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Teléfono</th><th>Barrio</th><th>Plan internet</th><th>TV</th><th>Fútbol</th><th>Ubic.</th><th></th></tr></thead><tbody>';
-      d.forEach(function(s){
-        var planNom = s.planes ? s.planes.nombre : (s.plan_texto||'—');
-        h+='<tr data-id="'+s.id+'"><td>'+esc(fmtFecha(s.created_at))+'</td><td>'+esc(s.nombre||'')+' '+esc(s.apellido||'')+'<br><span class="muted">'+esc(s.empresa||'')+'</span></td><td>'+esc(s.telefono||'')+'</td><td>'+esc(s.barrio||'')+'</td><td>'+esc(planNom)+'</td><td>'+(s.tv_online?'✓':'—')+'</td><td>'+(s.pack_futbol?'⚽':'—')+'</td><td>'+(s.lat?'📍':'—')+'</td><td><button class="btn btn-2" data-id="'+s.id+'">Ver / Gestionar</button></td></tr>';
-      });
-      h+='</tbody></table>'; view.innerHTML=h;
-      function abrir(id){ fichaSolicitud(d.filter(function(x){return x.id==id;})[0]); }
-      Array.prototype.forEach.call(view.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(e){ if(e.target.tagName!=='BUTTON') abrir(tr.getAttribute('data-id')); }); });
-      Array.prototype.forEach.call(view.querySelectorAll('button[data-id]'),function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); abrir(b.getAttribute('data-id')); }); });
+      view.innerHTML=h+'<div id="sol-tabla"></div>';
+      var cols=[
+        {k:'fecha',t:'Fecha',sort:function(s){return s.created_at||'';},r:function(s){return esc(fmtFecha(s.created_at));}},
+        {k:'nombre',t:'Nombre',sort:function(s){return (s.nombre||'')+(s.apellido||'');},r:function(s){return esc((s.nombre||'')+' '+(s.apellido||''))+'<br><span class="muted">'+esc(s.empresa||'')+'</span>';}},
+        {k:'telefono',t:'Teléfono',sort:function(s){return s.telefono||'';},r:function(s){return esc(s.telefono||'');}},
+        {k:'barrio',t:'Barrio',sort:function(s){return s.barrio||'';},r:function(s){return esc(s.barrio||'');}},
+        {k:'plan',t:'Plan internet',sort:function(s){return s.planes?s.planes.nombre:(s.plan_texto||'');},r:function(s){return esc(s.planes?s.planes.nombre:(s.plan_texto||'—'));}},
+        {k:'tv',t:'TV',sort:function(s){return s.tv_online?1:0;},r:function(s){return s.tv_online?'✓':'—';}},
+        {k:'futbol',t:'Fútbol',sort:function(s){return s.pack_futbol?1:0;},r:function(s){return s.pack_futbol?'⚽':'—';}},
+        {k:'ubic',t:'Ubic.',sort:function(s){return s.lat?1:0;},r:function(s){return s.lat?'📍':'—';}},
+        {k:'gestionar',t:'',sort:null,r:function(s){return '<span class="muted" style="font-size:12px">Ver / Gestionar ›</span>';}}
+      ];
+      gridRender(document.getElementById('sol-tabla'),cols,d,{key:'sol',onRow:function(s){ fichaSolicitud(s); }});
     });
   }
   // Ficha editable de una solicitud (corroborar/modificar antes de convertir)
@@ -575,7 +650,23 @@
   }
 
   // ── ORDENES ──
-  var otState={ estado:'', tipo:'', page:0, size:50, total:0 };
+  var otState={ estado:'', tipo:'', page:0, size:50, total:0, orderBy:'created_at', orderDir:'desc', cols:null };
+  var OT_COLS=[
+    {k:'numero',t:'N° OT',ord:'numero',r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
+    {k:'tipo',t:'Tipo',ord:'tipo',r:function(o){return esc(o.tipo);}},
+    {k:'cliente',t:'Cliente',ord:null,r:function(o){return esc(o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'—');}},
+    {k:'barrio',t:'Barrio',ord:null,r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
+    {k:'cuadrilla',t:'Cuadrilla',ord:null,r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
+    {k:'prioridad',t:'Prioridad',ord:'prioridad',def:false,r:function(o){return esc(o.prioridad||'');}},
+    {k:'agendada',t:'Agendada',ord:'fecha_agendada',r:function(o){return esc(fmtFecha(o.fecha_agendada));}},
+    {k:'creada',t:'Creada',ord:'created_at',def:false,r:function(o){return esc(fmtFecha(o.created_at));}},
+    {k:'estado',t:'Estado',ord:'estado',r:function(o){return pill(o.estado);}}
+  ];
+  var OT_COLS_DEF=['numero','tipo','cliente','barrio','cuadrilla','agendada','estado'];
+  function otCols(){ if(!otState.cols){ try{ otState.cols=JSON.parse(localStorage.getItem('ot_cols')||'null'); }catch(e){} if(!otState.cols||!otState.cols.length) otState.cols=OT_COLS_DEF.slice(); } return otState.cols; }
+  function otColVis(k){ return otCols().indexOf(k)>=0; }
+  function otToggleCol(k){ var v=otCols(),i=v.indexOf(k); if(i>=0)v.splice(i,1); else v.push(k); try{localStorage.setItem('ot_cols',JSON.stringify(v));}catch(e){} cargarOT(); }
+  function otSort(ord){ if(!ord)return; if(otState.orderBy===ord)otState.orderDir=otState.orderDir==='asc'?'desc':'asc'; else{otState.orderBy=ord;otState.orderDir='asc';} otState.page=0; cargarOT(); }
   function vOrdenes(){
     view.innerHTML='<h1>Órdenes de trabajo</h1><p class="sub">Generación y seguimiento.</p>'
       +'<div class="toolbar">'
@@ -590,27 +681,31 @@
   }
   function cargarOT(){
     var cont=document.getElementById('ot-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,clientes(numero_cliente,nombre,apellido,barrio),cuadrillas(nombre)&order=created_at.desc';
+    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,clientes(numero_cliente,nombre,apellido,barrio),cuadrillas(nombre)&order='+(otState.orderBy||'created_at')+'.'+(otState.orderDir||'desc');
     if(otState.estado) base+='&estado=eq.'+otState.estado;
     if(otState.tipo) base+='&tipo=eq.'+otState.tipo;
     sbCount('ordenes_trabajo?select=id'+(otState.estado?'&estado=eq.'+otState.estado:'')+(otState.tipo?'&tipo=eq.'+otState.tipo:'')).then(function(t){ otState.total=t; });
     fetch(SB_URL+'/rest/v1/ordenes_trabajo?'+base,{headers:Object.assign({},H,{'Range':(otState.page*otState.size)+'-'+((otState.page+1)*otState.size-1)})})
      .then(function(r){return r.json();}).then(function(d){
-      if(!Array.isArray(d)||!d.length){ cont.innerHTML='<div class="center">No hay órdenes'+(otState.estado?' en ese estado':'')+'.</div>'; return; }
-      var h='<table><thead><tr><th>N° OT</th><th>Tipo</th><th>Cliente</th><th>Barrio</th><th>Cuadrilla</th><th>Agendada</th><th>Estado</th></tr></thead><tbody>';
-      d.forEach(function(o){
-        var cli=o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'—';
-        h+='<tr data-id="'+o.id+'"><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(cli)+'</td><td>'+esc(o.clientes?o.clientes.barrio||'':'')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+esc(fmtFecha(o.fecha_agendada))+'</td><td>'+pill(o.estado)+'</td></tr>';
-      });
+      var cols=OT_COLS.filter(function(co){return otColVis(co.k);});
+      var top='<div class="toolbar" style="justify-content:flex-end;margin-bottom:8px"><div style="position:relative"><button class="btn btn-2" id="ot-cb">⚙️ Columnas</button><div id="ot-cm" class="colmenu" style="display:none"></div></div></div>';
+      if(!Array.isArray(d)||!d.length){ cont.innerHTML=top+'<div class="center">No hay órdenes'+(otState.estado?' en ese estado':'')+'.</div>'; wireOtCols(); return; }
+      var h=top+'<table><thead><tr>'+cols.map(function(co){ var act=co.ord&&otState.orderBy===co.ord, ar=act?(otState.orderDir==='asc'?' ▲':' ▼'):(co.ord?' ⇅':''); return '<th'+(co.ord?' class="thsort" data-ord="'+co.ord+'" style="cursor:pointer;user-select:none"':'')+'>'+esc(co.t)+'<span style="color:#94a3b8;font-size:10px">'+ar+'</span></th>'; }).join('')+'</tr></thead><tbody>';
+      d.forEach(function(o){ h+='<tr data-id="'+o.id+'" style="cursor:pointer">'+cols.map(function(co){return '<td>'+co.r(o)+'</td>';}).join('')+'</tr>'; });
       h+='</tbody></table>';
       var pages=Math.ceil(otState.total/otState.size)||1;
-      h+='<div class="pag"><button class="btn btn-2" id="ot-prev" '+(otState.page<=0?'disabled':'')+'>‹</button><span class="muted">Página '+(otState.page+1)+' de '+pages+' · '+otState.total+' OT</span><button class="btn btn-2" id="ot-next" '+(otState.page>=pages-1?'disabled':'')+'>›</button></div>';
-      cont.innerHTML=h;
+      h+='<div class="pag"><button class="btn btn-2" id="ot-prev" '+(otState.page<=0?'disabled':'')+'>‹</button><span class="muted">Página '+(otState.page+1)+' de '+pages+' · '+otState.total+' OT · orden: '+esc(otState.orderBy)+' '+otState.orderDir+'</span><button class="btn btn-2" id="ot-next" '+(otState.page>=pages-1?'disabled':'')+'>›</button></div>';
+      cont.innerHTML=h; wireOtCols();
       Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ detalleOT(tr.getAttribute('data-id')); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.thsort'),function(th){ th.addEventListener('click',function(){ otSort(th.getAttribute('data-ord')); }); });
       var pv=document.getElementById('ot-prev'),nx=document.getElementById('ot-next');
       if(pv)pv.addEventListener('click',function(){ if(otState.page>0){otState.page--;cargarOT();} });
       if(nx)nx.addEventListener('click',function(){ otState.page++; cargarOT(); });
     });
+  }
+  function wireOtCols(){
+    var cb=document.getElementById('ot-cb'), cm=document.getElementById('ot-cm'); if(!cb||!cm) return;
+    cb.addEventListener('click',function(e){ e.stopPropagation(); if(cm.style.display==='none'){ cm.innerHTML=OT_COLS.map(function(co){ return '<label><input type="checkbox" data-col="'+co.k+'"'+(otColVis(co.k)?' checked':'')+'> '+esc(co.t)+'</label>'; }).join(''); cm.style.display='block'; Array.prototype.forEach.call(cm.querySelectorAll('input[data-col]'),function(ch){ ch.addEventListener('change',function(){ otToggleCol(ch.getAttribute('data-col')); }); }); var cl=function(ev){ if(!ev.target.closest('#ot-cm')&&!ev.target.closest('#ot-cb')){ cm.style.display='none'; document.removeEventListener('click',cl);} }; document.addEventListener('click',cl); } else cm.style.display='none'; });
   }
   function nuevaOT(cliente){
     var buscar = cliente ? '<div class="ficha-row"><span class="k">Cliente</span><span class="v">N°'+esc(cliente.numero_cliente)+' · '+esc(cliente.nombre||'')+' '+esc(cliente.apellido||'')+'</span></div>'
@@ -1561,14 +1656,17 @@
     if(tvState.q){ var q=tvState.q.replace(/[(),]/g,' '); p+='&or=(usuario.ilike.*'+q+'*,mail.ilike.*'+q+'*,abonado_numero.ilike.*'+q+'*,cic.ilike.*'+q+'*)'; }
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">Sin cuentas.</div>'; return; }
-      var h='<table><thead><tr><th>Usuario</th><th>Mail</th><th>Fútbol</th><th>Cliente Nexa</th><th>Estado</th></tr></thead><tbody>';
-      d.forEach(function(t){ var cl;
-        if(t.clientes) cl='N°'+t.clientes.numero_cliente+' '+esc(t.clientes.nombre||'');
-        else if(t.nro_isp) cl='<span class="muted">ISP '+esc(t.nro_isp)+' · sin vincular</span>';
-        else cl='<span class="muted">—</span>';
-        h+='<tr data-id="'+t.id+'" style="cursor:pointer"><td style="font-family:monospace;font-size:12px"><b>'+esc(t.usuario||'—')+'</b></td><td>'+esc(t.mail||'')+'</td><td>'+(t.pack_futbol?'⚽':'—')+'</td><td>'+cl+'</td><td>'+tvPill(t.estado)+'</td></tr>'; });
-      h+='</tbody></table><div class="muted" style="margin-top:8px">'+d.length+' cuentas</div>'; cont.innerHTML=h;
-      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ fichaTV(d.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+      var cols=[
+        {k:'usuario',t:'Usuario',sort:function(t){return t.usuario||'';},r:function(t){return '<span style="font-family:monospace;font-size:12px"><b>'+esc(t.usuario||'—')+'</b></span>';}},
+        {k:'mail',t:'Mail',sort:function(t){return t.mail||'';},r:function(t){return esc(t.mail||'');}},
+        {k:'abonado',t:'Abonado',def:false,sort:function(t){return t.abonado_numero||'';},r:function(t){return esc(t.abonado_numero||'');}},
+        {k:'cic',t:'CIC',def:false,sort:function(t){return t.cic||'';},r:function(t){return esc(t.cic||'');}},
+        {k:'nro_isp',t:'N° ISP',def:false,sort:function(t){return t.nro_isp||'';},r:function(t){return esc(t.nro_isp||'');}},
+        {k:'futbol',t:'Fútbol',sort:function(t){return t.pack_futbol?1:0;},r:function(t){return t.pack_futbol?'⚽':'—';}},
+        {k:'cliente',t:'Cliente Nexa',sort:function(t){return t.clientes?t.clientes.numero_cliente:0;},r:function(t){ if(t.clientes)return 'N°'+esc(t.clientes.numero_cliente)+' '+esc(t.clientes.nombre||''); if(t.nro_isp)return '<span class="muted">ISP '+esc(t.nro_isp)+' · sin vincular</span>'; return '<span class="muted">—</span>'; }},
+        {k:'estado',t:'Estado',sort:function(t){return t.estado||'';},r:function(t){return tvPill(t.estado);}}
+      ];
+      gridRender(cont,cols,d,{key:'tv',note:d.length+' cuentas',onRow:function(t){ fichaTV(t); }});
     });
   }
   function genPin6(){ var s=''; for(var i=0;i<6;i++) s+=Math.floor(Math.random()*10); return s; }
@@ -1597,9 +1695,11 @@
       if(!v){ linkedCli=null; box.innerHTML='<span class="muted">Sin vincular a cliente nuestro.</span>'; return; }
       if(!/^\d+$/.test(v)){ linkedCli=null; box.innerHTML='<span style="color:var(--rojo)">No es un N° de cliente válido (solo números).</span>'; return; }
       box.innerHTML='<span class="muted">Buscando cliente…</span>';
-      sbGet('clientes?select=id,numero_cliente,nombre,apellido,tv_online&numero_cliente=eq.'+v+'&limit=1').then(function(d){
+      var pad=('000000'+v).slice(-6);
+      sbGet('clientes?select=id,numero_cliente,codigo_ispcube,nombre,apellido,tv_online&or=(numero_cliente.eq.'+v+',codigo_ispcube.eq.'+v+',codigo_ispcube.eq.'+pad+')&limit=1').then(function(d){
         if(Array.isArray(d)&&d.length){ var c=d[0]; linkedCli=c;
-          box.innerHTML='✅ Vincula a <b>'+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</b> (N°'+c.numero_cliente+') · '+(c.tv_online?'<span style="color:#15803d">TV marcado en su ficha</span>':'<span style="color:#b45309">TV NO marcado en su ficha</span>');
+          var ref=c.codigo_ispcube?('ISP '+c.codigo_ispcube+' · Nexa '+c.numero_cliente):('N°'+c.numero_cliente);
+          box.innerHTML='✅ Vincula a <b>'+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</b> ('+ref+') · '+(c.tv_online?'<span style="color:#15803d">TV marcado en su ficha</span>':'<span style="color:#b45309">TV NO marcado en su ficha</span>');
         } else { linkedCli=null; box.innerHTML='<span style="color:var(--rojo)">No existe cliente N°'+esc(v)+' en la base.</span>'; }
       }).catch(function(){ box.innerHTML='<span style="color:var(--rojo)">Error al buscar.</span>'; });
     }

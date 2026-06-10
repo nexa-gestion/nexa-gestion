@@ -141,7 +141,8 @@ def nuevo_cliente(c, planes, bemap, portmap=None):
     plan = c.get("plan_name")
     return {
         "codigo_ispcube": code or None,
-        "numero_cliente": int(code) if code.isdigit() else None,
+        # numero_cliente NO se setea: lo asigna la secuencia de Nexa (cliente_numero_seq, 900000+).
+        # El número de ISPcube vive aparte en codigo_ispcube. Así nunca chocan los dos espacios.
         "nombre": c.get("name"),
         "doc_numero": c.get("doc_number"),
         "telefono": (c.get("phones") or [{}])[0].get("number") if c.get("phones") else None,
