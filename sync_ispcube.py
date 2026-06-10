@@ -14,7 +14,7 @@
 #    ISPCUBE_BASE, ISPCUBE_APIKEY, ISPCUBE_CLIENTID, ISPCUBE_USER,
 #    ISPCUBE_PASS, SUPABASE_URL, SUPABASE_KEY     (DRY=1 = no escribe)
 # =====================================================================
-import os, json, urllib.request, urllib.parse, time
+import os, json, urllib.request, urllib.parse, time, re
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 BASE   = os.environ.get("ISPCUBE_BASE", "https://online22.ispcube.com/api")
@@ -124,6 +124,25 @@ def fetch_nexa():
         page += 1
     return out
 
+def _dni(s):
+    return re.sub(r"\D", "", str(s or "")) or None
+
+def fetch_prospectos():
+    # Prospectos/clientes SIN código ISPcube pero CON DNI → indexados por DNI.
+    # Sirve para "graduar" (vincular) en vez de insertar un duplicado de la persona.
+    out, page = {}, 0
+    while True:
+        r = urllib.request.Request(
+            SB_URL + "/rest/v1/clientes?select=id,doc_numero,nombre,domicilio_full,plan_id&codigo_ispcube=is.null&doc_numero=not.is.null&order=id.asc",
+            headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
+        chunk = json.load(urllib.request.urlopen(r, timeout=60))
+        for c in chunk:
+            k = _dni(c.get("doc_numero"))
+            if k and k not in out: out[k] = c   # si hay varios con el mismo DNI, el primero
+        if len(chunk) < 1000: break
+        page += 1
+    return out
+
 def plan_map():
     return {p["nombre"]: p["id"] for p in sb_get("planes?select=id,nombre")}
 
@@ -180,10 +199,11 @@ def main():
     isp = isp_list_all(token)
     portmap = isp_ftthboxes(token)
     nexa = fetch_nexa()
+    prospectos = fetch_prospectos()   # por DNI, para graduar en vez de duplicar
     planes = plan_map(); bemap = barrio_emp_map()
-    print(f"Nexa: {len(nexa)} clientes con codigo_ispcube")
+    print(f"Nexa: {len(nexa)} clientes con codigo_ispcube · {len(prospectos)} prospectos sin código (con DNI)")
 
-    updates, nuevos = [], []
+    updates, graduados, nuevos = [], [], []
     for c in isp:
         code = str(c.get("code") or "").strip()
         if not code: continue
@@ -198,9 +218,26 @@ def main():
                 if cx[f] and cx[f] != (cur.get(f) or None): upd[f] = cx[f]
             if upd: updates.append((cur["id"], upd))
         else:
-            nuevos.append(nuevo_cliente(c, planes, bemap, portmap))
+            # ¿hay un prospecto en Nexa con el mismo DNI? → graduarlo (vincular), no duplicar
+            dni = _dni(c.get("doc_number"))
+            pros = prospectos.pop(dni, None) if dni else None
+            if pros:
+                cx = conex(c, portmap)
+                upd = {"codigo_ispcube": code, "estado": est or "activo"}
+                if deu is not None: upd["deuda"] = deu
+                for f in ("caja_nap", "puerto", "precinto"):
+                    if cx[f]: upd[f] = cx[f]
+                # completa sólo lo que el prospecto tenga vacío (no pisa lo cargado a mano)
+                if not pros.get("nombre"): upd["nombre"] = c.get("name")
+                if not pros.get("domicilio_full"): upd["domicilio_full"] = c.get("address") or c.get("tax_residence")
+                if not pros.get("plan_id"): upd["plan_id"] = planes.get(c.get("plan_name"))
+                graduados.append((pros["id"], upd))
+            else:
+                nuevos.append(nuevo_cliente(c, planes, bemap, portmap))
 
-    print(f"\nA actualizar: {len(updates)} · clientes NUEVOS a insertar: {len(nuevos)}")
+    print(f"\nA actualizar: {len(updates)} · a GRADUAR (prospecto→cliente por DNI): {len(graduados)} · NUEVOS a insertar: {len(nuevos)}")
+    for g in graduados[:20]:
+        print(f"  GRADÚA prospecto id={g[0]} → código {g[1]['codigo_ispcube']}")
     for n in nuevos[:20]:
         print(f"  NUEVO {n['codigo_ispcube']} {n['nombre']} ({n['estado']})")
 
@@ -210,11 +247,14 @@ def main():
     for cid, upd in updates:
         try: sb_patch("clientes?id=eq." + str(cid), upd)
         except Exception as e: print(f"  ERROR upd {cid}: {e}")
+    for cid, upd in graduados:
+        try: sb_patch("clientes?id=eq." + str(cid), upd)
+        except Exception as e: print(f"  ERROR graduar {cid}: {e}")
     # nuevos en lotes de 200 (claves homogéneas)
     for i in range(0, len(nuevos), 200):
         try: sb_post("clientes", nuevos[i:i+200])
         except Exception as e: print(f"  ERROR insert lote {i}: {e}")
-    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(nuevos)} nuevos. {round(time.time()-t0)}s")
+    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos. {round(time.time()-t0)}s")
 
 if __name__ == "__main__":
     main()

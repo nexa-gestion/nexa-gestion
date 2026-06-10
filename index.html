@@ -1358,13 +1358,16 @@
     Promise.all([ sbGet('catalogo_materiales?select=*&activo=eq.true&order=orden.asc'), sbGet('stock_deposito?select=material_id,cantidad'), _conteoSeriales('EN_DEPOSITO') ]).then(function(r){
       var mats=Array.isArray(r[0])?r[0]:[], st=Array.isArray(r[1])?r[1]:[], serCnt=r[2]||{}, smap={};
       st.forEach(function(s){ smap[s.material_id]=Number(s.cantidad)||0; });
-      var h='<div class="toolbar"><button class="btn btn-ok" id="dep-entregar">🚚 Entregar a una cuadrilla</button></div>'
-        +'<table><thead><tr><th>Material</th><th>Tecnología</th><th>Serial</th><th>En depósito</th></tr></thead><tbody>';
-      mats.forEach(function(m){ var c=(m.serial_tipo&&m.serial_tipo!=='NINGUNO')?(serCnt[m.id]||0):(smap[m.id]||0);
-        h+='<tr><td><b>'+esc(m.nombre)+'</b></td><td>'+tecPill(m.tecnologia)+'</td><td>'+stipPill(m.serial_tipo)+'</td><td><b>'+c+'</b> <span class="muted">'+esc(m.unidad||'')+'</span></td></tr>';
-      });
-      h+='</tbody></table>'; cont.innerHTML=h;
+      cont.innerHTML='<div class="toolbar"><button class="btn btn-ok" id="dep-entregar">🚚 Entregar a una cuadrilla</button></div><div id="dep-stk-t"></div>';
       document.getElementById('dep-entregar').addEventListener('click',function(){ entregaCuad(null); });
+      var rows=mats.map(function(m){ return { m:m, cant:(m.serial_tipo&&m.serial_tipo!=='NINGUNO')?(serCnt[m.id]||0):(smap[m.id]||0) }; });
+      var cols=[
+        {k:'material',t:'Material',sort:function(x){return x.m.nombre||'';},r:function(x){return '<b>'+esc(x.m.nombre)+'</b>';}},
+        {k:'tec',t:'Tecnología',sort:function(x){return x.m.tecnologia||'';},r:function(x){return tecPill(x.m.tecnologia);}},
+        {k:'serial',t:'Serial',sort:function(x){return x.m.serial_tipo||'';},r:function(x){return stipPill(x.m.serial_tipo);}},
+        {k:'dep',t:'En depósito',sort:function(x){return x.cant;},r:function(x){return '<b>'+x.cant+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span>';}}
+      ];
+      gridRender(document.getElementById('dep-stk-t'),cols,rows,{key:'depstk'});
     });
   }
 
@@ -1456,12 +1459,16 @@
       sc.forEach(function(s){ scmap[s.material_id]=Number(s.cantidad)||0; });
       var rows=mats.map(function(m){ var c=(m.serial_tipo&&m.serial_tipo!=='NINGUNO')?(serCnt[m.id]||0):(scmap[m.id]||0); return {m:m,c:c}; }).filter(function(x){return x.c>0;});
       if(!rows.length){ t.innerHTML='<div class="center">Esta cuadrilla todavía no tiene stock cargado.</div>'; return; }
-      var h='<table><thead><tr><th>Material</th><th>Tecnología</th><th>Serial</th><th>Cantidad</th><th></th></tr></thead><tbody>';
-      rows.forEach(function(x){ h+='<tr><td><b>'+esc(x.m.nombre)+'</b></td><td>'+tecPill(x.m.tecnologia)+'</td><td>'+stipPill(x.m.serial_tipo)+'</td><td><b>'+x.c+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span></td>'
-        +'<td style="white-space:nowrap"><button class="btn btn-2 sc-dev" data-mid="'+x.m.id+'" data-n="'+esc(x.m.nombre)+'" data-st="'+x.m.serial_tipo+'" data-c="'+x.c+'">↩️ Devolver</button>'+(x.m.serial_tipo==='NINGUNO'?(' <button class="btn btn-2 sc-aj" data-mid="'+x.m.id+'" data-n="'+esc(x.m.nombre)+'" data-c="'+x.c+'">⚖️ Ajustar</button>'):'')+'</td></tr>'; });
-      h+='</tbody></table>'; t.innerHTML=h;
-      Array.prototype.forEach.call(t.querySelectorAll('.sc-dev'),function(b){ b.addEventListener('click',function(){ devolverStock(b.getAttribute('data-mid'),b.getAttribute('data-n'),b.getAttribute('data-st'),Number(b.getAttribute('data-c'))); }); });
-      Array.prototype.forEach.call(t.querySelectorAll('.sc-aj'),function(b){ b.addEventListener('click',function(){ ajustarStock(b.getAttribute('data-mid'),b.getAttribute('data-n'),Number(b.getAttribute('data-c'))); }); });
+      t.innerHTML='<div id="dc-grid"></div>'; var grid=document.getElementById('dc-grid');
+      var cols=[
+        {k:'material',t:'Material',sort:function(x){return x.m.nombre||'';},r:function(x){return '<b>'+esc(x.m.nombre)+'</b>';}},
+        {k:'tec',t:'Tecnología',sort:function(x){return x.m.tecnologia||'';},r:function(x){return tecPill(x.m.tecnologia);}},
+        {k:'serial',t:'Serial',sort:function(x){return x.m.serial_tipo||'';},r:function(x){return stipPill(x.m.serial_tipo);}},
+        {k:'cant',t:'Cantidad',sort:function(x){return x.c;},r:function(x){return '<b>'+x.c+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span>';}},
+        {k:'acc',t:'',sort:null,r:function(x){return '<span style="white-space:nowrap"><button class="btn btn-2 sc-dev" data-mid="'+x.m.id+'" data-n="'+esc(x.m.nombre)+'" data-st="'+x.m.serial_tipo+'" data-c="'+x.c+'">↩️ Devolver</button>'+(x.m.serial_tipo==='NINGUNO'?(' <button class="btn btn-2 sc-aj" data-mid="'+x.m.id+'" data-n="'+esc(x.m.nombre)+'" data-c="'+x.c+'">⚖️ Ajustar</button>'):'')+'</span>';}}
+      ];
+      gridRender(grid,cols,rows,{key:'depcuad'});
+      grid.addEventListener('click',function(e){ var dv=e.target.closest('.sc-dev'); if(dv){ devolverStock(dv.getAttribute('data-mid'),dv.getAttribute('data-n'),dv.getAttribute('data-st'),Number(dv.getAttribute('data-c'))); return; } var aj=e.target.closest('.sc-aj'); if(aj){ ajustarStock(aj.getAttribute('data-mid'),aj.getAttribute('data-n'),Number(aj.getAttribute('data-c'))); } });
     });
   }
   // — Devolución cuadrilla → depósito (serial-aware) —
@@ -1531,10 +1538,16 @@
       d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">Todavía no hay movimientos de stock.</div>'; return; }
       var tip={INGRESO:'📦 Ingreso',ENTREGA_CUADRILLA:'🚚 A cuadrilla',CONSUMO_OT:'🔩 Consumo OT',DEVOLUCION:'↩️ Devolución',AJUSTE:'⚖️ Ajuste',EGRESO:'➖ Egreso'};
-      var h='<p class="muted">Últimos 200 movimientos.</p><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Material</th><th>Cant.</th><th>Cuadrilla</th><th>Obs.</th></tr></thead><tbody>';
-      d.forEach(function(mv){ var f=fmtFechaHora(mv.created_at);
-        h+='<tr><td class="muted">'+esc(f)+'</td><td>'+esc(tip[mv.tipo]||mv.tipo)+'</td><td>'+esc(mv.catalogo_materiales?mv.catalogo_materiales.nombre:'')+'</td><td><b>'+esc(mv.cantidad)+'</b></td><td>'+esc(mv.cuadrillas?mv.cuadrillas.nombre:'—')+'</td><td class="muted">'+esc(mv.observaciones||'')+'</td></tr>'; });
-      h+='</tbody></table>'; cont.innerHTML=h;
+      cont.innerHTML='<p class="muted">Últimos 200 movimientos.</p><div id="dep-mov-t"></div>';
+      var cols=[
+        {k:'fecha',t:'Fecha',sort:function(mv){return mv.created_at||'';},r:function(mv){return '<span class="muted">'+esc(fmtFechaHora(mv.created_at))+'</span>';}},
+        {k:'tipo',t:'Tipo',sort:function(mv){return mv.tipo||'';},r:function(mv){return esc(tip[mv.tipo]||mv.tipo);}},
+        {k:'material',t:'Material',sort:function(mv){return mv.catalogo_materiales?mv.catalogo_materiales.nombre:'';},r:function(mv){return esc(mv.catalogo_materiales?mv.catalogo_materiales.nombre:'');}},
+        {k:'cant',t:'Cant.',sort:function(mv){return Number(mv.cantidad)||0;},r:function(mv){return '<b>'+esc(mv.cantidad)+'</b>';}},
+        {k:'cuadrilla',t:'Cuadrilla',sort:function(mv){return mv.cuadrillas?mv.cuadrillas.nombre:'';},r:function(mv){return esc(mv.cuadrillas?mv.cuadrillas.nombre:'—');}},
+        {k:'obs',t:'Obs.',sort:null,r:function(mv){return '<span class="muted">'+esc(mv.observaciones||'')+'</span>';}}
+      ];
+      gridRender(document.getElementById('dep-mov-t'),cols,d,{key:'depmov'});
     });
   }
 
@@ -1555,13 +1568,15 @@
     Promise.all([ sbGet('cuadrillas?select=*&order=activa.desc,nombre'), sbGet('tecnicos?select=id,nombre,cuadrilla_id&order=nombre') ]).then(function(r){
       var cuads=Array.isArray(r[0])?r[0]:[], tecs=Array.isArray(r[1])?r[1]:[], porCuad={};
       tecs.forEach(function(t){ if(t.cuadrilla_id){ (porCuad[t.cuadrilla_id]||(porCuad[t.cuadrilla_id]=[])).push(t.nombre); } });
-      var h='<div class="toolbar"><button class="btn btn-ok" id="cu-nueva">+ Nueva cuadrilla</button><span class="muted">'+cuads.length+' cuadrillas</span></div>';
-      if(!cuads.length){ cont.innerHTML=h+'<div class="center">Todavía no hay cuadrillas. Creá la primera.</div>'; document.getElementById('cu-nueva').addEventListener('click',function(){ formCuadrilla(null); }); return; }
-      h+='<table><thead><tr><th>Cuadrilla</th><th>Técnicos</th><th>Estado</th></tr></thead><tbody>';
-      cuads.forEach(function(c){ h+='<tr data-id="'+c.id+'" style="cursor:pointer"><td><b>'+esc(c.nombre)+'</b></td><td class="muted">'+((porCuad[c.id]||[]).map(esc).join(' · '))+((porCuad[c.id]||[]).length?'':'<span style="color:#cbd5e1">sin técnicos</span>')+'</td><td>'+(c.activa?'<span class="pill p-activo">activa</span>':'<span class="pill p-baja">inactiva</span>')+'</td></tr>'; });
-      h+='</tbody></table>'; cont.innerHTML=h;
+      cont.innerHTML='<div class="toolbar"><button class="btn btn-ok" id="cu-nueva">+ Nueva cuadrilla</button><span class="muted">'+cuads.length+' cuadrillas</span></div><div id="cu-grid"></div>';
       document.getElementById('cu-nueva').addEventListener('click',function(){ formCuadrilla(null); });
-      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ formCuadrilla(cuads.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+      if(!cuads.length){ document.getElementById('cu-grid').innerHTML='<div class="center">Todavía no hay cuadrillas. Creá la primera.</div>'; return; }
+      var cols=[
+        {k:'cuadrilla',t:'Cuadrilla',sort:function(c){return c.nombre||'';},r:function(c){return '<b>'+esc(c.nombre)+'</b>';}},
+        {k:'tecnicos',t:'Técnicos',sort:null,r:function(c){return '<span class="muted">'+((porCuad[c.id]||[]).map(esc).join(' · '))+((porCuad[c.id]||[]).length?'':'<span style="color:#cbd5e1">sin técnicos</span>')+'</span>';}},
+        {k:'estado',t:'Estado',sort:function(c){return c.activa?0:1;},r:function(c){return c.activa?'<span class="pill p-activo">activa</span>':'<span class="pill p-baja">inactiva</span>';}}
+      ];
+      gridRender(document.getElementById('cu-grid'),cols,cuads,{key:'cuad',onRow:function(c){ formCuadrilla(c); }});
     });
   }
   function formCuadrilla(c){
@@ -1599,13 +1614,16 @@
     var cont=document.getElementById('cu-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
     sbGet('tecnicos?select=*,cuadrillas(nombre)&order=nombre').then(function(d){
       var tecs=Array.isArray(d)?d:[];
-      var h='<div class="toolbar"><button class="btn btn-ok" id="tec-nuevo">+ Nuevo técnico</button><span class="muted">'+tecs.length+' técnicos</span></div>';
-      if(!tecs.length){ cont.innerHTML=h+'<div class="center">Todavía no hay técnicos.</div>'; document.getElementById('tec-nuevo').addEventListener('click',function(){ formTecnico(null); }); return; }
-      h+='<table><thead><tr><th>Técnico</th><th>Teléfono</th><th>Cuadrilla</th><th>Estado</th></tr></thead><tbody>';
-      tecs.forEach(function(t){ h+='<tr data-id="'+t.id+'" style="cursor:pointer"><td><b>'+esc(t.nombre)+'</b></td><td>'+esc(t.telefono||'—')+'</td><td>'+esc(t.cuadrillas?t.cuadrillas.nombre:'—')+'</td><td>'+(t.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">inactivo</span>')+'</td></tr>'; });
-      h+='</tbody></table>'; cont.innerHTML=h;
+      cont.innerHTML='<div class="toolbar"><button class="btn btn-ok" id="tec-nuevo">+ Nuevo técnico</button><span class="muted">'+tecs.length+' técnicos</span></div><div id="tec-grid"></div>';
       document.getElementById('tec-nuevo').addEventListener('click',function(){ formTecnico(null); });
-      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ formTecnico(tecs.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+      if(!tecs.length){ document.getElementById('tec-grid').innerHTML='<div class="center">Todavía no hay técnicos.</div>'; return; }
+      var cols=[
+        {k:'tecnico',t:'Técnico',sort:function(t){return t.nombre||'';},r:function(t){return '<b>'+esc(t.nombre)+'</b>';}},
+        {k:'telefono',t:'Teléfono',sort:function(t){return t.telefono||'';},r:function(t){return esc(t.telefono||'—');}},
+        {k:'cuadrilla',t:'Cuadrilla',sort:function(t){return t.cuadrillas?t.cuadrillas.nombre:'';},r:function(t){return esc(t.cuadrillas?t.cuadrillas.nombre:'—');}},
+        {k:'estado',t:'Estado',sort:function(t){return t.activo?0:1;},r:function(t){return t.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">inactivo</span>';}}
+      ];
+      gridRender(document.getElementById('tec-grid'),cols,tecs,{key:'tec',onRow:function(t){ formTecnico(t); }});
     });
   }
   function formTecnico(t){
