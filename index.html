@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.24</title>
+<title>Nexa · Gestión — v0.25</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.24</div>
+    <div class="marca-sub">Gestión · v0.25</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -130,7 +130,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.24';
+  var VER='v0.25';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -564,39 +564,55 @@
     Promise.all([
       sbGet('catalogo_materiales?select=id,nombre&activo=eq.true&order=orden'),
       sbGet('mano_obra_catalogo?select=id,nombre&activo=eq.true&order=orden'),
-      t.id?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+t.id+'&select=material_id'):Promise.resolve([]),
-      t.id?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+t.id+'&select=mano_obra_id'):Promise.resolve([]),
+      t.id?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+t.id+'&select=material_id,catalogo_materiales(nombre)&order=orden'):Promise.resolve([]),
+      t.id?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+t.id+'&select=mano_obra_id,mano_obra_catalogo(nombre)&order=orden'):Promise.resolve([]),
       t.id?sbGet('cuadrilla_tipos_trabajo?tipo_trabajo_id=eq.'+t.id+'&select=cuadrilla_id'):Promise.resolve([])
     ]).then(function(r){
-      var mats=r[0]||[], mos=r[1]||[], aMat=(r[2]||[]).map(function(x){return x.material_id;}), aMo=(r[3]||[]).map(function(x){return x.mano_obra_id;}), aCu=(r[4]||[]).map(function(x){return x.cuadrilla_id;});
-      function cks(arr,cls,sel){ return arr.length?arr.map(function(m){ return '<label style="display:block;font-weight:500"><input type="checkbox" class="'+cls+'" value="'+m.id+'"'+(sel.indexOf(m.id)>=0?' checked':'')+'> '+esc(m.nombre)+'</label>'; }).join(''):'<span class="muted">vacío</span>'; }
+      var allMat=r[0]||[], allMo=r[1]||[], aCu=(r[4]||[]).map(function(x){return x.cuadrilla_id;});
+      var asgMat=(r[2]||[]).map(function(x){return {id:x.material_id,nombre:(x.catalogo_materiales||{}).nombre||''};});
+      var asgMo=(r[3]||[]).map(function(x){return {id:x.mano_obra_id,nombre:(x.mano_obra_catalogo||{}).nombre||''};});
+      function avail(all,asg){ return all.filter(function(m){ return !asg.some(function(a){return a.id===m.id;}); }).map(function(m){return {id:m.id,nombre:m.nombre};}); }
+      var avMat=avail(allMat,asgMat), avMo=avail(allMo,asgMo);
       var cuaChecks=REF.cuadrillas.length?REF.cuadrillas.map(function(c){ return '<label style="display:inline-block;margin-right:14px;font-weight:500"><input type="checkbox" class="tt-cu" value="'+c.id+'"'+(aCu.indexOf(c.id)>=0?' checked':'')+'> '+esc(c.nombre)+'</label>'; }).join(''):'<span class="muted">No hay cuadrillas.</span>';
+      function colHtml(kind,titulo){ return '<div><label class="l">'+titulo+' <span class="muted" style="text-transform:none;font-weight:400">(↑↓ ordená)</span></label>'
+        +'<div id="tt-'+kind+'-asg" style="min-height:60px;max-height:220px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:6px"></div>'
+        +'<div class="muted" style="font-size:11px;margin:6px 0 2px">Agregar:</div><div id="tt-'+kind+'-av" style="max-height:130px;overflow:auto;border:1px dashed var(--bord);border-radius:8px;padding:6px"></div></div>'; }
       modal('<h2>'+(t.id?'Editar':'Nuevo')+' tipo de trabajo</h2>'
         +'<div class="row"><div style="flex:2"><label class="l">Nombre</label><input id="tt-nombre" value="'+esc(t.nombre||'')+'" placeholder="Ej: Tendido de red"></div><div><label class="l">Orden</label><input id="tt-orden" type="number" value="'+esc(t.orden||100)+'"></div></div>'
         +'<div style="margin-top:8px"><label style="font-weight:600"><input type="checkbox" id="tt-activo"'+(t.activo!==false?' checked':'')+'> Activo</label></div>'
-        +'<div class="row" style="margin-top:6px"><div><label class="l">Materiales de este tipo</label><div id="tt-mat" style="max-height:300px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+cks(mats,'tt-mt',aMat)+'</div></div>'
-        +'<div><label class="l">Mano de obra de este tipo</label><div id="tt-mo" style="max-height:300px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+cks(mos,'tt-moo',aMo)+'</div>'
-        +'<div style="display:flex;gap:6px;margin-top:6px"><input id="tt-mo-nueva" placeholder="Crear mano de obra" style="flex:1"><button class="btn btn-2" id="tt-mo-add" type="button">+</button></div></div></div>'
+        +'<div class="row" style="margin-top:6px">'+colHtml('mat','Materiales de este tipo')+colHtml('mo','Mano de obra de este tipo')+'</div>'
+        +'<div style="display:flex;gap:6px;margin-top:6px"><input id="tt-mo-nueva" placeholder="Crear mano de obra nueva y agregarla" style="flex:1"><button class="btn btn-2" id="tt-mo-add" type="button">+ Crear</button></div>'
         +'<label class="l">Cuadrillas que hacen este trabajo</label><div style="border:1px solid var(--bord);border-radius:8px;padding:8px">'+cuaChecks+'</div>'
         +'<div id="tt-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
         +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="tt-save">Guardar</button><button class="btn btn-2" id="tt-x">Cancelar</button></div>','wide');
+      function renderOrd(kind){
+        var asg= kind==='mat'?asgMat:asgMo, av= kind==='mat'?avMat:avMo;
+        var ae=document.getElementById('tt-'+kind+'-asg'), ve=document.getElementById('tt-'+kind+'-av');
+        ae.innerHTML= asg.length? asg.map(function(m,i){ return '<div style="display:flex;align-items:center;gap:4px;padding:2px;border-bottom:1px solid var(--bord)"><span style="flex:1;font-weight:500">'+esc(m.nombre)+'</span><button class="btn btn-2 o-up" data-i="'+i+'" style="padding:1px 7px"'+(i===0?' disabled':'')+'>↑</button><button class="btn btn-2 o-dn" data-i="'+i+'" style="padding:1px 7px"'+(i===asg.length-1?' disabled':'')+'>↓</button><button class="btn btn-x o-rm" data-i="'+i+'" style="padding:1px 7px">✕</button></div>'; }).join(''):'<span class="muted">sin asignar</span>';
+        ve.innerHTML= av.length? av.map(function(m){ return '<div class="o-add" data-id="'+m.id+'" style="cursor:pointer;padding:2px 6px;color:var(--pri);font-weight:500">+ '+esc(m.nombre)+'</div>'; }).join(''):'<span class="muted">— todo agregado —</span>';
+        Array.prototype.forEach.call(ae.querySelectorAll('.o-up'),function(b){ b.addEventListener('click',function(){ var i=+b.getAttribute('data-i'),x=asg[i-1]; asg[i-1]=asg[i]; asg[i]=x; renderOrd(kind); }); });
+        Array.prototype.forEach.call(ae.querySelectorAll('.o-dn'),function(b){ b.addEventListener('click',function(){ var i=+b.getAttribute('data-i'),x=asg[i+1]; asg[i+1]=asg[i]; asg[i]=x; renderOrd(kind); }); });
+        Array.prototype.forEach.call(ae.querySelectorAll('.o-rm'),function(b){ b.addEventListener('click',function(){ var i=+b.getAttribute('data-i'); av.push(asg[i]); asg.splice(i,1); renderOrd(kind); }); });
+        Array.prototype.forEach.call(ve.querySelectorAll('.o-add'),function(b){ b.addEventListener('click',function(){ var id=+b.getAttribute('data-id'),idx=-1; for(var k=0;k<av.length;k++){if(av[k].id===id){idx=k;break;}} if(idx>=0){ asg.push(av[idx]); av.splice(idx,1); renderOrd(kind); } }); });
+      }
+      renderOrd('mat'); renderOrd('mo');
       document.getElementById('tt-x').addEventListener('click',cerrarModal);
       document.getElementById('tt-mo-add').addEventListener('click',function(){
         var nom=document.getElementById('tt-mo-nueva').value.trim(); if(!nom) return;
-        sbPost('mano_obra_catalogo',{nombre:nom,tecnologia:'AMBAS',orden:999,activo:true}).then(function(rr){ var m=Array.isArray(rr)?rr[0]:null; if(!m) return; mos.push({id:m.id,nombre:m.nombre}); aMo.push(m.id); document.getElementById('tt-mo').innerHTML=cks(mos,'tt-moo',aMo); document.getElementById('tt-mo-nueva').value=''; });
+        sbPost('mano_obra_catalogo',{nombre:nom,tecnologia:'AMBAS',orden:999,activo:true}).then(function(rr){ var m=Array.isArray(rr)?rr[0]:null; if(!m) return; asgMo.push({id:m.id,nombre:m.nombre}); document.getElementById('tt-mo-nueva').value=''; renderOrd('mo'); });
       });
       document.getElementById('tt-save').addEventListener('click',function(){
         var nombre=document.getElementById('tt-nombre').value.trim(); if(!nombre){ document.getElementById('tt-err').textContent='Poné un nombre.'; return; }
-        function vals(cls){ var a=[]; Array.prototype.forEach.call(document.querySelectorAll('.'+cls+':checked'),function(ck){ a.push(Number(ck.value)); }); return a; }
-        var selMat=vals('tt-mt'), selMo=vals('tt-moo'), selCu=vals('tt-cu');
+        var selCu=[]; Array.prototype.forEach.call(document.querySelectorAll('.tt-cu:checked'),function(ck){ selCu.push(Number(ck.value)); });
         var body={ nombre:nombre, orden:parseInt(document.getElementById('tt-orden').value,10)||100, activo:document.getElementById('tt-activo').checked };
         var btn=this; btn.disabled=true;
         var prom;
         if(t.id){ prom=sbPatch('tipos_trabajo?id=eq.'+t.id,body).then(function(){return t.id;}); }
         else { body.codigo=_slug(nombre)||('TT'+nombre.length); prom=sbPost('tipos_trabajo',body).then(function(rr){ var x=Array.isArray(rr)?rr[0]:null; if(!x) throw 0; return x.id; }); }
         prom.then(function(ttid){
+          function syncOrd(tabla,campo,arr){ return fetch(SB_URL+'/rest/v1/'+tabla+'?tipo_trabajo_id=eq.'+ttid,{method:'DELETE',headers:H}).then(function(){ if(!arr.length) return; return sbPost(tabla,arr.map(function(m,i){var o={tipo_trabajo_id:ttid,orden:i*10};o[campo]=m.id;return o;})); }); }
           function sync(tabla,campo,vls){ return fetch(SB_URL+'/rest/v1/'+tabla+'?tipo_trabajo_id=eq.'+ttid,{method:'DELETE',headers:H}).then(function(){ if(!vls.length) return; return sbPost(tabla,vls.map(function(v){var o={tipo_trabajo_id:ttid};o[campo]=v;return o;})); }); }
-          return sync('tipo_trabajo_material','material_id',selMat).then(function(){ return sync('tipo_trabajo_mano_obra','mano_obra_id',selMo); }).then(function(){ return sync('cuadrilla_tipos_trabajo','cuadrilla_id',selCu); });
+          return syncOrd('tipo_trabajo_material','material_id',asgMat).then(function(){ return syncOrd('tipo_trabajo_mano_obra','mano_obra_id',asgMo); }).then(function(){ return sync('cuadrilla_tipos_trabajo','cuadrilla_id',selCu); });
         }).then(reloadTrab).then(function(){ cerrarModal(); toast('Tipo de trabajo guardado ✓'); ttList(); })
           .catch(function(){ document.getElementById('tt-err').textContent='No se pudo guardar (¿nombre repetido?).'; btn.disabled=false; });
       });
@@ -635,20 +651,30 @@
 
   // ── IMPRESIÓN DE OT ── (hoja vertical A4, blanco y negro para impresora láser — mínimo tóner)
   function imprimirOT(id){
-    Promise.all([
-      sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(numero_cliente,nombre,apellido,doc_numero,telefono,email,domicilio_full,barrio,tecnologia,caja_nap,tv_online,planes(nombre)),motivos_ot(nombre)&limit=1'),
-      sbGet('catalogo_materiales?activo=eq.true&select=nombre,tecnologia&order=orden.asc'),
-      sbGet('mano_obra_catalogo?activo=eq.true&select=id,nombre,tecnologia&order=orden.asc'),
-      sbGet('ot_datos_servicio?ot_id=eq.'+id+'&select=clave,valor'),
-      sbGet('tipo_mano_obra?select=tipo_codigo,mano_obra_id')
-    ]).then(function(r){
-      var o=(r[0]||[])[0]; if(!o){ toast('No se encontró la OT.'); return; }
-      var cli=o.clientes||{}, mats=r[1]||[], mo=r[2]||[], datos={}; (r[3]||[]).forEach(function(x){ datos[x.clave]=x.valor; });
-      var _moIds={}; (r[4]||[]).forEach(function(x){ if(x.tipo_codigo===o.tipo) _moIds[x.mano_obra_id]=1; });
-      var tecRaw=(cli.tecnologia||''); var techKit=/ftth/i.test(tecRaw)?'FTTH':(/(inalamb|wireless|wifi)/i.test(tecRaw)?'WIRELESS':null);
-      function enKit(t){ return !techKit || t===techKit || t==='AMBAS'; }
-      var kitMat=mats.filter(function(m){return enKit(m.tecnologia);}), kitMo=mo.filter(function(m){return enKit(m.tecnologia);});
-      var tecLabel=techKit==='FTTH'?'FTTH':(techKit==='WIRELESS'?'Wireless':(tecRaw||'s/tecnología'));
+    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(numero_cliente,nombre,apellido,doc_numero,telefono,email,domicilio_full,barrio,tecnologia,caja_nap,tv_online,planes(nombre)),motivos_ot(nombre),tipos_trabajo(id,nombre)&limit=1').then(function(d0){
+      var o=(d0||[])[0]; if(!o){ toast('No se encontró la OT.'); return; }
+      var cli=o.clientes||{};
+      var ttId=o.tipo_trabajo_id;
+      if(!ttId){ var trc0=(cli.tecnologia||''); var cod=/ftth/i.test(trc0)?'FTTH':(/(inalamb|wireless|wifi)/i.test(trc0)?'WIRELESS':null); if(cod){ var f0=REF.tiposTrab.filter(function(t){return t.codigo===cod;})[0]; if(f0) ttId=f0.id; } }
+      Promise.all([
+        ttId?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=catalogo_materiales(nombre)&order=orden'):Promise.resolve(null),
+        ttId?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=mano_obra_catalogo(nombre)&order=orden'):Promise.resolve(null),
+        sbGet('ot_datos_servicio?ot_id=eq.'+id+'&select=clave,valor'),
+        ttId?Promise.resolve(null):sbGet('catalogo_materiales?activo=eq.true&select=nombre,tecnologia&order=orden.asc'),
+        ttId?Promise.resolve(null):sbGet('mano_obra_catalogo?activo=eq.true&select=nombre,tecnologia&order=orden.asc')
+      ]).then(function(r){
+      var datos={}; (r[2]||[]).forEach(function(x){ datos[x.clave]=x.valor; });
+      var kitMat, kitMo, tecLabel;
+      if(ttId){
+        kitMat=(r[0]||[]).map(function(x){return x.catalogo_materiales;}).filter(Boolean);
+        kitMo=(r[1]||[]).map(function(x){return x.mano_obra_catalogo;}).filter(Boolean);
+        tecLabel=o.tipos_trabajo?o.tipos_trabajo.nombre:((REF.tiposTrab.filter(function(t){return t.id==ttId;})[0]||{}).nombre||'');
+      } else {
+        var trc=(cli.tecnologia||''); var techKit=/ftth/i.test(trc)?'FTTH':(/(inalamb|wireless|wifi)/i.test(trc)?'WIRELESS':null);
+        var enKit=function(t){ return !techKit || t===techKit || t==='AMBAS'; };
+        kitMat=(r[3]||[]).filter(function(m){return enKit(m.tecnologia);}); kitMo=(r[4]||[]).filter(function(m){return enKit(m.tecnologia);});
+        tecLabel=trc||'s/tecnología';
+      }
       var tipoLabel=String(o.tipo||'').replace(/_/g,' ')+(o.motivos_ot?(' · '+o.motivos_ot.nombre):'');
       function box(t){ return '<div style="display:flex;border:1px solid #000;margin-bottom:2px"><span style="flex:1;padding:2px 5px;font-size:9px">'+t+'</span><span style="width:34px;border-left:1px solid #000"></span></div>'; }
       function datoCell(k,v){ return '<div style="flex:1;display:flex;border-bottom:1px solid #000;padding:2px 0;font-size:10px;min-width:0"><span style="width:96px;flex:none">'+k+'</span><span style="flex:1;font-weight:bold;overflow:hidden">'+(v||'')+'</span></div>'; }
@@ -684,6 +710,7 @@
         +'</body></html>';
       var win=window.open('','_blank'); if(!win){ toast('Permití las ventanas emergentes para imprimir.'); return; }
       win.document.write(html); win.document.close(); setTimeout(function(){ try{ win.focus(); win.print(); }catch(e){} },400);
+      }).catch(function(){ toast('No se pudo armar la impresión.'); });
     }).catch(function(){ toast('No se pudo armar la impresión.'); });
   }
 
