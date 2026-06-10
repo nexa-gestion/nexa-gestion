@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.12</title>
+<title>Nexa · Gestión — v0.13</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.12</div>
+    <div class="marca-sub">Gestión · v0.13</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -99,6 +99,7 @@
       <a data-v="clientes">👥 Clientes</a>
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
+      <a data-v="deposito">📦 Depósito / Stock</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
     </div>
@@ -115,7 +116,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.12';
+  var VER='v0.13';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -166,7 +167,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   // accesos directos desde las tarjetas KPI del dashboard
@@ -635,6 +636,142 @@
   function parseCoords(t){ var m=String(t||'').match(/-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/); if(!m) return null; var p=m[0].split(/\s*,\s*/); var a=parseFloat(p[0]),b=parseFloat(p[1]); if(a<-90||a>90||b<-180||b>180) return null; return {lat:a,lng:b}; }
   function pointInPoly(lat,lng,poly){ var inside=false; for(var i=0,j=poly.length-1;i<poly.length;j=i++){ var yi=poly[i][0],xi=poly[i][1],yj=poly[j][0],xj=poly[j][1]; if(((yi>lat)!==(yj>lat)) && (lng < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
   function hav(la1,lo1,la2,lo2){ var R=6371000,d=Math.PI/180,s1=Math.sin((la2-la1)*d/2),s2=Math.sin((lo2-lo1)*d/2); var a=s1*s1+Math.cos(la1*d)*Math.cos(la2*d)*s2*s2; return 2*R*Math.asin(Math.sqrt(a)); }
+
+  // ── DEPÓSITO / STOCK ── (catálogo + depósito hermanado con stock de cuadrilla, como FG)
+  var depState={ tab:'materiales', cuad:'' };
+  var TECS=['FTTH','WIRELESS','AMBAS'];
+  function tecPill(t){ var c=t==='FTTH'?'p-ASIGNADA':(t==='WIRELESS'?'p-EN_CURSO':'p-baja'); return '<span class="pill '+c+'">'+esc(t||'AMBAS')+'</span>'; }
+  function vDeposito(){
+    view.innerHTML='<h1>Depósito / Stock</h1><p class="sub">Catálogo de materiales y stock (depósito ↔ cuadrillas), como en FG.</p>'
+      +'<div class="toolbar" id="dep-tabs">'
+      +'<button class="btn '+(depState.tab==='materiales'?'btn-pri':'btn-2')+'" data-tab="materiales">📋 Materiales</button>'
+      +'<button class="btn '+(depState.tab==='deposito'?'btn-pri':'btn-2')+'" data-tab="deposito">🏭 Stock depósito</button>'
+      +'<button class="btn '+(depState.tab==='cuadrillas'?'btn-pri':'btn-2')+'" data-tab="cuadrillas">🚚 Stock cuadrillas</button>'
+      +'</div><div id="dep-cont"></div>';
+    Array.prototype.forEach.call(document.querySelectorAll('#dep-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ depState.tab=b.getAttribute('data-tab'); vDeposito(); }); });
+    if(depState.tab==='materiales') depMateriales();
+    else if(depState.tab==='deposito') depStock();
+    else depCuadrillas();
+  }
+  // — Catálogo de materiales: agregar / editar / deshabilitar / mover —
+  function depMateriales(){
+    var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('catalogo_materiales?select=*&order=orden.asc,nombre.asc').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var h='<div class="toolbar"><button class="btn btn-ok" id="mat-nuevo">+ Nuevo material</button><span class="muted">'+d.length+' materiales en el catálogo</span></div>';
+      h+='<table><thead><tr><th>Orden</th><th>Material</th><th>Tecnología</th><th>Unidad</th><th>Serie</th><th>Estado</th></tr></thead><tbody>';
+      d.forEach(function(m,i){
+        h+='<tr><td style="white-space:nowrap"><b>'+esc(m.orden)+'</b> <button class="btn btn-2 mat-mv" data-id="'+m.id+'" data-dir="-1" style="padding:2px 7px"'+(i===0?' disabled':'')+'>↑</button> <button class="btn btn-2 mat-mv" data-id="'+m.id+'" data-dir="1" style="padding:2px 7px"'+(i===d.length-1?' disabled':'')+'>↓</button></td>'
+          +'<td data-edit="'+m.id+'" style="cursor:pointer"><b>'+esc(m.nombre)+'</b>'+(m.codigo?' <span class="muted">('+esc(m.codigo)+')</span>':'')+'</td>'
+          +'<td>'+tecPill(m.tecnologia)+'</td><td>'+esc(m.unidad||'UN')+'</td><td>'+(m.requiere_serie?'🔢 sí':'—')+'</td>'
+          +'<td>'+(m.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">deshabilitado</span>')+'</td></tr>';
+      });
+      h+='</tbody></table>'; cont.innerHTML=h;
+      document.getElementById('mat-nuevo').addEventListener('click',function(){ formMaterial(null); });
+      Array.prototype.forEach.call(cont.querySelectorAll('td[data-edit]'),function(td){ td.addEventListener('click',function(){ formMaterial(d.filter(function(x){return x.id==td.getAttribute('data-edit');})[0]); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.mat-mv'),function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); moverMaterial(d, b.getAttribute('data-id'), Number(b.getAttribute('data-dir'))); }); });
+    });
+  }
+  function moverMaterial(list,id,dir){
+    var i=-1; for(var k=0;k<list.length;k++){ if(list[k].id==id){ i=k; break; } }
+    var j=i+dir; if(i<0||j<0||j>=list.length) return;
+    var a=list[i], b=list[j];
+    Promise.all([ sbPatch('catalogo_materiales?id=eq.'+a.id,{orden:b.orden}), sbPatch('catalogo_materiales?id=eq.'+b.id,{orden:a.orden}) ]).then(function(){ depMateriales(); });
+  }
+  function formMaterial(m){
+    m=m||{};
+    modal('<h2>'+(m.id?'Editar':'Nuevo')+' material</h2>'
+      +'<label class="l">Nombre</label><input id="mt-nombre" value="'+esc(m.nombre||'')+'" placeholder="Ej: Cable drop">'
+      +'<div class="row"><div><label class="l">Código</label><input id="mt-codigo" value="'+esc(m.codigo||'')+'" placeholder="opcional"></div><div><label class="l">Unidad</label><input id="mt-unidad" value="'+esc(m.unidad||'UN')+'" placeholder="UN / MTS"></div></div>'
+      +'<label class="l">Tecnología</label><select id="mt-tec">'+opt(TECS, m.tecnologia||'AMBAS')+'</select>'
+      +'<div style="display:flex;gap:18px;margin-top:12px"><label style="font-weight:600"><input type="checkbox" id="mt-serie"'+(m.requiere_serie?' checked':'')+'> Lleva N° de serie (equipo)</label><label style="font-weight:600"><input type="checkbox" id="mt-activo"'+(m.activo!==false?' checked':'')+'> Activo</label></div>'
+      +'<div id="mt-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ok" id="mt-save">Guardar</button><button class="btn btn-2" id="mt-cancel">Cancelar</button></div>');
+    document.getElementById('mt-cancel').addEventListener('click',cerrarModal);
+    document.getElementById('mt-save').addEventListener('click',function(){
+      var body={ nombre:document.getElementById('mt-nombre').value.trim(), codigo:document.getElementById('mt-codigo').value.trim()||null,
+        unidad:document.getElementById('mt-unidad').value.trim()||'UN', tecnologia:document.getElementById('mt-tec').value,
+        requiere_serie:document.getElementById('mt-serie').checked, activo:document.getElementById('mt-activo').checked };
+      if(!body.nombre){ document.getElementById('mt-err').textContent='Poné un nombre.'; return; }
+      if(!m.id) body.orden=999;
+      var btn=this; btn.disabled=true;
+      var prom=m.id? sbPatch('catalogo_materiales?id=eq.'+m.id,body) : sbPost('catalogo_materiales',body);
+      prom.then(function(r){ if(!m.id && (!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Material guardado ✓'); depMateriales(); })
+        .catch(function(){ document.getElementById('mt-err').textContent='No se pudo guardar (¿código repetido?).'; btn.disabled=false; });
+    });
+  }
+  // — Stock depósito: ingreso + entrega a cuadrilla (no serializados) —
+  function depStock(){
+    var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    Promise.all([ sbGet('catalogo_materiales?select=*&activo=eq.true&requiere_serie=eq.false&order=orden.asc'), sbGet('stock_deposito?select=material_id,cantidad') ]).then(function(r){
+      var mats=Array.isArray(r[0])?r[0]:[], st=Array.isArray(r[1])?r[1]:[], smap={};
+      st.forEach(function(s){ smap[s.material_id]=Number(s.cantidad)||0; });
+      var h='<p class="muted">Materiales no serializados. Los equipos con N° de serie (ONU, Force, etc.) se gestionan por serie — próximo bloque.</p>'
+        +'<table><thead><tr><th>Material</th><th>Tecnología</th><th>En depósito</th><th></th></tr></thead><tbody>';
+      mats.forEach(function(m){ var c=smap[m.id]||0;
+        h+='<tr><td><b>'+esc(m.nombre)+'</b></td><td>'+tecPill(m.tecnologia)+'</td><td><b>'+c+'</b> <span class="muted">'+esc(m.unidad||'')+'</span></td>'
+          +'<td style="white-space:nowrap"><button class="btn btn-2 dep-ing" data-id="'+m.id+'" data-n="'+esc(m.nombre)+'">+ Ingreso</button> <button class="btn btn-2 dep-ent" data-id="'+m.id+'" data-n="'+esc(m.nombre)+'" data-c="'+c+'">→ A cuadrilla</button></td></tr>';
+      });
+      h+='</tbody></table>'; cont.innerHTML=h;
+      Array.prototype.forEach.call(cont.querySelectorAll('.dep-ing'),function(b){ b.addEventListener('click',function(){ ingresoStock(b.getAttribute('data-id'), b.getAttribute('data-n')); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.dep-ent'),function(b){ b.addEventListener('click',function(){ entregaCuadrilla(b.getAttribute('data-id'), b.getAttribute('data-n'), Number(b.getAttribute('data-c'))); }); });
+    });
+  }
+  function _upsertDeposito(matId,delta){
+    return sbGet('stock_deposito?material_id=eq.'+matId+'&select=id,cantidad').then(function(d){
+      if(Array.isArray(d)&&d.length) return sbPatch('stock_deposito?id=eq.'+d[0].id,{cantidad:(Number(d[0].cantidad)||0)+delta});
+      return sbPost('stock_deposito',{material_id:Number(matId),cantidad:delta});
+    });
+  }
+  function ingresoStock(matId,nombre){
+    var q=prompt('Ingreso de stock — '+nombre+'\n\n¿Cuántas unidades entran al depósito?');
+    if(q==null) return; var n=parseFloat(q); if(!(n>0)){ toast('Cantidad inválida.'); return; }
+    _upsertDeposito(matId,n).then(function(){ return sbPost('stock_movimientos',{material_id:Number(matId),tipo:'INGRESO',cantidad:n,usuario_id:USER.id}); })
+      .then(function(){ toast('Ingreso registrado ✓'); depStock(); })
+      .catch(function(){ toast('No se pudo registrar el ingreso.'); });
+  }
+  function entregaCuadrilla(matId,nombre,disp){
+    var cuadOpts=REF.cuadrillas.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
+    if(!cuadOpts){ toast('No hay cuadrillas activas cargadas.'); return; }
+    modal('<h2>Entregar a cuadrilla</h2><p class="muted">'+esc(nombre)+' · en depósito: <b>'+disp+'</b></p>'
+      +'<label class="l">Cuadrilla</label><select id="en-cuad">'+cuadOpts+'</select>'
+      +'<label class="l">Cantidad</label><input id="en-cant" type="number" min="1" value="1">'
+      +'<div id="en-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ok" id="en-go">Entregar</button><button class="btn btn-2" id="en-x">Cancelar</button></div>');
+    document.getElementById('en-x').addEventListener('click',cerrarModal);
+    document.getElementById('en-go').addEventListener('click',function(){
+      var cuad=Number(document.getElementById('en-cuad').value), n=parseFloat(document.getElementById('en-cant').value);
+      if(!(n>0)){ document.getElementById('en-err').textContent='Cantidad inválida.'; return; }
+      if(n>disp){ document.getElementById('en-err').textContent='No hay tanto en depósito (hay '+disp+').'; return; }
+      var btn=this; btn.disabled=true;
+      _upsertDeposito(matId,-n)
+        .then(function(){ return sbGet('stock_cuadrillas?cuadrilla_id=eq.'+cuad+'&material_id=eq.'+matId+'&select=id,cantidad'); })
+        .then(function(d){ if(Array.isArray(d)&&d.length) return sbPatch('stock_cuadrillas?id=eq.'+d[0].id,{cantidad:(Number(d[0].cantidad)||0)+n,updated_at:new Date().toISOString()}); return sbPost('stock_cuadrillas',{cuadrilla_id:cuad,material_id:Number(matId),cantidad:n}); })
+        .then(function(){ return sbPost('stock_movimientos',{material_id:Number(matId),tipo:'ENTREGA_CUADRILLA',cantidad:n,cuadrilla_id:cuad,usuario_id:USER.id}); })
+        .then(function(){ cerrarModal(); toast('Entregado a la cuadrilla ✓'); depStock(); })
+        .catch(function(){ document.getElementById('en-err').textContent='No se pudo completar la entrega.'; btn.disabled=false; });
+    });
+  }
+  // — Stock por cuadrilla —
+  function depCuadrillas(){
+    var cont=document.getElementById('dep-cont');
+    var cuadOpts='<option value="">— elegí una cuadrilla —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(depState.cuad==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+    cont.innerHTML='<div class="toolbar"><span class="muted">Mostrar el stock entregado a:</span><select id="dc-cuad" style="width:auto">'+cuadOpts+'</select></div><div id="dc-tabla"></div>';
+    document.getElementById('dc-cuad').addEventListener('change',function(){ depState.cuad=this.value; cargarStockCuad(); });
+    if(depState.cuad) cargarStockCuad();
+  }
+  function cargarStockCuad(){
+    var t=document.getElementById('dc-tabla'); if(!depState.cuad){ t.innerHTML=''; return; }
+    t.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('stock_cuadrillas?cuadrilla_id=eq.'+depState.cuad+'&select=cantidad,catalogo_materiales(nombre,unidad,tecnologia,orden)').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(!d.length){ t.innerHTML='<div class="center">Esta cuadrilla todavía no tiene stock cargado.</div>'; return; }
+      d.sort(function(a,b){ return ((a.catalogo_materiales||{}).orden||0)-((b.catalogo_materiales||{}).orden||0); });
+      var h='<table><thead><tr><th>Material</th><th>Tecnología</th><th>Cantidad</th></tr></thead><tbody>';
+      d.forEach(function(s){ var m=s.catalogo_materiales||{}; h+='<tr><td><b>'+esc(m.nombre||'')+'</b></td><td>'+tecPill(m.tecnologia)+'</td><td><b>'+(Number(s.cantidad)||0)+'</b> <span class="muted">'+esc(m.unidad||'')+'</span></td></tr>'; });
+      h+='</tbody></table>'; t.innerHTML=h;
+    });
+  }
 
   // ── util UI ──
   function opt(arr,sel){ return arr.map(function(x){return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>';}).join(''); }
