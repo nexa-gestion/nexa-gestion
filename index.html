@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.29</title>
+<title>Nexa · Gestión — v0.30</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.29</div>
+    <div class="marca-sub">Gestión · v0.30</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -131,7 +131,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.29';
+  var VER='v0.30';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -1364,43 +1364,65 @@
   }
   function cargarTV(){
     var cont=document.getElementById('tv-tabla'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    var p='cuentas_tv?select=*,clientes(numero_cliente,nombre,apellido)&order=mail&limit=500';
+    var p='cuentas_tv?select=*,clientes(numero_cliente,nombre,apellido)&order=mail&limit=1000';
     if(tvState.estado) p+='&estado=eq.'+tvState.estado;
     if(tvState.q){ var q=tvState.q.replace(/[(),]/g,' '); p+='&or=(usuario.ilike.*'+q+'*,mail.ilike.*'+q+'*,abonado_numero.ilike.*'+q+'*,cic.ilike.*'+q+'*)'; }
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">Sin cuentas.</div>'; return; }
-      var h='<table><thead><tr><th>Usuario</th><th>Mail</th><th>Fútbol</th><th>Cliente / Abonado</th><th>Estado</th></tr></thead><tbody>';
-      d.forEach(function(t){ var cl=t.clientes?('N°'+t.clientes.numero_cliente+' '+(t.clientes.nombre||'')):(t.abonado_numero?('ab. '+t.abonado_numero):'—');
-        h+='<tr data-id="'+t.id+'" style="cursor:pointer"><td style="font-family:monospace;font-size:12px"><b>'+esc(t.usuario||'—')+'</b></td><td>'+esc(t.mail||'')+'</td><td>'+(t.pack_futbol?'⚽':'—')+'</td><td>'+esc(cl)+'</td><td>'+tvPill(t.estado)+'</td></tr>'; });
+      var h='<table><thead><tr><th>Usuario</th><th>Mail</th><th>Fútbol</th><th>Cliente Nexa</th><th>Estado</th></tr></thead><tbody>';
+      d.forEach(function(t){ var cl;
+        if(t.clientes) cl='N°'+t.clientes.numero_cliente+' '+esc(t.clientes.nombre||'');
+        else if(t.nro_isp) cl='<span class="muted">ISP '+esc(t.nro_isp)+' · sin vincular</span>';
+        else cl='<span class="muted">—</span>';
+        h+='<tr data-id="'+t.id+'" style="cursor:pointer"><td style="font-family:monospace;font-size:12px"><b>'+esc(t.usuario||'—')+'</b></td><td>'+esc(t.mail||'')+'</td><td>'+(t.pack_futbol?'⚽':'—')+'</td><td>'+cl+'</td><td>'+tvPill(t.estado)+'</td></tr>'; });
       h+='</tbody></table><div class="muted" style="margin-top:8px">'+d.length+' cuentas</div>'; cont.innerHTML=h;
       Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ fichaTV(d.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
     });
   }
+  function genPin6(){ var s=''; for(var i=0;i<6;i++) s+=Math.floor(Math.random()*10); return s; }
   function fichaTV(t){
     t=t||{};
-    var cliLbl=t.clientes?('N°'+t.clientes.numero_cliente+' · '+(t.clientes.nombre||'')+' '+(t.clientes.apellido||'')):'—';
+    // cliente vinculado (resuelto por nro_isp = numero_cliente); arranca con el que ya tiene
+    var linkedCli=t.clientes?{ id:t.cliente_id, numero_cliente:t.clientes.numero_cliente, nombre:t.clientes.nombre, apellido:t.clientes.apellido }:null;
     modal('<h2>'+(t.id?'Cuenta TV':'Nueva cuenta TV')+'</h2>'
-      +'<div class="row"><div><label class="l">Usuario</label><input id="tv-usuario" value="'+esc(t.usuario||'')+'"></div><div><label class="l">Contraseña</label><input id="tv-pass" value="'+esc(t.contrasena||'')+'"></div></div>'
+      +'<div class="row"><div><label class="l">Usuario</label><input id="tv-usuario" value="'+esc(t.usuario||'')+'"></div>'
+      +'<div><label class="l">Contraseña</label><div style="display:flex;gap:6px"><input id="tv-pass" value="'+esc(t.contrasena||'')+'" style="flex:1"><button type="button" class="btn btn-2" id="tv-genpass" title="Generar clave de 6 dígitos" style="white-space:nowrap">🎲 Generar</button></div></div></div>'
       +'<label class="l">Mail</label><input id="tv-mail" value="'+esc(t.mail||'')+'">'
-      +'<div class="row"><div><label class="l">N° ISP</label><input id="tv-nroisp" value="'+esc(t.nro_isp||'')+'"></div><div><label class="l">Abonado / CIC</label><input id="tv-abon" value="'+esc(t.abonado_numero||t.cic||'')+'"></div></div>'
+      +'<label class="l">N° cliente Nexa/ISP (nuestro)</label><input id="tv-nroisp" value="'+esc(t.nro_isp||'')+'" placeholder="ej 6035">'
+      +'<div id="tv-cli-status" style="font-size:13px;margin:4px 0 8px"></div>'
+      +'<div class="row"><div><label class="l">Abonado Gigared</label><input id="tv-abon" value="'+esc(t.abonado_numero||'')+'" placeholder="dato de Gigared"></div><div><label class="l">CIC</label><input id="tv-cic" value="'+esc(t.cic||'')+'"></div></div>'
       +'<div style="display:flex;gap:18px;margin-top:10px"><label style="font-weight:600"><input type="checkbox" id="tv-fut"'+(t.pack_futbol?' checked':'')+'> Pack Fútbol</label><label style="font-weight:600"><input type="checkbox" id="tv-isp"'+(t.cargado_isp?' checked':'')+'> Cargada en ISP</label></div>'
       +'<label class="l">Estado</label><select id="tv-estado-e">'+opt(['DISPONIBLE','EN_USO','BAJA_PENDIENTE'],t.estado||'DISPONIBLE')+'</select>'
-      +(t.id?('<div class="ficha-row"><span class="k">Cliente asignado</span><span class="v">'+esc(cliLbl)+'</span></div>'):'')
+      +(t.id&&t.estado==='BAJA_PENDIENTE'?'<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;margin-top:10px;font-size:13px">⚠️ Cambiá la clave en Gigared para que el cliente anterior no pueda ingresar. Cuando lo hagas, marcá "Clave cambiada".</div>':'')
       +'<label class="l">Notas</label><textarea id="tv-notas">'+esc(t.notas||'')+'</textarea>'
       +'<div id="tv-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-ok" id="tv-save">Guardar</button>'
-      +(t.id&&t.estado==='EN_USO'?'<button class="btn btn-2" id="tv-baja">↩️ Liberar (baja)</button>':'')
-      +(t.id&&t.estado==='BAJA_PENDIENTE'?'<button class="btn btn-ok" id="tv-lista">✓ Clave cambiada → Disponible</button>':'')
+      +(t.id&&t.estado==='EN_USO'?'<button class="btn btn-2" id="tv-baja">↩️ Dar de baja TV</button>':'')
+      +(t.id&&t.estado==='BAJA_PENDIENTE'?'<button class="btn btn-ok" id="tv-lista">✓ Clave cambiada en Gigared → Disponible</button>':'')
       +'<button class="btn btn-2" id="tv-x">Cerrar</button></div>');
+    function resolveCli(){
+      var v=document.getElementById('tv-nroisp').value.trim(), box=document.getElementById('tv-cli-status');
+      if(!v){ linkedCli=null; box.innerHTML='<span class="muted">Sin vincular a cliente nuestro.</span>'; return; }
+      if(!/^\d+$/.test(v)){ linkedCli=null; box.innerHTML='<span style="color:var(--rojo)">No es un N° de cliente válido (solo números).</span>'; return; }
+      box.innerHTML='<span class="muted">Buscando cliente…</span>';
+      sbGet('clientes?select=id,numero_cliente,nombre,apellido,tv_online&numero_cliente=eq.'+v+'&limit=1').then(function(d){
+        if(Array.isArray(d)&&d.length){ var c=d[0]; linkedCli=c;
+          box.innerHTML='✅ Vincula a <b>'+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</b> (N°'+c.numero_cliente+') · '+(c.tv_online?'<span style="color:#15803d">TV marcado en su ficha</span>':'<span style="color:#b45309">TV NO marcado en su ficha</span>');
+        } else { linkedCli=null; box.innerHTML='<span style="color:var(--rojo)">No existe cliente N°'+esc(v)+' en la base.</span>'; }
+      }).catch(function(){ box.innerHTML='<span style="color:var(--rojo)">Error al buscar.</span>'; });
+    }
+    document.getElementById('tv-nroisp').addEventListener('blur',resolveCli);
+    resolveCli();
+    document.getElementById('tv-genpass').addEventListener('click',function(){ document.getElementById('tv-pass').value=genPin6(); });
     document.getElementById('tv-x').addEventListener('click',cerrarModal);
     document.getElementById('tv-save').addEventListener('click',function(){
-      var body={ usuario:document.getElementById('tv-usuario').value.trim()||null, contrasena:document.getElementById('tv-pass').value.trim()||null, mail:document.getElementById('tv-mail').value.trim()||null, nro_isp:document.getElementById('tv-nroisp').value.trim()||null, abonado_numero:document.getElementById('tv-abon').value.trim()||null, pack_futbol:document.getElementById('tv-fut').checked, cargado_isp:document.getElementById('tv-isp').checked, estado:document.getElementById('tv-estado-e').value, notas:document.getElementById('tv-notas').value.trim()||null };
+      var body={ usuario:document.getElementById('tv-usuario').value.trim()||null, contrasena:document.getElementById('tv-pass').value.trim()||null, mail:document.getElementById('tv-mail').value.trim()||null, nro_isp:document.getElementById('tv-nroisp').value.trim()||null, abonado_numero:document.getElementById('tv-abon').value.trim()||null, cic:document.getElementById('tv-cic').value.trim()||null, pack_futbol:document.getElementById('tv-fut').checked, cargado_isp:document.getElementById('tv-isp').checked, estado:document.getElementById('tv-estado-e').value, notas:document.getElementById('tv-notas').value.trim()||null, cliente_id:linkedCli?linkedCli.id:null };
       var btn=this; btn.disabled=true;
       var prom=t.id? sbPatch('cuentas_tv?id=eq.'+t.id,body) : sbPost('cuentas_tv',body);
       prom.then(function(r){ if(!t.id&&(!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Cuenta guardada ✓'); vCuentasTV(); }).catch(function(){ document.getElementById('tv-err').textContent='No se pudo guardar.'; btn.disabled=false; });
     });
-    var bj=document.getElementById('tv-baja'); if(bj) bj.addEventListener('click',function(){ sbPatch('cuentas_tv?id=eq.'+t.id,{estado:'BAJA_PENDIENTE',fecha_baja:new Date().toISOString().substring(0,10)}).then(function(){ cerrarModal(); toast('Marcada para cambio de contraseña'); vCuentasTV(); }); });
-    var li=document.getElementById('tv-lista'); if(li) li.addEventListener('click',function(){ sbPatch('cuentas_tv?id=eq.'+t.id,{estado:'DISPONIBLE',cliente_id:null,fecha_baja:null}).then(function(){ cerrarModal(); toast('Cuenta liberada ✓'); vCuentasTV(); }); });
+    var bj=document.getElementById('tv-baja'); if(bj) bj.addEventListener('click',function(){ sbPatch('cuentas_tv?id=eq.'+t.id,{estado:'BAJA_PENDIENTE',fecha_baja:new Date().toISOString().substring(0,10)}).then(function(){ cerrarModal(); toast('Cuenta en baja · cambiá la clave en Gigared'); vCuentasTV(); }); });
+    var li=document.getElementById('tv-lista'); if(li) li.addEventListener('click',function(){ sbPatch('cuentas_tv?id=eq.'+t.id,{estado:'DISPONIBLE',cliente_id:null,fecha_baja:null}).then(function(){ cerrarModal(); toast('Cuenta liberada ✓ → Disponible'); vCuentasTV(); }); });
   }
 
   // ── util UI ──
