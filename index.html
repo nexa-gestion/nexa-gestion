@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.16</title>
+<title>Nexa · Gestión — v0.18</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -72,6 +72,16 @@
   @keyframes sp{ to{ transform:rotate(360deg); } }
   #map{ height:calc(100vh - 170px); min-height:420px; border:1px solid var(--bord); border-radius:12px; }
   .leaflet-container{ font:inherit; }
+  /* Dashboard estilo FG */
+  .dash-hero{ background:#fff; border:1px solid var(--bord); border-radius:16px; padding:20px 24px; display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; flex-wrap:wrap; }
+  .dash-saludo{ font-size:24px; font-weight:800; }
+  .dash-fecha{ color:var(--gris); font-size:13px; margin-top:4px; text-transform:capitalize; }
+  .dash-reloj{ font-size:34px; font-weight:800; color:var(--pri); font-variant-numeric:tabular-nums; }
+  .qa-row{ display:grid; grid-template-columns:repeat(auto-fill,minmax(108px,1fr)); gap:10px; margin-bottom:18px; }
+  .qa{ background:#fff; border:1px solid var(--bord); border-radius:14px; padding:14px 8px; text-align:center; cursor:pointer; transition:.12s; }
+  .qa:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(37,99,235,.13); border-color:var(--pri); }
+  .qa .ico{ font-size:22px; } .qa .lbl{ font-size:12px; font-weight:700; margin-top:5px; color:#334155; }
+  .dash-sec{ font-size:15px; font-weight:800; margin:20px 0 10px; }
 </style>
 </head>
 <body>
@@ -80,7 +90,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.16</div>
+    <div class="marca-sub">Gestión · v0.18</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -117,7 +127,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.16';
+  var VER='v0.18';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -180,39 +190,52 @@
       else if(p[1]){ var kv=p[1].split('='); clState[kv[0]]=kv[1]; }
       navTo('clientes');
     } else if(v==='sol'){ navTo('solicitudes'); }
-    else if(v==='ot'){ otState.estado=p[1]||''; otState.page=0; navTo('ordenes'); }
+    else if(v==='ot'){ otState.estado=p[1]||''; otState.tipo=p[2]||''; otState.page=0; navTo('ordenes'); }
   }
   var view=document.getElementById('view');
   function loading(){ view.innerHTML='<div class="center"><div class="spin"></div></div>'; }
 
-  // ── DASHBOARD ──
+  // ── DASHBOARD ── (estilo FG: saludo + reloj, accesos rápidos, KPIs, pendientes por tipo, antigüedad)
+  var _clockTimer=null;
+  function _saludo(h){ return h<12?'Buenos días':(h<20?'Buenas tardes':'Buenas noches'); }
+  function _hhmm(n){ return ('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2); }
+  function _tick(){ var e=document.getElementById('dash-clock'); if(!e){ if(_clockTimer){clearInterval(_clockTimer);_clockTimer=null;} return; } e.textContent=_hhmm(new Date()); }
   function vDashboard(){
     loading();
     Promise.all([
-      sbCount('clientes?select=id'),
-      sbCount('clientes?estado=eq.activo&select=id'),
-      sbCount('clientes?estado=eq.bloqueado&select=id'),
-      sbCount('clientes?estado=eq.baja&select=id'),
+      sbCount('clientes?select=id'), sbCount('clientes?estado=eq.activo&select=id'),
+      sbCount('clientes?estado=eq.bloqueado&select=id'), sbCount('clientes?estado=eq.baja&select=id'),
       sbCount('clientes?empresa=eq.'+encodeURIComponent('FG Conexiones')+'&select=id'),
-      sbCount('clientes?empresa=eq.NOR-TEL&select=id'),
-      sbCount('clientes?empresa=eq.Nexa&select=id'),
+      sbCount('clientes?empresa=eq.NOR-TEL&select=id'), sbCount('clientes?empresa=eq.Nexa&select=id'),
       sbCount('solicitudes_alta?estado=eq.pendiente&select=id'),
-      sbCount('ordenes_trabajo?estado=eq.PENDIENTE&select=id'),
-      sbCount('ordenes_trabajo?estado=eq.ASIGNADA&select=id'),
-      sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id')
+      sbCount('ordenes_trabajo?estado=eq.ASIGNADA&select=id'), sbCount('ordenes_trabajo?estado=eq.EN_CURSO&select=id'),
+      sbCount('ordenes_trabajo?estado=eq.FINALIZADA&select=id'),
+      sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id'),
+      sbGet('ordenes_trabajo?estado=eq.PENDIENTE&select=tipo,created_at&limit=2000')
     ]).then(function(c){
-      view.innerHTML =
-        '<h1>Dashboard</h1><p class="sub">Hola '+esc(USER.nombre)+'. Foto general de Nexa.</p>'
+      var pend=Array.isArray(c[12])?c[12]:[], totalPend=pend.length;
+      var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
+      var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
+      var now=new Date(), nombre=(USER.nombre||'').split(' ')[0];
+      var qa=[['🛠️','Nueva OT','nuevaOT'],['📋','Órdenes','ordenes'],['👥','Clientes','clientes'],['📥','Solicitudes','solicitudes'],['📦','Depósito','deposito'],['🔧','Cuadrillas','cuadrillas-adm'],['📍','Cobertura','cobertura'],['⚠️','ISPcube','isp']];
+      var tipos=[['INSTALACION','🔧 Instalaciones'],['REPARACION','🛠️ Reparac./Servis'],['DESCONEXION','🔌 Desconexiones'],['RETIRO_EQUIPOS','📦 Retiros'],['RECONEXION','🔁 Reconexiones'],['OTRO','⚙️ Otros']];
+      view.innerHTML=
+        '<div class="dash-hero"><div><div class="dash-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dash-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Nexa SAS · Posadas, Misiones</div></div><div class="dash-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
+        +'<div class="qa-row">'+qa.map(function(q){ return '<div class="qa" data-qa="'+q[2]+'"><div class="ico">'+q[0]+'</div><div class="lbl">'+q[1]+'</div></div>'; }).join('')+'</div>'
         +'<div class="kpis">'
-        +kpi(c[0],'Clientes totales','b','cl')
-        +kpi(c[1],'Activos','g','cl|estado=activo')+kpi(c[2],'Bloqueados','r','cl|estado=bloqueado')+kpi(c[3],'Baja','','cl|estado=baja')
-        +kpi(c[7],'Solicitudes pendientes','w','sol')
-        +kpi(c[8],'OT pendientes','w','ot|PENDIENTE')+kpi(c[9],'OT asignadas','b','ot|ASIGNADA')
-        +kpi(c[10],'⚠️ A cargar en ISPcube','r','cl|pend')
+          +kpi(c[0],'Clientes','b','cl')+kpi(c[1],'Activos','g','cl|estado=activo')+kpi(c[2],'Bloqueados','r','cl|estado=bloqueado')+kpi(c[3],'Baja','','cl|estado=baja')
+          +kpi(c[7],'Solicitudes pend.','w','sol')+kpi(totalPend,'OT pendientes','w','ot|PENDIENTE')+kpi(c[8],'OT asignadas','b','ot|ASIGNADA')+kpi(c[9],'En curso','b','ot|EN_CURSO')+kpi(c[10],'Finalizadas','g','ot|FINALIZADA')+kpi(c[11],'⚠️ Falta ISPcube','r','cl|pend')
         +'</div>'
-        +'<h1 style="font-size:17px;margin-top:24px">Por empresa</h1>'
-        +'<div class="kpis">'+kpi(c[4],'FG Conexiones','','cl|empresa=FG Conexiones')+kpi(c[5],'NOR-TEL','','cl|empresa=NOR-TEL')+kpi(c[6],'Nexa','','cl|empresa=Nexa')+'</div>';
+        +'<div class="dash-sec">OT pendientes por tipo</div><div class="kpis">'
+          +tipos.map(function(t){ return kpi(porTipo[t[0]]||0,t[1],'w','ot|PENDIENTE|'+t[0]); }).join('')
+        +'</div>'
+        +'<div class="dash-sec">Antigüedad de pendientes</div><div class="kpis">'
+          +kpi(ag.a,'&lt; 24 hs','g')+kpi(ag.b,'24 a 72 hs','w')+kpi(ag.d,'&gt; 72 hs ⚠️','r')
+        +'</div>'
+        +'<div class="dash-sec">Clientes por empresa</div><div class="kpis">'+kpi(c[4],'FG Conexiones','','cl|empresa=FG Conexiones')+kpi(c[5],'NOR-TEL','','cl|empresa=NOR-TEL')+kpi(c[6],'Nexa','','cl|empresa=Nexa')+'</div>';
       Array.prototype.forEach.call(view.querySelectorAll('.kpi-link'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
+      Array.prototype.forEach.call(view.querySelectorAll('.qa'),function(el){ el.addEventListener('click',function(){ var a=el.getAttribute('data-qa'); if(a==='nuevaOT') nuevaOT(null); else if(a==='isp') goKpi('cl|pend'); else navTo(a); }); });
+      if(_clockTimer) clearInterval(_clockTimer); _clockTimer=setInterval(_tick,1000);
     });
   }
   function kpi(n,t,cls,act){ return '<div class="kpi '+(cls||'')+(act?' kpi-link':'')+'"'+(act?' data-act="'+esc(act)+'"':'')+'><div class="n">'+n+'</div><div class="t">'+t+'</div></div>'; }
@@ -401,15 +424,16 @@
   }
 
   // ── ORDENES ──
-  var otState={ estado:'', page:0, size:50, total:0 };
+  var otState={ estado:'', tipo:'', page:0, size:50, total:0 };
   function vOrdenes(){
     view.innerHTML='<h1>Órdenes de trabajo</h1><p class="sub">Generación y seguimiento.</p>'
       +'<div class="toolbar">'
       +'<select id="ot-estado"><option value="">Todos los estados</option>'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],otState.estado)+'</select>'
+      +'<select id="ot-tipo"><option value="">Todos los tipos</option>'+opt(['INSTALACION','REPARACION','DESCONEXION','RECONEXION','CAMBIO_PLAN','CAMBIO_DOMICILIO','MANTENIMIENTO','RETIRO_EQUIPOS','OTRO'],otState.tipo)+'</select>'
       +'<button class="btn btn-pri" id="ot-filtrar">Filtrar</button>'
       +'<button class="btn btn-ok" id="ot-nueva" style="margin-left:auto">+ Nueva OT</button>'
       +'</div><div id="ot-tabla"></div>';
-    document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.page=0; cargarOT(); });
+    document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-tipo').value; otState.page=0; cargarOT(); });
     document.getElementById('ot-nueva').addEventListener('click',function(){ nuevaOT(null); });
     cargarOT();
   }
@@ -417,7 +441,8 @@
     var cont=document.getElementById('ot-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
     var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,clientes(numero_cliente,nombre,apellido,barrio),cuadrillas(nombre)&order=created_at.desc';
     if(otState.estado) base+='&estado=eq.'+otState.estado;
-    sbCount('ordenes_trabajo?select=id'+(otState.estado?'&estado=eq.'+otState.estado:'')).then(function(t){ otState.total=t; });
+    if(otState.tipo) base+='&tipo=eq.'+otState.tipo;
+    sbCount('ordenes_trabajo?select=id'+(otState.estado?'&estado=eq.'+otState.estado:'')+(otState.tipo?'&tipo=eq.'+otState.tipo:'')).then(function(t){ otState.total=t; });
     fetch(SB_URL+'/rest/v1/ordenes_trabajo?'+base,{headers:Object.assign({},H,{'Range':(otState.page*otState.size)+'-'+((otState.page+1)*otState.size-1)})})
      .then(function(r){return r.json();}).then(function(d){
       if(!Array.isArray(d)||!d.length){ cont.innerHTML='<div class="center">No hay órdenes'+(otState.estado?' en ese estado':'')+'.</div>'; return; }
@@ -918,9 +943,71 @@
       sc.forEach(function(s){ scmap[s.material_id]=Number(s.cantidad)||0; });
       var rows=mats.map(function(m){ var c=(m.serial_tipo&&m.serial_tipo!=='NINGUNO')?(serCnt[m.id]||0):(scmap[m.id]||0); return {m:m,c:c}; }).filter(function(x){return x.c>0;});
       if(!rows.length){ t.innerHTML='<div class="center">Esta cuadrilla todavía no tiene stock cargado.</div>'; return; }
-      var h='<table><thead><tr><th>Material</th><th>Tecnología</th><th>Serial</th><th>Cantidad</th></tr></thead><tbody>';
-      rows.forEach(function(x){ h+='<tr><td><b>'+esc(x.m.nombre)+'</b></td><td>'+tecPill(x.m.tecnologia)+'</td><td>'+stipPill(x.m.serial_tipo)+'</td><td><b>'+x.c+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span></td></tr>'; });
+      var h='<table><thead><tr><th>Material</th><th>Tecnología</th><th>Serial</th><th>Cantidad</th><th></th></tr></thead><tbody>';
+      rows.forEach(function(x){ h+='<tr><td><b>'+esc(x.m.nombre)+'</b></td><td>'+tecPill(x.m.tecnologia)+'</td><td>'+stipPill(x.m.serial_tipo)+'</td><td><b>'+x.c+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span></td>'
+        +'<td style="white-space:nowrap"><button class="btn btn-2 sc-dev" data-mid="'+x.m.id+'" data-n="'+esc(x.m.nombre)+'" data-st="'+x.m.serial_tipo+'" data-c="'+x.c+'">↩️ Devolver</button>'+(x.m.serial_tipo==='NINGUNO'?(' <button class="btn btn-2 sc-aj" data-mid="'+x.m.id+'" data-n="'+esc(x.m.nombre)+'" data-c="'+x.c+'">⚖️ Ajustar</button>'):'')+'</td></tr>'; });
       h+='</tbody></table>'; t.innerHTML=h;
+      Array.prototype.forEach.call(t.querySelectorAll('.sc-dev'),function(b){ b.addEventListener('click',function(){ devolverStock(b.getAttribute('data-mid'),b.getAttribute('data-n'),b.getAttribute('data-st'),Number(b.getAttribute('data-c'))); }); });
+      Array.prototype.forEach.call(t.querySelectorAll('.sc-aj'),function(b){ b.addEventListener('click',function(){ ajustarStock(b.getAttribute('data-mid'),b.getAttribute('data-n'),Number(b.getAttribute('data-c'))); }); });
+    });
+  }
+  // — Devolución cuadrilla → depósito (serial-aware) —
+  function devolverStock(matId,nombre,stip,disp){
+    var cuad=depState.cuad;
+    if(stip==='NINGUNO'){
+      modal('<h2>Devolver al depósito</h2><p class="muted">'+esc(nombre)+' · en la cuadrilla: <b>'+disp+'</b></p>'
+        +'<label class="l">Cantidad a devolver</label><input id="dv-cant" type="number" min="1" max="'+disp+'" value="'+disp+'">'
+        +'<div id="dv-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="dv-go">Devolver</button><button class="btn btn-2" id="dv-x">Cancelar</button></div>');
+      document.getElementById('dv-x').addEventListener('click',cerrarModal);
+      document.getElementById('dv-go').addEventListener('click',function(){
+        var n=parseFloat(document.getElementById('dv-cant').value); if(!(n>0)||n>disp){ document.getElementById('dv-err').textContent='Cantidad inválida (máx '+disp+').'; return; }
+        var btn=this; btn.disabled=true;
+        sbGet('stock_cuadrillas?cuadrilla_id=eq.'+cuad+'&material_id=eq.'+matId+'&select=id,cantidad')
+          .then(function(d){ if(Array.isArray(d)&&d.length) return sbPatch('stock_cuadrillas?id=eq.'+d[0].id,{cantidad:(Number(d[0].cantidad)||0)-n,updated_at:new Date().toISOString()}); })
+          .then(function(){ return _upsertDeposito(matId,n); })
+          .then(function(){ return sbPost('stock_movimientos',{material_id:Number(matId),tipo:'DEVOLUCION',cantidad:n,cuadrilla_id:Number(cuad),usuario_id:USER.id}); })
+          .then(function(){ cerrarModal(); toast('Devuelto al depósito ✓'); cargarStockCuad(); })
+          .catch(function(){ document.getElementById('dv-err').textContent='No se pudo completar.'; btn.disabled=false; });
+      });
+    } else {
+      sbGet('stock_seriales?estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+cuad+'&material_id=eq.'+matId+'&select=serial&order=serial&limit=3000').then(function(d){
+        var ss=Array.isArray(d)?d:[];
+        modal('<h2>Devolver al depósito</h2><p class="muted">'+esc(nombre)+'</p>'
+          +'<label class="l">Elegí los equipos a devolver ('+ss.length+')</label><div id="dv-ser" style="max-height:200px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+(ss.length?ss.map(function(s){return '<label style="display:block;font-weight:500"><input type="checkbox" class="dv-ck" value="'+esc(s.serial)+'"> '+esc(s.serial)+'</label>';}).join(''):'<span class="muted">sin seriales</span>')+'</div>'
+          +'<div id="dv-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+          +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="dv-go">Devolver</button><button class="btn btn-2" id="dv-x">Cancelar</button></div>');
+        document.getElementById('dv-x').addEventListener('click',cerrarModal);
+        document.getElementById('dv-go').addEventListener('click',function(){
+          var sers=[]; Array.prototype.forEach.call(document.querySelectorAll('#dv-ser .dv-ck:checked'),function(ck){ sers.push(ck.value); });
+          if(!sers.length){ document.getElementById('dv-err').textContent='Elegí al menos uno.'; return; }
+          var btn=this; btn.disabled=true;
+          var seq=sers.reduce(function(pr,ser){ return pr.then(function(){ return sbGet('stock_seriales?material_id=eq.'+matId+'&serial=eq.'+encodeURIComponent(ser)+'&estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+cuad+'&select=id').then(function(d){ if(Array.isArray(d)&&d.length) return sbPatch('stock_seriales?id=eq.'+d[0].id,{estado:'EN_DEPOSITO',cuadrilla_id:null}); }); }); }, Promise.resolve());
+          seq.then(function(){ return sbPost('stock_movimientos',{material_id:Number(matId),tipo:'DEVOLUCION',cantidad:sers.length,cuadrilla_id:Number(cuad),usuario_id:USER.id}); })
+            .then(function(){ cerrarModal(); toast('Devuelto al depósito ✓'); cargarStockCuad(); })
+            .catch(function(){ document.getElementById('dv-err').textContent='No se pudo completar.'; btn.disabled=false; });
+        });
+      });
+    }
+  }
+  // — Ajuste manual del stock de cuadrilla (no serializados) —
+  function ajustarStock(matId,nombre,actual){
+    var cuad=depState.cuad;
+    modal('<h2>Ajustar stock de la cuadrilla</h2><p class="muted">'+esc(nombre)+' · actual: <b>'+actual+'</b></p>'
+      +'<label class="l">Cantidad real (corregida)</label><input id="aj-cant" type="number" min="0" value="'+actual+'">'
+      +'<div class="muted" style="font-size:12px;margin-top:4px">Queda registrado como ajuste en Movimientos.</div>'
+      +'<div id="aj-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="aj-go">Guardar ajuste</button><button class="btn btn-2" id="aj-x">Cancelar</button></div>');
+    document.getElementById('aj-x').addEventListener('click',cerrarModal);
+    document.getElementById('aj-go').addEventListener('click',function(){
+      var nuevo=parseFloat(document.getElementById('aj-cant').value); if(!(nuevo>=0)){ document.getElementById('aj-err').textContent='Cantidad inválida.'; return; }
+      var diff=nuevo-actual; if(diff===0){ cerrarModal(); return; }
+      var btn=this; btn.disabled=true;
+      sbGet('stock_cuadrillas?cuadrilla_id=eq.'+cuad+'&material_id=eq.'+matId+'&select=id')
+        .then(function(d){ if(Array.isArray(d)&&d.length) return sbPatch('stock_cuadrillas?id=eq.'+d[0].id,{cantidad:nuevo,updated_at:new Date().toISOString()}); return sbPost('stock_cuadrillas',{cuadrilla_id:Number(cuad),material_id:Number(matId),cantidad:nuevo}); })
+        .then(function(){ return sbPost('stock_movimientos',{material_id:Number(matId),tipo:'AJUSTE',cantidad:diff,cuadrilla_id:Number(cuad),usuario_id:USER.id,observaciones:'Ajuste manual ('+actual+'→'+nuevo+')'}); })
+        .then(function(){ cerrarModal(); toast('Ajuste guardado ✓'); cargarStockCuad(); })
+        .catch(function(){ document.getElementById('aj-err').textContent='No se pudo completar.'; btn.disabled=false; });
     });
   }
 
