@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.35</title>
+<title>Nexa · Gestión — v0.36</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  :root{ --pri:#2563eb; --pri-d:#1d4ed8; --gris:#64748b; --bg:#f1f5f9; --card:#fff; --bord:#e2e8f0;
-         --rojo:#dc2626; --ok:#16a34a; --warn:#d97706; --dark:#0f172a; }
+  :root{ --pri:#2563eb; --pri-d:#1d4ed8; --gris:#64748b; --bg:#eef2f7; --card:#fff; --bord:rgba(15,23,42,.1); --border2:rgba(15,23,42,.06);
+         --rojo:#dc2626; --ok:#16a34a; --warn:#d97706; --dark:#0f172a; --card-shadow:0 1px 3px rgba(15,23,42,.04),0 4px 12px rgba(15,23,42,.05); }
   *{ box-sizing:border-box; }
   body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--dark); font-size:14px; }
   a{ color:var(--pri); }
@@ -27,14 +27,21 @@
   .btn-2{ background:#fff; color:#334155; border:2px solid var(--bord); }
   .btn-ok{ background:var(--ok); color:#fff; } .btn-x{ background:#fff; color:var(--rojo); border:2px solid #fecaca; }
   .btn:disabled{ opacity:.5; cursor:not-allowed; }
-  /* Shell */
+  /* Shell — sidebar blanco con secciones (estilo FG) */
   #app{ display:flex; min-height:100vh; }
-  .side{ width:210px; background:var(--dark); color:#cbd5e1; flex:0 0 auto; padding:16px 0; position:sticky; top:0; height:100vh; }
-  .side .logo{ color:#fff; font-weight:800; font-size:22px; letter-spacing:1px; padding:0 18px 14px; }
-  .nav a{ display:flex; gap:10px; align-items:center; padding:11px 18px; color:#cbd5e1; text-decoration:none; font-weight:600; cursor:pointer; }
-  .nav a:hover{ background:#1e293b; color:#fff; }
-  .nav a.on{ background:var(--pri); color:#fff; }
-  .side .user{ position:absolute; bottom:0; width:100%; padding:14px 18px; border-top:1px solid #1e293b; font-size:12px; color:#94a3b8; }
+  .side{ width:230px; background:#fff; border-right:1px solid var(--bord); color:#475569; flex:0 0 auto; position:sticky; top:0; height:100vh; display:flex; flex-direction:column; }
+  .side .logo{ display:flex; align-items:center; gap:11px; padding:15px 16px; border-bottom:1px solid var(--border2); }
+  .side .logo .lg-sq{ width:38px; height:38px; border-radius:10px; background:var(--pri); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; }
+  .side .logo .lg-t{ font-weight:800; font-size:15px; color:#0f172a; line-height:1.1; }
+  .side .logo .lg-s{ font-size:11px; color:#94a3b8; }
+  .nav{ flex:1; overflow-y:auto; padding:6px 10px; }
+  .nav .sec{ font-size:9px; font-weight:700; color:#94a3b8; letter-spacing:2px; text-transform:uppercase; padding:14px 10px 4px; }
+  .nav a{ display:flex; gap:11px; align-items:center; padding:9px 11px; border-radius:10px; color:#475569; text-decoration:none; font-weight:600; font-size:14.5px; cursor:pointer; }
+  .nav a:hover{ color:#1e293b; background:rgba(37,99,235,.06); }
+  .nav a.on{ color:var(--pri); background:rgba(37,99,235,.1); }
+  .nav a .nbadge{ margin-left:auto; background:var(--rojo); color:#fff; font-size:10px; font-weight:800; padding:1px 7px; border-radius:99px; }
+  .side .user{ padding:13px 16px; border-top:1px solid var(--border2); font-size:12px; color:#94a3b8; }
+  .side .user .u-logout{ width:100%; margin-top:9px; padding:8px; background:rgba(220,38,38,.06); border:1px solid rgba(220,38,38,.2); color:var(--rojo); border-radius:8px; cursor:pointer; font-weight:700; font-size:12px; }
   .main{ flex:1; padding:22px 26px; max-width:100%; overflow-x:auto; }
   h1{ font-size:22px; margin:0 0 4px; } .sub{ color:var(--gris); margin:0 0 18px; }
   /* Cards / KPIs */
@@ -75,15 +82,26 @@
   #map{ height:calc(100vh - 170px); min-height:420px; border:1px solid var(--bord); border-radius:12px; }
   .leaflet-container{ font:inherit; }
   /* Dashboard estilo FG */
-  .dash-hero{ background:#fff; border:1px solid var(--bord); border-radius:16px; padding:20px 24px; display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; flex-wrap:wrap; }
-  .dash-saludo{ font-size:24px; font-weight:800; }
-  .dash-fecha{ color:var(--gris); font-size:13px; margin-top:4px; text-transform:capitalize; }
-  .dash-reloj{ font-size:34px; font-weight:800; color:var(--pri); font-variant-numeric:tabular-nums; }
-  .qa-row{ display:grid; grid-template-columns:repeat(auto-fill,minmax(108px,1fr)); gap:10px; margin-bottom:18px; }
-  .qa{ background:#fff; border:1px solid var(--bord); border-radius:14px; padding:14px 8px; text-align:center; cursor:pointer; transition:.12s; }
-  .qa:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(37,99,235,.13); border-color:var(--pri); }
-  .qa .ico{ font-size:22px; } .qa .lbl{ font-size:12px; font-weight:700; margin-top:5px; color:#334155; }
-  .dash-sec{ font-size:15px; font-weight:800; margin:20px 0 10px; }
+  .dhead{ background:#fff; border:1px solid var(--bord); border-radius:16px; padding:18px 22px; display:flex; align-items:center; gap:16px; margin-bottom:16px; box-shadow:var(--card-shadow); }
+  .dhead-logo{ width:54px; height:54px; background:#1e3a5f; color:#fff; border-radius:14px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; flex:0 0 auto; }
+  .dhead-eyebrow{ font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
+  .dhead-saludo{ font-size:22px; font-weight:800; line-height:1.1; }
+  .dhead-fecha{ font-size:12px; color:#64748b; margin-top:2px; text-transform:capitalize; }
+  .dhead-reloj{ margin-left:auto; font-size:30px; font-weight:800; color:#1e40af; font-variant-numeric:tabular-nums; }
+  .qbar{ background:#fff; border:1px solid var(--bord); border-radius:14px; padding:12px; display:flex; flex-wrap:wrap; gap:4px; margin-bottom:16px; box-shadow:var(--card-shadow); }
+  .qbtn{ display:flex; flex-direction:column; align-items:center; gap:7px; padding:10px 10px; border-radius:10px; cursor:pointer; min-width:80px; flex:1; }
+  .qbtn:hover{ background:#f1f5f9; }
+  .qbtn .qico{ width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; }
+  .qbtn .qlbl{ font-size:12px; font-weight:600; color:#475569; white-space:nowrap; }
+  .qbtn .qbadge{ position:absolute; top:-5px; right:-5px; background:var(--rojo); color:#fff; font-size:10px; font-weight:800; min-width:18px; height:18px; padding:0 4px; border-radius:99px; display:flex; align-items:center; justify-content:center; }
+  .dkpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(186px,1fr)); gap:14px; margin-bottom:18px; }
+  .dkpi{ background:#fff; border:1px solid var(--bord); border-left:4px solid #64748b; border-radius:12px; padding:15px 18px; box-shadow:var(--card-shadow); }
+  .dkpi.kl{ cursor:pointer; transition:.12s; } .dkpi.kl:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(37,99,235,.10); }
+  .dkpi-lbl{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; }
+  .dkpi-n{ font-size:30px; font-weight:800; line-height:1.1; margin-top:3px; }
+  .dkpi-sub{ font-size:11px; color:#94a3b8; margin-top:6px; }
+  .dkpi-link{ font-size:11px; font-weight:700; margin-top:2px; }
+  .dash-sec{ font-size:13px; font-weight:800; color:#334155; margin:22px 0 10px; text-transform:uppercase; letter-spacing:.5px; }
 </style>
 </head>
 <body>
@@ -92,7 +110,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.35</div>
+    <div class="marca-sub">Gestión · v0.36</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -105,19 +123,23 @@
 <!-- ───────── APP ───────── -->
 <div id="app" class="hidden">
   <div class="side">
-    <div class="logo">NEXA</div>
+    <div class="logo"><div class="lg-sq">N</div><div><div class="lg-t">Nexa Gestión</div><div class="lg-s">Panel de cuadrillas</div></div></div>
     <div class="nav" id="nav">
+      <div class="sec">Principal</div>
       <a data-v="dashboard" class="on">📊 Dashboard</a>
-      <a data-v="clientes">👥 Clientes</a>
-      <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
-      <a data-v="deposito">📦 Depósito / Stock</a>
+      <a data-v="validacion">✅ Validación <span class="nbadge" id="nav-val-badge" style="display:none">0</span></a>
+      <a data-v="solicitudes">📥 Solicitudes</a>
+      <a data-v="cobertura">📍 Cobertura / Red</a>
+      <div class="sec">Gestión</div>
+      <a data-v="clientes">👥 Clientes</a>
       <a data-v="cuadrillas-adm">🔧 Cuadrillas</a>
       <a data-v="manoobra">🧰 Tipos de trabajo</a>
       <a data-v="cuentastv">📺 Cuentas TV</a>
       <a data-v="precios">💲 Precios</a>
-      <a data-v="cobertura">📍 Cobertura / Red</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
+      <div class="sec">Stock</div>
+      <a data-v="deposito">📦 Depósito / Stock</a>
     </div>
     <div class="user" id="side-user"></div>
   </div>
@@ -132,7 +154,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.35';
+  var VER='v0.36';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -169,7 +191,7 @@
   function iniciar(){
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
-    document.getElementById('side-user').innerHTML = esc(USER.nombre)+'<br><span style="color:#64748b">'+esc(USER.rol)+'</span> · '+VER+' · <a href="#" id="logout" style="color:#94a3b8;text-decoration:underline">Salir</a>';
+    document.getElementById('side-user').innerHTML = '<div style="font-size:14px;font-weight:700;color:#0f172a">'+esc(USER.nombre)+'</div><div style="text-transform:capitalize">'+esc(USER.rol)+' · '+VER+'</div><button class="u-logout" id="logout">Cerrar sesión</button>';
     var _lo=document.getElementById('logout'); if(_lo) _lo.addEventListener('click',function(e){ e.preventDefault(); try{ localStorage.removeItem('nexa_sesion'); }catch(_){} location.reload(); });
     if(USER.rol==='superadmin'){ var nu=document.getElementById('nav-usuarios'); if(nu) nu.style.display=''; }
     // precargar referencias
@@ -189,9 +211,10 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
+  function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(typeof cargarOT==='function'){ cargarOT(); } }
   // accesos directos desde las tarjetas KPI del dashboard
   function goKpi(act){
     var p=String(act).split('|'); var v=p[0];
@@ -202,6 +225,10 @@
       navTo('clientes');
     } else if(v==='sol'){ navTo('solicitudes'); }
     else if(v==='ot'){ otState.estado=p[1]||''; otState.tipo=p[2]||''; otState.page=0; navTo('ordenes'); }
+    else if(v==='val'){ navTo('validacion'); }
+    else if(v==='nav'){ navTo(p[1]); }
+    else if(v==='nuevaOT'){ navTo('ordenes'); setTimeout(function(){ if(typeof nuevaOT==='function') nuevaOT(); },60); }
+    else if(v==='isp'){ clState={ q:'', estado:'', empresa:'', barrio:'', pend:true, page:0, size:50, total:0 }; navTo('clientes'); }
   }
   var view=document.getElementById('view');
   function loading(){ view.innerHTML='<div class="center"><div class="spin"></div></div>'; }
@@ -222,34 +249,71 @@
       sbCount('ordenes_trabajo?estado=eq.ASIGNADA&select=id'), sbCount('ordenes_trabajo?estado=eq.EN_CURSO&select=id'),
       sbCount('ordenes_trabajo?estado=eq.FINALIZADA&select=id'),
       sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id'),
-      sbGet('ordenes_trabajo?estado=eq.PENDIENTE&select=tipo,created_at&limit=2000')
+      sbGet('ordenes_trabajo?estado=eq.PENDIENTE&select=tipo,created_at&limit=2000'),
+      sbCount('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id')
     ]).then(function(c){
       var pend=Array.isArray(c[12])?c[12]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var now=new Date(), nombre=(USER.nombre||'').split(' ')[0];
-      var qa=[['🛠️','Nueva OT','nuevaOT'],['📋','Órdenes','ordenes'],['👥','Clientes','clientes'],['📥','Solicitudes','solicitudes'],['📦','Depósito','deposito'],['🔧','Cuadrillas','cuadrillas-adm'],['📍','Cobertura','cobertura'],['⚠️','ISPcube','isp']];
+      var now=new Date(), nombre=(USER.nombre||'').split(' ')[0], aValidar=c[13]||0;
+      var qa=[
+        ['🛠️','Nueva OT','nuevaOT','#dbeafe'],['📋','Órdenes','nav|ordenes','#eef2f7'],['✅','Validar','val','#dcfce7'],
+        ['📥','Solicitudes','nav|solicitudes','#cffafe'],['👥','Clientes','nav|clientes','#e0e7ff'],['📦','Depósito','nav|deposito','#ffedd5'],
+        ['🔧','Cuadrillas','nav|cuadrillas-adm','#eef2f7'],['📺','Cuentas TV','nav|cuentastv','#fce7f3'],['💲','Precios','nav|precios','#fef3c7'],
+        ['📍','Cobertura','nav|cobertura','#ccfbf1'],['⚠️','ISPcube','isp','#fee2e2']
+      ];
       var tipos=[['INSTALACION','🔧 Instalaciones'],['REPARACION','🛠️ Reparac./Servis'],['DESCONEXION','🔌 Desconexiones'],['RETIRO_EQUIPOS','📦 Retiros'],['RECONEXION','🔁 Reconexiones'],['OTRO','⚙️ Otros']];
+      function pct(x){ return Math.round(x/(totalPend||1)*100)+'% del total'; }
       view.innerHTML=
-        '<div class="dash-hero"><div><div class="dash-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dash-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Nexa SAS · Posadas, Misiones</div></div><div class="dash-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
-        +'<div class="qa-row">'+qa.map(function(q){ return '<div class="qa" data-qa="'+q[2]+'"><div class="ico">'+q[0]+'</div><div class="lbl">'+q[1]+'</div></div>'; }).join('')+'</div>'
-        +'<div class="kpis">'
-          +kpi(c[0],'Clientes','b','cl')+kpi(c[1],'Activos','g','cl|estado=activo')+kpi(c[2],'Bloqueados','r','cl|estado=bloqueado')+kpi(c[3],'Baja','','cl|estado=baja')
-          +kpi(c[7],'Solicitudes pend.','w','sol')+kpi(totalPend,'OT pendientes','w','ot|PENDIENTE')+kpi(c[8],'OT asignadas','b','ot|ASIGNADA')+kpi(c[9],'En curso','b','ot|EN_CURSO')+kpi(c[10],'Finalizadas','g','ot|FINALIZADA')+kpi(c[11],'⚠️ Falta ISPcube','r','cl|pend')
+        '<div class="dhead"><div class="dhead-logo">NX</div><div><div class="dhead-eyebrow">Nexa SAS · Inicio</div><div class="dhead-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dhead-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Posadas, Misiones</div></div><div class="dhead-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
+        +'<div class="qbar">'+qa.map(function(q){ var bdg=(q[2]==='val'&&aValidar>0)?'<span class="qbadge">'+aValidar+'</span>':''; return '<div class="qbtn" data-act="'+esc(q[2])+'"><div class="qico" style="background:'+q[3]+'">'+q[0]+bdg+'</div><div class="qlbl">'+q[1]+'</div></div>'; }).join('')+'</div>'
+        +'<div class="dkpis">'
+          +dkpi(totalPend,'Pendientes','OTs sin asignar','amber','ot|PENDIENTE')
+          +dkpi(c[9],'En curso','OTs en proceso','blue','ot|EN_CURSO')
+          +dkpi(aValidar,'A validar','cierres del técnico','cyan','val')
+          +dkpi(c[10],'Finalizadas','validadas','green','ot|FINALIZADA')
+          +dkpi(c[11],'Falta ISPcube','clientes sin código','red','isp')
         +'</div>'
-        +'<div class="dash-sec">OT pendientes por tipo</div><div class="kpis">'
-          +tipos.map(function(t){ return kpi(porTipo[t[0]]||0,t[1],'w','ot|PENDIENTE|'+t[0]); }).join('')
+        +'<div class="dkpis">'
+          +dkpi(c[0],'Clientes','total','blue','cl')
+          +dkpi(c[1],'Activos','','green','cl|estado=activo')
+          +dkpi(c[2],'Bloqueados','','red','cl|estado=bloqueado')
+          +dkpi(c[3],'Baja','','gray','cl|estado=baja')
+          +dkpi(c[7],'Solicitudes','pendientes','amber','sol')
         +'</div>'
-        +'<div class="dash-sec">Antigüedad de pendientes</div><div class="kpis">'
-          +kpi(ag.a,'&lt; 24 hs','g')+kpi(ag.b,'24 a 72 hs','w')+kpi(ag.d,'&gt; 72 hs ⚠️','r')
+        +'<div class="dash-sec">OT pendientes por tipo</div><div class="dkpis">'
+          +tipos.map(function(t){ return dkpi(porTipo[t[0]]||0,t[1],'','gray','ot|PENDIENTE|'+t[0]); }).join('')
         +'</div>'
-        +'<div class="dash-sec">Clientes por empresa</div><div class="kpis">'+kpi(c[4],'FG Conexiones','','cl|empresa=FG Conexiones')+kpi(c[5],'NOR-TEL','','cl|empresa=NOR-TEL')+kpi(c[6],'Nexa','','cl|empresa=Nexa')+'</div>';
-      Array.prototype.forEach.call(view.querySelectorAll('.kpi-link'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
-      Array.prototype.forEach.call(view.querySelectorAll('.qa'),function(el){ el.addEventListener('click',function(){ var a=el.getAttribute('data-qa'); if(a==='nuevaOT') nuevaOT(null); else if(a==='isp') goKpi('cl|pend'); else navTo(a); }); });
+        +'<div class="dash-sec">Antigüedad de pendientes</div><div class="dkpis">'
+          +dkpi(ag.a,'&lt; 24 hs',pct(ag.a),'green','')+dkpi(ag.b,'24 a 72 hs',pct(ag.b),'amber','')+dkpi(ag.d,'&gt; 72 hs ⚠️',pct(ag.d),'red','')
+        +'</div>';
+      Array.prototype.forEach.call(view.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
+      Array.prototype.forEach.call(view.querySelectorAll('.qbtn'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
+      var vb=document.getElementById('nav-val-badge'); if(vb){ if(aValidar>0){ vb.textContent=aValidar; vb.style.display=''; } else vb.style.display='none'; }
       if(_clockTimer) clearInterval(_clockTimer); _clockTimer=setInterval(_tick,1000);
     });
   }
   function kpi(n,t,cls,act){ return '<div class="kpi '+(cls||'')+(act?' kpi-link':'')+'"'+(act?' data-act="'+esc(act)+'"':'')+'><div class="n">'+n+'</div><div class="t">'+t+'</div></div>'; }
+  function dkpi(n,label,sub,color,act){
+    var cm={amber:'#f59e0b',blue:'#2563eb',green:'#16a34a',cyan:'#0891b2',red:'#dc2626',gray:'#64748b'}, c=cm[color]||'#64748b';
+    return '<div class="dkpi'+(act?' kl':'')+'" style="border-left-color:'+c+';'+(color==='red'?'background:#fef2f2;':'')+'"'+(act?' data-act="'+esc(act)+'"':'')+'>'
+      +'<div class="dkpi-lbl">'+label+'</div><div class="dkpi-n" style="color:'+c+'">'+n+'</div>'
+      +(sub?'<div class="dkpi-sub">'+sub+'</div>':'')+(act?'<div class="dkpi-link" style="color:'+c+'">ver →</div>':'')+'</div>';
+  }
+  // ── VALIDACIÓN ── (módulo propio: OTs cerradas por el técnico, a aprobar)
+  function vValidacion(){
+    loading();
+    sbGet('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id,numero,tipo,fin_tec_at,cuadrillas(nombre),clientes(numero_cliente,nombre,apellido,barrio),tipos_trabajo(nombre)&order=fin_tec_at.asc').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var h='<h1>✅ Validación</h1><p class="sub">Cierres de los técnicos pendientes de aprobar. Tocá una OT para revisar el cierre y validar.</p>';
+      if(!d.length){ view.innerHTML=h+'<div class="center">No hay cierres pendientes de validar. 🎉</div>'; return; }
+      h+='<table><thead><tr><th>N° OT</th><th>Tipo</th><th>Cliente</th><th>Barrio</th><th>Cuadrilla</th><th>Cerrada</th></tr></thead><tbody>';
+      d.forEach(function(o){ var cli=o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)';
+        h+='<tr data-id="'+o.id+'"><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(cli)+'</td><td>'+esc(o.clientes?o.clientes.barrio||'':'')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+esc(fmtFechaHora(o.fin_tec_at))+'</td></tr>'; });
+      h+='</tbody></table><div class="muted" style="margin-top:8px">'+d.length+' OT a validar</div>'; view.innerHTML=h;
+      Array.prototype.forEach.call(view.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ detalleOT(tr.getAttribute('data-id')); }); });
+    });
+  }
 
   // ── CLIENTES ──
   var clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0 };
@@ -542,12 +606,12 @@
         var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
         var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null) };
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
-        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ cerrarModal(); toast('OT actualizada ✓'); cargarOT(); });
+        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ cerrarModal(); toast('OT actualizada ✓'); refrescarOT(); });
       });
       document.getElementById('ot-del').addEventListener('click',function(){
         if(!confirm('¿Eliminar la OT N° '+o.numero+'? Esta acción no se puede deshacer.')) return;
         fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+id,{method:'DELETE',headers:H}).then(function(r){
-          if(r.ok){ cerrarModal(); toast('OT eliminada'); cargarOT(); }
+          if(r.ok){ cerrarModal(); toast('OT eliminada'); refrescarOT(); }
           else { toast('No se pudo eliminar (¿tiene movimientos asociados?).'); }
         }).catch(function(){ toast('No se pudo eliminar.'); });
       });
@@ -603,7 +667,7 @@
       }));
       jobs.push(sbPost('stock_movimientos',{ material_id:m.material_id, tipo:'CONSUMO_OT', cantidad:m.cantidad, ot_id:o.id, cuadrilla_id:o.cuadrilla_id, usuario_id:USER.id, observaciones:'Consumo OT N° '+o.numero }));
     });
-    Promise.all(jobs).then(function(){ cerrarModal(); toast('OT N° '+o.numero+' validada y finalizada ✓'); cargarOT(); }).catch(function(){ toast('Error al validar.'); if(vb){vb.disabled=false;vb.textContent='✅ Validar y finalizar';} });
+    Promise.all(jobs).then(function(){ cerrarModal(); toast('OT N° '+o.numero+' validada y finalizada ✓'); refrescarOT(); }).catch(function(){ toast('Error al validar.'); if(vb){vb.disabled=false;vb.textContent='✅ Validar y finalizar';} });
   }
 
   // ── TIPOS DE TRABAJO ── (FTTH, Wireless, Tendido, Fusiones… c/u con materiales + mano de obra + cuadrillas)
