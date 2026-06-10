@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.22</title>
+<title>Nexa · Gestión — v0.24</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -19,6 +19,7 @@
   .marca{ font-weight:800; font-size:30px; letter-spacing:1px; color:var(--pri-d); text-align:center; }
   .marca-sub{ text-align:center; color:var(--gris); font-size:13px; margin-bottom:20px; }
   input,select,textarea{ width:100%; border:2px solid var(--bord); border-radius:10px; padding:11px; font-size:15px; font-family:inherit; background:#fff; }
+  input[type=checkbox],input[type=radio]{ width:auto; padding:0; margin:0 6px 0 0; vertical-align:middle; }
   input:focus,select:focus,textarea:focus{ outline:none; border-color:var(--pri); }
   label.l{ display:block; font-size:12px; font-weight:700; color:var(--gris); text-transform:uppercase; letter-spacing:.4px; margin:12px 0 5px; }
   .btn{ border:none; border-radius:10px; padding:11px 16px; font-size:14px; font-weight:700; cursor:pointer; }
@@ -61,7 +62,8 @@
   .pag{ display:flex; gap:8px; align-items:center; margin-top:12px; }
   /* Modal */
   .ov{ position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
-  .modal{ background:#fff; border-radius:16px; padding:22px; width:520px; max-width:100%; max-height:90vh; overflow:auto; }
+  .modal{ background:#fff; border-radius:16px; padding:22px; width:560px; max-width:100%; max-height:90vh; overflow:auto; }
+  .modal.wide{ width:920px; }
   .modal h2{ margin:0 0 4px; font-size:19px; } .row{ display:flex; gap:10px; } .row>div{ flex:1; }
   .ficha-row{ display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--bord); }
   .ficha-row .k{ color:var(--gris); } .ficha-row .v{ font-weight:600; text-align:right; }
@@ -90,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.22</div>
+    <div class="marca-sub">Gestión · v0.24</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -128,7 +130,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.22';
+  var VER='v0.24';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -572,12 +574,12 @@
       modal('<h2>'+(t.id?'Editar':'Nuevo')+' tipo de trabajo</h2>'
         +'<div class="row"><div style="flex:2"><label class="l">Nombre</label><input id="tt-nombre" value="'+esc(t.nombre||'')+'" placeholder="Ej: Tendido de red"></div><div><label class="l">Orden</label><input id="tt-orden" type="number" value="'+esc(t.orden||100)+'"></div></div>'
         +'<div style="margin-top:8px"><label style="font-weight:600"><input type="checkbox" id="tt-activo"'+(t.activo!==false?' checked':'')+'> Activo</label></div>'
-        +'<div class="row" style="margin-top:6px"><div><label class="l">Materiales de este tipo</label><div id="tt-mat" style="max-height:160px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+cks(mats,'tt-mt',aMat)+'</div></div>'
-        +'<div><label class="l">Mano de obra de este tipo</label><div id="tt-mo" style="max-height:160px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+cks(mos,'tt-moo',aMo)+'</div>'
+        +'<div class="row" style="margin-top:6px"><div><label class="l">Materiales de este tipo</label><div id="tt-mat" style="max-height:300px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+cks(mats,'tt-mt',aMat)+'</div></div>'
+        +'<div><label class="l">Mano de obra de este tipo</label><div id="tt-mo" style="max-height:300px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+cks(mos,'tt-moo',aMo)+'</div>'
         +'<div style="display:flex;gap:6px;margin-top:6px"><input id="tt-mo-nueva" placeholder="Crear mano de obra" style="flex:1"><button class="btn btn-2" id="tt-mo-add" type="button">+</button></div></div></div>'
         +'<label class="l">Cuadrillas que hacen este trabajo</label><div style="border:1px solid var(--bord);border-radius:8px;padding:8px">'+cuaChecks+'</div>'
         +'<div id="tt-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
-        +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="tt-save">Guardar</button><button class="btn btn-2" id="tt-x">Cancelar</button></div>');
+        +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="tt-save">Guardar</button><button class="btn btn-2" id="tt-x">Cancelar</button></div>','wide');
       document.getElementById('tt-x').addEventListener('click',cerrarModal);
       document.getElementById('tt-mo-add').addEventListener('click',function(){
         var nom=document.getElementById('tt-mo-nueva').value.trim(); if(!nom) return;
@@ -648,33 +650,34 @@
       var kitMat=mats.filter(function(m){return enKit(m.tecnologia);}), kitMo=mo.filter(function(m){return enKit(m.tecnologia);});
       var tecLabel=techKit==='FTTH'?'FTTH':(techKit==='WIRELESS'?'Wireless':(tecRaw||'s/tecnología'));
       var tipoLabel=String(o.tipo||'').replace(/_/g,' ')+(o.motivos_ot?(' · '+o.motivos_ot.nombre):'');
-      function box(t){ return '<div style="display:flex;border:1px solid #000;margin-bottom:3px"><span style="flex:1;padding:3px 6px;font-size:10px">'+t+'</span><span style="width:38px;border-left:1px solid #000"></span></div>'; }
-      function dato(k,v){ return '<div style="display:flex;border-bottom:1px solid #000;padding:3px 0;font-size:11px"><span style="width:130px">'+k+'</span><span style="flex:1;font-weight:bold">'+(v||'')+'</span></div>'; }
+      function box(t){ return '<div style="display:flex;border:1px solid #000;margin-bottom:2px"><span style="flex:1;padding:2px 5px;font-size:9px">'+t+'</span><span style="width:34px;border-left:1px solid #000"></span></div>'; }
+      function datoCell(k,v){ return '<div style="flex:1;display:flex;border-bottom:1px solid #000;padding:2px 0;font-size:10px;min-width:0"><span style="width:96px;flex:none">'+k+'</span><span style="flex:1;font-weight:bold;overflow:hidden">'+(v||'')+'</span></div>'; }
+      function datos2(arr){ var h=''; for(var i=0;i<arr.length;i+=2){ h+='<div style="display:flex;gap:14px">'+datoCell(arr[i][0],arr[i][1])+(arr[i+1]?datoCell(arr[i+1][0],arr[i+1][1]):'<div style="flex:1"></div>')+'</div>'; } return h; }
       function half(a){ var h=Math.ceil(a.length/2); return [a.slice(0,h),a.slice(h)]; }
       var mc=half(kitMat), oc=half(kitMo), fecha=new Date().toLocaleDateString('es-AR');
       function col(a){ return a.map(function(m){return box(esc(m.nombre));}).join(''); }
-      var css='*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000;font-size:11px;padding:14px}'
-        +'.logo{font-size:20px;font-weight:bold;letter-spacing:1px}.sec{font-size:11px;font-weight:bold;border-bottom:1px solid #000;padding-bottom:2px;margin:9px 0 5px}'
-        +'.tg{border:1px solid #000;padding:2px 7px;font-size:10px;font-weight:bold}td{font-size:11px;padding:1px 0;vertical-align:top}'
-        +'@media print{body{padding:6mm}@page{size:A4 portrait;margin:8mm}}';
+      var css='*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000;font-size:10px;padding:8px;line-height:1.2}'
+        +'.logo{font-size:18px;font-weight:bold;letter-spacing:1px}.sec{font-size:10px;font-weight:bold;border-bottom:1px solid #000;padding-bottom:1px;margin:6px 0 3px}'
+        +'.tg{border:1px solid #000;padding:1px 6px;font-size:9px;font-weight:bold}td{font-size:10px;padding:0;vertical-align:top}'
+        +'@media print{body{padding:0}@page{size:A4 portrait;margin:7mm}}';
       var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>OT '+esc(o.numero)+'</title><style>'+css+'</style></head><body>'
-        +'<div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px">'
+        +'<div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:5px">'
           +'<div><div class="logo">nexa</div><div style="font-size:9px">Nexa SAS · Posadas, Misiones</div></div>'
-          +'<div style="text-align:right"><div style="font-size:13px;font-weight:bold">ORDEN DE TRABAJO</div><div style="font-size:11px">N° <b style="font-family:monospace;font-size:13px">'+esc(o.numero)+'</b> · '+fecha+'</div><div style="margin-top:3px"><span class="tg">'+esc(tipoLabel)+'</span> &nbsp; <span class="tg">'+esc(tecLabel)+'</span></div></div></div>'
-        +'<table style="width:100%;margin-bottom:6px"><tr><td style="width:74px">Cliente</td><td style="font-weight:bold">'+esc(cli.nombre||'')+' '+esc(cli.apellido||'')+'</td><td style="width:74px">N° cliente</td><td style="font-weight:bold">'+esc(cli.numero_cliente||'')+'</td></tr>'
+          +'<div style="text-align:right"><div style="font-size:13px;font-weight:bold">ORDEN DE TRABAJO</div><div style="font-size:10px">N° <b style="font-family:monospace;font-size:13px">'+esc(o.numero)+'</b> · '+fecha+'</div><div style="margin-top:2px"><span class="tg">'+esc(tipoLabel)+'</span> &nbsp; <span class="tg">'+esc(tecLabel)+'</span></div></div></div>'
+        +'<table style="width:100%;margin-bottom:4px"><tr><td style="width:72px">Cliente</td><td style="font-weight:bold">'+esc(cli.nombre||'')+' '+esc(cli.apellido||'')+'</td><td style="width:72px">N° cliente</td><td style="font-weight:bold">'+esc(cli.numero_cliente||'')+'</td></tr>'
           +'<tr><td>DNI</td><td>'+esc(cli.doc_numero||'')+'</td><td>Plan</td><td style="font-weight:bold">'+esc(cli.planes?cli.planes.nombre:'')+'</td></tr>'
           +'<tr><td>Domicilio</td><td colspan="3">'+esc(cli.domicilio_full||'')+(cli.barrio?(' ('+esc(cli.barrio)+')'):'')+'</td></tr>'
           +'<tr><td>Teléfono</td><td>'+esc(cli.telefono||'')+'</td><td>NAP / Caja</td><td>'+esc(cli.caja_nap||'')+'</td></tr>'
           +'<tr><td>Cuadrilla</td><td colspan="3">________________   Hora: __:__ a __:__</td></tr></table>'
-        +'<div style="border:1px solid #000;padding:5px 8px;margin-bottom:6px"><b>Descripción:</b> '+esc(o.descripcion||tipoLabel)+'</div>'
+        +'<div style="border:1px solid #000;padding:3px 8px;margin-bottom:4px"><b>Descripción:</b> '+esc(o.descripcion||tipoLabel)+'</div>'
         +'<div class="sec">Materiales</div><div style="display:flex;gap:8px"><div style="flex:1">'+col(mc[0])+'</div><div style="flex:1">'+col(mc[1])+'</div></div>'
         +'<div class="sec">Mano de obra (realizada en domicilio)</div><div style="display:flex;gap:8px"><div style="flex:1">'+col(oc[0])+'</div><div style="flex:1">'+col(oc[1])+'</div></div>'
         +'<div class="sec">▼ Datos para el técnico (los carga administración)</div>'
-          +dato('Correo',esc(datos.correo||cli.email||''))+dato('SSID (WiFi)',esc(datos.ssid||''))+dato('Contraseña WiFi',esc(datos.pass_wifi||''))+dato('Usuario TV',esc(datos.usuario_tv||''))+dato('Contraseña TV',esc(datos.pass_tv||''))
+          +datos2([['Correo',esc(datos.correo||cli.email||'')],['SSID (WiFi)',esc(datos.ssid||'')],['Contraseña WiFi',esc(datos.pass_wifi||'')],['Usuario TV',esc(datos.usuario_tv||'')],['Contraseña TV',esc(datos.pass_tv||'')]])
         +'<div class="sec">▲ A completar por el técnico (el admin lo carga en ISPcube)</div>'
-          +dato('Precinto Telecrafter','')+dato('Caja (NAP)','')+dato('Puerto de fibra','')+dato('Access Point','')+dato('MAC del módem','')+dato('Serial / Modelo','')
-        +'<div class="sec">Observaciones</div><div style="border:1px solid #000;height:64px;margin-bottom:14px"></div>'
-        +'<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:6px">'
+          +datos2([['Precinto Telecrafter',''],['Caja (NAP)',''],['Puerto de fibra',''],['Access Point',''],['MAC del módem',''],['Serial / Modelo','']])
+        +'<div class="sec">Observaciones</div><div style="border:1px solid #000;height:38px;margin-bottom:10px"></div>'
+        +'<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:4px">'
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Firma del Cliente</div>'
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Firma del Técnico</div>'
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Fecha</div></div>'
@@ -1288,7 +1291,7 @@
 
   // ── util UI ──
   function opt(arr,sel){ return arr.map(function(x){return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>';}).join(''); }
-  function modal(html){ var d=document.createElement('div'); d.className='ov'; d.id='ov'; d.innerHTML='<div class="modal">'+html+'</div>'; d.addEventListener('click',function(e){ if(e.target===d)cerrarModal(); }); document.body.appendChild(d); }
+  function modal(html,cls){ var d=document.createElement('div'); d.className='ov'; d.id='ov'; d.innerHTML='<div class="modal '+(cls||'')+'">'+html+'</div>'; d.addEventListener('click',function(e){ if(e.target===d)cerrarModal(); }); document.body.appendChild(d); }
   function cerrarModal(){ var o=document.getElementById('ov'); if(o)o.remove(); }
 
   document.getElementById('lg-btn').addEventListener('click',login);
