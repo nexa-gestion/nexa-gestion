@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.27</title>
+<title>Nexa · Gestión — v0.28</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.27</div>
+    <div class="marca-sub">Gestión · v0.28</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -114,6 +114,7 @@
       <a data-v="deposito">📦 Depósito / Stock</a>
       <a data-v="cuadrillas-adm">🔧 Cuadrillas</a>
       <a data-v="manoobra">🧰 Tipos de trabajo</a>
+      <a data-v="cuentastv">📺 Cuentas TV</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
     </div>
@@ -130,7 +131,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.27';
+  var VER='v0.28';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -183,7 +184,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   // accesos directos desde las tarjetas KPI del dashboard
@@ -1331,6 +1332,67 @@
       prom.then(function(r){ if(!t.id && (!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Técnico guardado ✓'); tecLista(); })
         .catch(function(){ document.getElementById('tec-err').textContent='No se pudo guardar.'; btn.disabled=false; });
     });
+  }
+
+  // ── CUENTAS TV (Espacio Giga) ── (pool de cuentas de TV online; reemplaza la planilla)
+  var tvState={ q:'', estado:'' };
+  function tvPill(e){ var m={DISPONIBLE:'p-activo',EN_USO:'p-ASIGNADA',BAJA_PENDIENTE:'p-suspendido'}; return '<span class="pill '+(m[e]||'p-baja')+'">'+esc(e==='BAJA_PENDIENTE'?'a cambiar clave':(e||'').toLowerCase().replace('_',' '))+'</span>'; }
+  function vCuentasTV(){
+    view.innerHTML='<h1>Cuentas TV (Espacio Giga)</h1><p class="sub">Pool de cuentas de TV online. Reemplaza la planilla.</p>'
+      +'<div class="kpis" id="tv-kpis"></div>'
+      +'<div class="toolbar" style="margin-top:14px"><input id="tv-q" placeholder="Buscar usuario / mail / abonado" style="min-width:240px" value="'+esc(tvState.q)+'">'
+      +'<select id="tv-estado"><option value="">Todos</option>'+opt(['DISPONIBLE','EN_USO','BAJA_PENDIENTE'],tvState.estado)+'</select>'
+      +'<button class="btn btn-pri" id="tv-buscar">Buscar</button>'
+      +'<button class="btn btn-ok" id="tv-nueva" style="margin-left:auto">+ Nueva cuenta</button></div>'
+      +'<div id="tv-tabla"></div>';
+    function leer(){ tvState.q=document.getElementById('tv-q').value.trim(); tvState.estado=document.getElementById('tv-estado').value; }
+    document.getElementById('tv-buscar').addEventListener('click',function(){ leer(); cargarTV(); });
+    document.getElementById('tv-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leer(); cargarTV(); } });
+    document.getElementById('tv-nueva').addEventListener('click',function(){ fichaTV(null); });
+    Promise.all([ sbCount('cuentas_tv?estado=eq.DISPONIBLE&select=id'), sbCount('cuentas_tv?estado=eq.EN_USO&select=id'), sbCount('cuentas_tv?estado=eq.BAJA_PENDIENTE&select=id'), sbCount('cuentas_tv?select=id') ]).then(function(c){
+      var k=document.getElementById('tv-kpis'); if(k) k.innerHTML=kpi(c[0],'Disponibles','g')+kpi(c[1],'En uso','b')+kpi(c[2],'A cambiar clave','w')+kpi(c[3],'Total','');
+    });
+    cargarTV();
+  }
+  function cargarTV(){
+    var cont=document.getElementById('tv-tabla'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    var p='cuentas_tv?select=*,clientes(numero_cliente,nombre,apellido)&order=mail&limit=500';
+    if(tvState.estado) p+='&estado=eq.'+tvState.estado;
+    if(tvState.q){ var q=tvState.q.replace(/[(),]/g,' '); p+='&or=(usuario.ilike.*'+q+'*,mail.ilike.*'+q+'*,abonado_numero.ilike.*'+q+'*,cic.ilike.*'+q+'*)'; }
+    sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
+      if(!d.length){ cont.innerHTML='<div class="center">Sin cuentas.</div>'; return; }
+      var h='<table><thead><tr><th>Usuario</th><th>Mail</th><th>Fútbol</th><th>Cliente / Abonado</th><th>Estado</th></tr></thead><tbody>';
+      d.forEach(function(t){ var cl=t.clientes?('N°'+t.clientes.numero_cliente+' '+(t.clientes.nombre||'')):(t.abonado_numero?('ab. '+t.abonado_numero):'—');
+        h+='<tr data-id="'+t.id+'" style="cursor:pointer"><td style="font-family:monospace;font-size:12px"><b>'+esc(t.usuario||'—')+'</b></td><td>'+esc(t.mail||'')+'</td><td>'+(t.pack_futbol?'⚽':'—')+'</td><td>'+esc(cl)+'</td><td>'+tvPill(t.estado)+'</td></tr>'; });
+      h+='</tbody></table><div class="muted" style="margin-top:8px">'+d.length+' cuentas</div>'; cont.innerHTML=h;
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ fichaTV(d.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+    });
+  }
+  function fichaTV(t){
+    t=t||{};
+    var cliLbl=t.clientes?('N°'+t.clientes.numero_cliente+' · '+(t.clientes.nombre||'')+' '+(t.clientes.apellido||'')):'—';
+    modal('<h2>'+(t.id?'Cuenta TV':'Nueva cuenta TV')+'</h2>'
+      +'<div class="row"><div><label class="l">Usuario</label><input id="tv-usuario" value="'+esc(t.usuario||'')+'"></div><div><label class="l">Contraseña</label><input id="tv-pass" value="'+esc(t.contrasena||'')+'"></div></div>'
+      +'<label class="l">Mail</label><input id="tv-mail" value="'+esc(t.mail||'')+'">'
+      +'<div class="row"><div><label class="l">N° ISP</label><input id="tv-nroisp" value="'+esc(t.nro_isp||'')+'"></div><div><label class="l">Abonado / CIC</label><input id="tv-abon" value="'+esc(t.abonado_numero||t.cic||'')+'"></div></div>'
+      +'<div style="display:flex;gap:18px;margin-top:10px"><label style="font-weight:600"><input type="checkbox" id="tv-fut"'+(t.pack_futbol?' checked':'')+'> Pack Fútbol</label><label style="font-weight:600"><input type="checkbox" id="tv-isp"'+(t.cargado_isp?' checked':'')+'> Cargada en ISP</label></div>'
+      +'<label class="l">Estado</label><select id="tv-estado-e">'+opt(['DISPONIBLE','EN_USO','BAJA_PENDIENTE'],t.estado||'DISPONIBLE')+'</select>'
+      +(t.id?('<div class="ficha-row"><span class="k">Cliente asignado</span><span class="v">'+esc(cliLbl)+'</span></div>'):'')
+      +'<label class="l">Notas</label><textarea id="tv-notas">'+esc(t.notas||'')+'</textarea>'
+      +'<div id="tv-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-ok" id="tv-save">Guardar</button>'
+      +(t.id&&t.estado==='EN_USO'?'<button class="btn btn-2" id="tv-baja">↩️ Liberar (baja)</button>':'')
+      +(t.id&&t.estado==='BAJA_PENDIENTE'?'<button class="btn btn-ok" id="tv-lista">✓ Clave cambiada → Disponible</button>':'')
+      +'<button class="btn btn-2" id="tv-x">Cerrar</button></div>');
+    document.getElementById('tv-x').addEventListener('click',cerrarModal);
+    document.getElementById('tv-save').addEventListener('click',function(){
+      var body={ usuario:document.getElementById('tv-usuario').value.trim()||null, contrasena:document.getElementById('tv-pass').value.trim()||null, mail:document.getElementById('tv-mail').value.trim()||null, nro_isp:document.getElementById('tv-nroisp').value.trim()||null, abonado_numero:document.getElementById('tv-abon').value.trim()||null, pack_futbol:document.getElementById('tv-fut').checked, cargado_isp:document.getElementById('tv-isp').checked, estado:document.getElementById('tv-estado-e').value, notas:document.getElementById('tv-notas').value.trim()||null };
+      var btn=this; btn.disabled=true;
+      var prom=t.id? sbPatch('cuentas_tv?id=eq.'+t.id,body) : sbPost('cuentas_tv',body);
+      prom.then(function(r){ if(!t.id&&(!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Cuenta guardada ✓'); vCuentasTV(); }).catch(function(){ document.getElementById('tv-err').textContent='No se pudo guardar.'; btn.disabled=false; });
+    });
+    var bj=document.getElementById('tv-baja'); if(bj) bj.addEventListener('click',function(){ sbPatch('cuentas_tv?id=eq.'+t.id,{estado:'BAJA_PENDIENTE',fecha_baja:new Date().toISOString().substring(0,10)}).then(function(){ cerrarModal(); toast('Marcada para cambio de contraseña'); vCuentasTV(); }); });
+    var li=document.getElementById('tv-lista'); if(li) li.addEventListener('click',function(){ sbPatch('cuentas_tv?id=eq.'+t.id,{estado:'DISPONIBLE',cliente_id:null,fecha_baja:null}).then(function(){ cerrarModal(); toast('Cuenta liberada ✓'); vCuentasTV(); }); });
   }
 
   // ── util UI ──
