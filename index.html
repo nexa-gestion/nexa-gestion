@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.37</title>
+<title>Nexa · Gestión — v0.38</title>
 <style>
   :root{ --pri:#2563eb; --pri-d:#1d4ed8; --gris:#64748b; --bg:#eef2f7; --card:#fff; --bord:rgba(15,23,42,.1); --border2:rgba(15,23,42,.06);
          --rojo:#dc2626; --ok:#16a34a; --warn:#d97706; --dark:#0f172a; --card-shadow:0 1px 3px rgba(15,23,42,.04),0 4px 12px rgba(15,23,42,.05); }
@@ -65,6 +65,10 @@
   .p-CERRADA_TECNICO{ background:#cffafe; color:#155e75; } .p-CANCELADA,.p-NO_REALIZADA{ background:#fee2e2; color:#991b1b; }
   .empresa-tag{ font-size:11px; color:var(--gris); }
   .pag{ display:flex; gap:8px; align-items:center; margin-top:12px; }
+  .colmenu{ position:absolute; right:0; top:38px; background:#fff; border:1px solid var(--bord); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.14); padding:6px; min-width:190px; z-index:30; max-height:330px; overflow:auto; }
+  .colmenu label{ display:flex; gap:8px; align-items:center; padding:7px 10px; border-radius:7px; font-size:13px; cursor:pointer; font-weight:500; }
+  .colmenu label:hover{ background:#f1f5f9; }
+  .thsort:hover{ background:#eef2f7; }
   /* Modal */
   .ov{ position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
   .modal{ background:#fff; border-radius:16px; padding:22px; width:560px; max-width:100%; max-height:90vh; overflow:auto; }
@@ -108,7 +112,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.37</div>
+    <div class="marca-sub">Gestión · v0.38</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -152,7 +156,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.37';
+  var VER='v0.38';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -316,7 +320,28 @@
   }
 
   // ── CLIENTES ──
-  var clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0 };
+  var clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0, orderBy:'numero_cliente', orderDir:'desc', sel:{}, cols:null };
+  // columnas disponibles de la lista de clientes (como ISPcube: elegís cuáles ver y ordenás)
+  var CL_COLS=[
+    {k:'numero_cliente',t:'N°',ord:'numero_cliente',r:function(c){return '<b>'+esc(c.numero_cliente)+'</b>';}},
+    {k:'nombre',t:'Nombre',ord:'nombre',r:function(c){return esc((c.nombre||'')+' '+(c.apellido||''));}},
+    {k:'doc_numero',t:'DNI',ord:'doc_numero',r:function(c){return esc(c.doc_numero||'');}},
+    {k:'domicilio_full',t:'Dirección',ord:'domicilio_full',r:function(c){return '<span style="font-size:12px">'+esc(c.domicilio_full||'')+'</span>';}},
+    {k:'telefono',t:'Teléfono',ord:'telefono',r:function(c){return esc(c.telefono||'');}},
+    {k:'plan',t:'Plan',ord:null,r:function(c){return esc(c.planes?c.planes.nombre:'');}},
+    {k:'barrio',t:'Barrio',ord:'barrio',r:function(c){return esc(c.barrio||'');}},
+    {k:'empresa',t:'Empresa',ord:'empresa',r:function(c){return '<span class="empresa-tag">'+esc(c.empresa||'')+'</span>';}},
+    {k:'codigo_ispcube',t:'Cód. ISP',ord:'codigo_ispcube',r:function(c){return esc(c.codigo_ispcube||'');}},
+    {k:'caja_nap',t:'Caja',ord:'caja_nap',r:function(c){return esc(c.caja_nap||'');}},
+    {k:'puerto',t:'Puerto',ord:'puerto',r:function(c){return esc(c.puerto||'');}},
+    {k:'precinto',t:'Precinto',ord:'precinto',r:function(c){return esc(c.precinto||'');}},
+    {k:'estado',t:'Estado',ord:'estado',r:function(c){var isp=c.codigo_ispcube?'':' <span class="pill p-bloqueado" title="Falta cargar en ISPcube">⚠️ ISP</span>'; return pill(c.estado)+isp;}}
+  ];
+  var CL_COLS_DEF=['numero_cliente','nombre','doc_numero','domicilio_full','telefono','plan','barrio','empresa','estado'];
+  function clCols(){ if(!clState.cols){ try{ clState.cols=JSON.parse(localStorage.getItem('cl_cols')||'null'); }catch(e){} if(!clState.cols||!clState.cols.length) clState.cols=CL_COLS_DEF.slice(); } return clState.cols; }
+  function clColVis(k){ return clCols().indexOf(k)>=0; }
+  function clToggleCol(k){ var v=clCols(), i=v.indexOf(k); if(i>=0) v.splice(i,1); else v.push(k); try{ localStorage.setItem('cl_cols',JSON.stringify(v)); }catch(e){} cargarClientes(); }
+  function clSort(ord){ if(!ord) return; if(clState.orderBy===ord){ clState.orderDir=(clState.orderDir==='asc'?'desc':'asc'); } else { clState.orderBy=ord; clState.orderDir='asc'; } clState.page=0; cargarClientes(); }
   var _clStats=null;
   function cargarStatsCl(){
     var cont=document.getElementById('cl-stats'); if(!cont) return;
@@ -349,7 +374,7 @@
     clState.barrio=document.getElementById('cl-barrio').value;
   }
   function clQuery(){
-    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,domicilio_full,codigo_ispcube,planes(nombre)','order=numero_cliente.desc'];
+    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,domicilio_full,codigo_ispcube,caja_nap,puerto,precinto,planes(nombre)','order='+(clState.orderBy||'numero_cliente')+'.'+(clState.orderDir||'desc')];
     if(clState.estado) p.push('estado=eq.'+clState.estado);
     if(clState.empresa) p.push('empresa=eq.'+encodeURIComponent(clState.empresa));
     if(clState.barrio) p.push('barrio=eq.'+encodeURIComponent(clState.barrio));
@@ -372,22 +397,53 @@
     sbCount('clientes?'+base.replace(/select=[^&]*/,'select=id')).then(function(tot){ clState.total=tot; });
     fetch(SB_URL+'/rest/v1/clientes?'+base,{headers:Object.assign({},H,{'Range':(clState.page*clState.size)+'-'+((clState.page+1)*clState.size-1)})})
      .then(function(r){return r.json();}).then(function(d){
-      if(!Array.isArray(d)||!d.length){ cont.innerHTML='<div class="center">Sin resultados.</div>'; return; }
-      var h='<table><thead><tr><th>N°</th><th>Nombre</th><th>DNI</th><th>Dirección</th><th>Teléfono</th><th>Plan</th><th>Barrio</th><th>Empresa</th><th>Estado</th></tr></thead><tbody>';
-      d.forEach(function(c){
-        var isp = c.codigo_ispcube ? '' : ' <span class="pill p-bloqueado" title="Falta cargar en ISPcube">⚠️ ISP</span>';
-        h+='<tr data-id="'+c.id+'"><td><b>'+esc(c.numero_cliente)+'</b></td><td>'+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</td><td>'+esc(c.doc_numero||'')+'</td><td style="max-width:220px;font-size:12px">'+esc(c.domicilio_full||'')+'</td><td>'+esc(c.telefono||'')+'</td><td>'+esc(c.planes?c.planes.nombre:'')+'</td><td>'+esc(c.barrio||'')+'</td><td><span class="empresa-tag">'+esc(c.empresa||'')+'</span></td><td>'+pill(c.estado)+isp+'</td></tr>';
-      });
+      d=Array.isArray(d)?d:[];
+      var cols=CL_COLS.filter(function(co){ return clColVis(co.k); });
+      var h='<div class="toolbar" style="justify-content:flex-end;gap:8px;margin-bottom:8px"><div id="cl-del-box"></div>'
+        +'<div style="position:relative"><button class="btn btn-2" id="cl-cols-btn">⚙️ Columnas</button><div id="cl-cols-menu" class="colmenu" style="display:none"></div></div></div>';
+      if(!d.length){ cont.innerHTML=h+'<div class="center">Sin resultados.</div>'; wireClTop(); return; }
+      h+='<table><thead><tr><th style="width:30px"><input type="checkbox" id="cl-all"></th>'
+        +cols.map(function(co){ var act=co.ord&&clState.orderBy===co.ord, ar=act?(clState.orderDir==='asc'?' ▲':' ▼'):(co.ord?' ⇅':''); return '<th'+(co.ord?' class="thsort" data-ord="'+co.ord+'" style="cursor:pointer;user-select:none"':'')+'>'+esc(co.t)+'<span style="color:#94a3b8;font-size:10px">'+ar+'</span></th>'; }).join('')
+        +'</tr></thead><tbody>';
+      d.forEach(function(c){ h+='<tr data-id="'+c.id+'"><td><input type="checkbox" class="cl-chk" data-id="'+c.id+'"'+(clState.sel[c.id]?' checked':'')+'></td>'+cols.map(function(co){ return '<td>'+co.r(c)+'</td>'; }).join('')+'</tr>'; });
       h+='</tbody></table>';
       var pages=Math.ceil(clState.total/clState.size)||1;
       h+='<div class="pag"><button class="btn btn-2" id="cl-prev" '+(clState.page<=0?'disabled':'')+'>‹ Anterior</button>'
-        +'<span class="muted">Página '+(clState.page+1)+' de '+pages+' · '+clState.total+' clientes</span>'
+        +'<span class="muted">Página '+(clState.page+1)+' de '+pages+' · '+clState.total+' clientes · orden: '+esc(clState.orderBy)+' '+clState.orderDir+'</span>'
         +'<button class="btn btn-2" id="cl-next" '+(clState.page>=pages-1?'disabled':'')+'>Siguiente ›</button></div>';
-      cont.innerHTML=h;
-      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ fichaCliente(tr.getAttribute('data-id')); }); });
+      cont.innerHTML=h; wireClTop(); updateClSelUI();
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(ev){ if(ev.target.closest('input.cl-chk'))return; fichaCliente(tr.getAttribute('data-id')); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.cl-chk'),function(ck){ ck.addEventListener('change',function(ev){ ev.stopPropagation(); clState.sel[ck.getAttribute('data-id')]=ck.checked; updateClSelUI(); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.thsort'),function(th){ th.addEventListener('click',function(){ clSort(th.getAttribute('data-ord')); }); });
+      var all=document.getElementById('cl-all'); if(all) all.addEventListener('change',function(){ Array.prototype.forEach.call(cont.querySelectorAll('.cl-chk'),function(ck){ ck.checked=all.checked; clState.sel[ck.getAttribute('data-id')]=all.checked; }); updateClSelUI(); });
       var pv=document.getElementById('cl-prev'), nx=document.getElementById('cl-next');
       if(pv) pv.addEventListener('click',function(){ if(clState.page>0){clState.page--; cargarClientes();} });
       if(nx) nx.addEventListener('click',function(){ clState.page++; cargarClientes(); });
+    });
+  }
+  function updateClSelUI(){
+    var box=document.getElementById('cl-del-box'); if(!box) return;
+    var n=Object.keys(clState.sel).filter(function(k){return clState.sel[k];}).length;
+    box.innerHTML = n>0 ? '<button class="btn btn-x" id="cl-del-sel">🗑️ Eliminar ('+n+')</button>' : '';
+    var b=document.getElementById('cl-del-sel'); if(b) b.addEventListener('click',clDeleteSel);
+  }
+  function wireClTop(){
+    var btn=document.getElementById('cl-cols-btn'), menu=document.getElementById('cl-cols-menu'); if(!btn||!menu) return;
+    btn.addEventListener('click',function(e){ e.stopPropagation(); if(menu.style.display==='none'){ menu.innerHTML=CL_COLS.map(function(co){ return '<label><input type="checkbox" data-col="'+co.k+'"'+(clColVis(co.k)?' checked':'')+'> '+esc(co.t)+'</label>'; }).join(''); menu.style.display='block'; Array.prototype.forEach.call(menu.querySelectorAll('input[data-col]'),function(ch){ ch.addEventListener('change',function(){ clToggleCol(ch.getAttribute('data-col')); }); }); document.addEventListener('click',_cerrarColMenu); } else { menu.style.display='none'; } });
+    updateClSelUI();
+  }
+  function _cerrarColMenu(e){ var menu=document.getElementById('cl-cols-menu'); if(menu&&!e.target.closest('#cl-cols-menu')&&!e.target.closest('#cl-cols-btn')){ menu.style.display='none'; document.removeEventListener('click',_cerrarColMenu); } }
+  function clDeleteSel(){
+    var ids=Object.keys(clState.sel).filter(function(k){return clState.sel[k];});
+    if(!ids.length) return;
+    modal('<h2>Eliminar '+ids.length+' cliente(s)</h2><p class="muted">Se borran de Nexa. Los que tengan OTs u otros datos asociados no se podrán borrar (en ese caso, mejor pasarlos a estado "baja").</p><div id="cd-err" style="color:var(--rojo);font-size:13px;min-height:16px"></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-x" id="cd-ok">🗑️ Eliminar definitivamente</button><button class="btn btn-2" id="cd-no">Cancelar</button></div>');
+    document.getElementById('cd-no').addEventListener('click',cerrarModal);
+    document.getElementById('cd-ok').addEventListener('click',function(){
+      var btn=this; btn.disabled=true; btn.textContent='Eliminando…'; var ok=0,fail=0;
+      Promise.all(ids.map(function(id){ return fetch(SB_URL+'/rest/v1/clientes?id=eq.'+id,{method:'DELETE',headers:H}).then(function(r){ if(r.ok)ok++; else fail++; }).catch(function(){fail++;}); })).then(function(){
+        ids.forEach(function(id){ delete clState.sel[id]; });
+        cerrarModal(); toast(ok+' eliminado(s)'+(fail?(' · '+fail+' no se pudo (tienen datos asociados)'):' ✓')); _clStats=null; cargarStatsCl(); cargarClientes();
+      });
     });
   }
   function fichaCliente(id){
