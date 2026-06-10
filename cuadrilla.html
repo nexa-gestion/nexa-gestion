@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1e3a5f">
+<title>Nexa · Técnico — v0.1</title>
+<style>
+  :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
+    --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--tinta);font-size:16px}
+  #app{max-width:560px;margin:0 auto;min-height:100vh}
+  .top{position:sticky;top:0;z-index:10;background:var(--azul);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
+  .top .t{font-weight:700;font-size:17px}
+  .top .s{font-size:12px;opacity:.8}
+  .top a{color:#fff;font-size:13px;text-decoration:underline;opacity:.9}
+  .wrap{padding:14px}
+  .card{background:#fff;border:1px solid var(--bord);border-radius:14px;padding:14px;margin-bottom:12px}
+  .label{font-weight:700;font-size:13px;color:var(--gris);margin:10px 0 5px;text-transform:uppercase;letter-spacing:.3px}
+  input,select{width:100%;border:2px solid var(--bord);border-radius:12px;padding:13px;font-size:16px;font-family:inherit;background:#fff}
+  input:focus,select:focus{outline:none;border-color:var(--azul2)}
+  .btn{display:block;width:100%;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
+  .btn-pri{background:var(--azul2);color:#fff}
+  .btn-ok{background:var(--verde);color:#fff}
+  .btn-2{background:#fff;color:var(--azul2);border:2px solid var(--azul2)}
+  .btn-sm{display:inline-block;width:auto;padding:9px 14px;font-size:14px;border-radius:10px}
+  .row2{display:flex;gap:8px}
+  .row2>*{flex:1}
+  .ot{background:#fff;border:1px solid var(--bord);border-radius:14px;padding:13px;margin-bottom:11px}
+  .ot .h{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  .ot .num{font-weight:800;font-size:16px}
+  .ot .cli{font-weight:600;margin-top:3px}
+  .ot .dir{color:var(--gris);font-size:14px;margin-top:2px}
+  .ot .acc{display:flex;gap:8px;margin-top:11px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
+  .p-pend{background:#fef9c3;color:#854d0e}
+  .p-asig{background:#dbeafe;color:#1e40af}
+  .p-curso{background:#e0e7ff;color:#3730a3}
+  .p-cerr{background:#cffafe;color:#155e75}
+  .badge-tt{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:#f1f5f9;color:#475569;margin-top:6px}
+  .tabs{display:flex;gap:8px;margin-bottom:12px;overflow-x:auto}
+  .tabs button{flex:0 0 auto;border:1px solid var(--bord);background:#fff;border-radius:20px;padding:8px 14px;font-size:14px;font-weight:600;color:var(--gris)}
+  .tabs button.on{background:var(--azul2);color:#fff;border-color:var(--azul2)}
+  .center{text-align:center;padding:30px;color:var(--gris)}
+  .spin{width:30px;height:30px;border:3px solid var(--bord);border-top-color:var(--azul2);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .err{color:var(--rojo);font-size:14px;min-height:18px;margin:8px 0}
+  .logo{font-size:34px;font-weight:800;color:var(--azul2);text-align:center;letter-spacing:2px;margin-top:30px}
+  .sublogo{text-align:center;color:var(--gris);margin-bottom:18px}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;transition:.2s;z-index:99;max-width:90%}
+  .toast.show{opacity:.95}
+  .muted{color:var(--gris);font-size:13px}
+</style>
+</head>
+<body>
+<div id="app"><div class="center"><div class="spin"></div></div></div>
+<div class="toast" id="toast"></div>
+<script>
+  var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
+  var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
+  var VER='v0.1';
+  var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
+  var app=document.getElementById('app');
+  var CUAD=null, listState={ filtro:'activas' };
+
+  function sbGet(p){ return fetch(SB_URL+'/rest/v1/'+p,{headers:H}).then(function(r){return r.json();}); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2400); }
+  function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10), p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
+
+  // ── sesión ──
+  function getSesion(){ try{ return JSON.parse(sessionStorage.getItem('nexa_tec')||'null'); }catch(e){ return null; } }
+  function setSesion(c){ sessionStorage.setItem('nexa_tec', JSON.stringify(c)); }
+  function salir(){ sessionStorage.removeItem('nexa_tec'); CUAD=null; vLogin(); }
+
+  // ── arranque ──
+  function iniciar(){ var s=getSesion(); if(s&&s.id){ CUAD=s; vLista(); } else vLogin(); }
+
+  // ── LOGIN ──
+  function vLogin(){
+    app.innerHTML='<div class="wrap"><div class="logo">NEXA</div><div class="sublogo">App del técnico</div>'
+      +'<div class="card"><div class="label">Cuadrilla</div><select id="lg-cuad"><option>Cargando…</option></select>'
+      +'<div class="label">PIN</div><input id="lg-pin" type="tel" inputmode="numeric" placeholder="••••" maxlength="8">'
+      +'<div class="err" id="lg-err"></div>'
+      +'<button class="btn btn-pri" id="lg-entrar" style="margin-top:6px">Entrar</button></div>'
+      +'<div class="muted" style="text-align:center">Nexa · '+VER+'</div></div>';
+    sbGet('cuadrillas?select=id,nombre,pin_pwa&activa=eq.true&order=nombre').then(function(d){
+      d=Array.isArray(d)?d:[]; var sel=document.getElementById('lg-cuad');
+      if(!d.length){ sel.innerHTML='<option value="">No hay cuadrillas</option>'; return; }
+      sel.innerHTML=d.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
+      window._CUADS=d;
+    });
+    document.getElementById('lg-entrar').addEventListener('click',function(){
+      var id=document.getElementById('lg-cuad').value, pin=document.getElementById('lg-pin').value.trim(), err=document.getElementById('lg-err');
+      var c=(window._CUADS||[]).filter(function(x){return String(x.id)===String(id);})[0];
+      if(!c){ err.textContent='Elegí tu cuadrilla.'; return; }
+      if(!c.pin_pwa){ err.textContent='Esta cuadrilla no tiene PIN configurado. Pedíselo al admin.'; return; }
+      if(pin!==String(c.pin_pwa)){ err.textContent='PIN incorrecto.'; return; }
+      CUAD={ id:c.id, nombre:c.nombre }; setSesion(CUAD); vLista();
+    });
+    document.getElementById('lg-pin').addEventListener('keydown',function(e){ if(e.key==='Enter') document.getElementById('lg-entrar').click(); });
+  }
+
+  // ── LISTA DE OTs ──
+  function top(titulo, sub){
+    return '<div class="top"><div><div class="t">'+esc(titulo)+'</div>'+(sub?'<div class="s">'+esc(sub)+'</div>':'')+'</div><a id="top-salir">Salir</a></div>';
+  }
+  var ESTADOS_ACT=['PENDIENTE','ASIGNADA','EN_CURSO'];
+  function vLista(){
+    app.innerHTML=top('Mis órdenes', CUAD.nombre)+'<div class="wrap">'
+      +'<div class="tabs" id="ls-tabs">'
+      +[['activas','Por hacer'],['curso','En curso'],['cerradas','Cerradas']].map(function(t){return '<button data-f="'+t[0]+'" class="'+(listState.filtro===t[0]?'on':'')+'">'+t[1]+'</button>';}).join('')
+      +'</div><div id="ls-cont"><div class="center"><div class="spin"></div></div></div></div>';
+    document.getElementById('top-salir').addEventListener('click',salir);
+    Array.prototype.forEach.call(document.querySelectorAll('#ls-tabs [data-f]'),function(b){ b.addEventListener('click',function(){ listState.filtro=b.getAttribute('data-f'); vLista(); }); });
+    cargarOTs();
+  }
+  function cargarOTs(){
+    var cont=document.getElementById('ls-cont');
+    var estadoQ;
+    if(listState.filtro==='curso') estadoQ='estado=eq.EN_CURSO';
+    else if(listState.filtro==='cerradas') estadoQ='estado=in.(CERRADA_TECNICO,FINALIZADA)';
+    else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO)';
+    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(nombre,apellido,domicilio_full,telefono,lat,lng,caja_nap),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&order=created_at.asc';
+    sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
+      if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
+      cont.innerHTML=d.map(function(o){
+        var cli=o.clientes, nom=cli?((cli.nombre||'')+' '+(cli.apellido||'')).trim():'(obra de red, sin cliente)';
+        var dir=cli&&cli.domicilio_full?esc(cli.domicilio_full):'';
+        var irBtn = (cli&&(cli.lat!=null||cli.domicilio_full)) ? '<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(cli)+'">🚗 Ir</a>' : '';
+        return '<div class="ot"><div class="h"><div><span class="num">N° '+esc(o.numero)+'</span> · '+esc(o.tipo)+'</div>'+pillEstado(o.estado)+'</div>'
+          +'<div class="cli">'+esc(nom)+'</div>'+(dir?'<div class="dir">📍 '+dir+'</div>':'')
+          +(cli&&cli.telefono?'<div class="dir">📞 '+esc(cli.telefono)+'</div>':'')
+          +(o.tipos_trabajo?'<span class="badge-tt">'+esc(o.tipos_trabajo.nombre)+'</span>':'')
+          +(o.motivos_ot?' <span class="badge-tt">'+esc(o.motivos_ot.nombre)+'</span>':'')
+          +(o.descripcion?'<div class="dir" style="margin-top:6px">'+esc(o.descripcion)+'</div>':'')
+          +'<div class="acc">'+irBtn+'<button class="btn btn-pri btn-sm ot-abrir" data-id="'+o.id+'">Abrir</button></div></div>';
+      }).join('');
+      Array.prototype.forEach.call(cont.querySelectorAll('.ot-abrir'),function(b){ b.addEventListener('click',function(){ vDetalle(d.filter(function(x){return x.id==b.getAttribute('data-id');})[0]); }); });
+    }).catch(function(){ cont.innerHTML='<div class="center">Error al cargar. Reintentá.</div>'; });
+  }
+  function pillEstado(e){ var m={PENDIENTE:'p-pend',ASIGNADA:'p-asig',EN_CURSO:'p-curso',CERRADA_TECNICO:'p-cerr',FINALIZADA:'p-cerr'}; return '<span class="pill '+(m[e]||'p-pend')+'">'+esc((e||'').replace('_',' ').toLowerCase())+'</span>'; }
+  function mapsUrl(cli){ var q = (cli.lat!=null&&cli.lng!=null) ? (cli.lat+','+cli.lng) : (cli.domicilio_full||''); return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q); }
+
+  // ── DETALLE OT (cierre = próxima tanda) ──
+  function vDetalle(o){
+    var cli=o.clientes||{}; var nom=((cli.nombre||'')+' '+(cli.apellido||'')).trim()||'(obra de red)';
+    app.innerHTML=top('OT N° '+o.numero, o.tipo)+'<div class="wrap">'
+      +'<div class="card"><div style="margin-bottom:8px">'+pillEstado(o.estado)+' · prioridad '+esc(o.prioridad||'NORMAL')+'</div>'
+      +fila('Cliente',nom)
+      +(cli.domicilio_full?fila('Domicilio',cli.domicilio_full):'')
+      +(cli.telefono?fila('Teléfono',cli.telefono):'')
+      +(cli.caja_nap?fila('Caja (NAP)',cli.caja_nap):'')
+      +(o.tipos_trabajo?fila('Tipo de trabajo',o.tipos_trabajo.nombre):'')
+      +(o.motivos_ot?fila('Motivo',o.motivos_ot.nombre):'')
+      +(o.descripcion?fila('Descripción',o.descripcion):'')
+      +(o.fecha_agendada?fila('Agendada',fmtFecha(o.fecha_agendada)):'')
+      +'</div>'
+      +((cli.lat!=null||cli.domicilio_full)?'<a class="btn btn-2" target="_blank" href="'+mapsUrl(cli)+'" style="margin-bottom:10px">🚗 Cómo llegar</a>':'')
+      +'<button class="btn btn-ok" id="dt-cerrar">✅ Cerrar tarea</button>'
+      +'<button class="btn btn-2" id="dt-volver" style="margin-top:10px">← Volver</button>'
+      +'<div class="muted" style="text-align:center;margin-top:10px">El cierre completo (materiales, fotos, datos) llega en la próxima versión.</div>'
+      +'</div>';
+    document.getElementById('top-salir').addEventListener('click',salir);
+    document.getElementById('dt-volver').addEventListener('click',vLista);
+    document.getElementById('dt-cerrar').addEventListener('click',function(){ toast('El cierre de tareas se habilita en la próxima versión 🔧'); });
+  }
+  function fila(k,v){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--bord)"><span class="muted">'+esc(k)+'</span><span style="font-weight:600;text-align:right">'+esc(v)+'</span></div>'; }
+
+  iniciar();
+</script>
+</body>
+</html>
