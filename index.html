@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.18</title>
+<title>Nexa · Gestión — v0.19</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -90,7 +90,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.18</div>
+    <div class="marca-sub">Gestión · v0.19</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -127,7 +127,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.18';
+  var VER='v0.19';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -429,11 +429,11 @@
     view.innerHTML='<h1>Órdenes de trabajo</h1><p class="sub">Generación y seguimiento.</p>'
       +'<div class="toolbar">'
       +'<select id="ot-estado"><option value="">Todos los estados</option>'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],otState.estado)+'</select>'
-      +'<select id="ot-tipo"><option value="">Todos los tipos</option>'+opt(['INSTALACION','REPARACION','DESCONEXION','RECONEXION','CAMBIO_PLAN','CAMBIO_DOMICILIO','MANTENIMIENTO','RETIRO_EQUIPOS','OTRO'],otState.tipo)+'</select>'
+      +'<select id="ot-filtro-tipo"><option value="">Todos los tipos</option>'+opt(['INSTALACION','REPARACION','DESCONEXION','RECONEXION','CAMBIO_PLAN','CAMBIO_DOMICILIO','MANTENIMIENTO','RETIRO_EQUIPOS','OTRO'],otState.tipo)+'</select>'
       +'<button class="btn btn-pri" id="ot-filtrar">Filtrar</button>'
       +'<button class="btn btn-ok" id="ot-nueva" style="margin-left:auto">+ Nueva OT</button>'
       +'</div><div id="ot-tabla"></div>';
-    document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-tipo').value; otState.page=0; cargarOT(); });
+    document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.page=0; cargarOT(); });
     document.getElementById('ot-nueva').addEventListener('click',function(){ nuevaOT(null); });
     cargarOT();
   }
@@ -466,7 +466,7 @@
       : '<label class="l">Buscar cliente (N° o nombre)</label><input id="ot-cli-q" placeholder="Escribí y Enter"><div id="ot-cli-res"></div><div id="ot-cli-sel" class="muted" style="margin-top:6px"></div>';
     var selId = cliente ? cliente.id : null;
     modal('<h2>Nueva orden de trabajo</h2>'+buscar
-      +'<label class="l">Tipo</label><select id="ot-tipo">'+opt(['INSTALACION','REPARACION','DESCONEXION','RECONEXION','CAMBIO_PLAN','CAMBIO_DOMICILIO','MANTENIMIENTO'],'')+'</select>'
+      +'<label class="l">Tipo</label><select id="ot-tipo">'+opt(['INSTALACION','REPARACION','DESCONEXION','RECONEXION','CAMBIO_PLAN','CAMBIO_DOMICILIO','MANTENIMIENTO','RETIRO_EQUIPOS','OTRO'],'')+'</select>'
       +'<label class="l">Prioridad</label><select id="ot-prio">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],'NORMAL')+'</select>'
       +'<label class="l">Fecha agendada (opcional)</label><input id="ot-fecha" type="date">'
       +'<label class="l">Descripción</label><textarea id="ot-desc" placeholder="Detalle del trabajo"></textarea>'
@@ -501,15 +501,23 @@
       modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+'</p>'
         +fr('Cliente',cli)+fr('Teléfono',o.clientes?o.clientes.telefono:'')+fr('Domicilio',o.clientes?o.clientes.domicilio_full:'')+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +fr('Descripción',o.descripcion)+fr('Agendada',o.fecha_agendada)
+        +'<div class="row"><div><label class="l">Tipo</label><select id="ot-tipo-edit">'+opt(['INSTALACION','REPARACION','DESCONEXION','RECONEXION','CAMBIO_PLAN','CAMBIO_DOMICILIO','MANTENIMIENTO','RETIRO_EQUIPOS','OTRO'],o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
         +'<label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select>'
         +'<label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select>'
-        +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-pri" id="ot-save">Guardar</button><button class="btn btn-2" id="ot-x">Cerrar</button></div>');
+        +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-pri" id="ot-save">Guardar</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
       document.getElementById('ot-save').addEventListener('click',function(){
         var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value;
-        var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null };
+        var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value };
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
         sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ cerrarModal(); toast('OT actualizada ✓'); cargarOT(); });
+      });
+      document.getElementById('ot-del').addEventListener('click',function(){
+        if(!confirm('¿Eliminar la OT N° '+o.numero+'? Esta acción no se puede deshacer.')) return;
+        fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+id,{method:'DELETE',headers:H}).then(function(r){
+          if(r.ok){ cerrarModal(); toast('OT eliminada'); cargarOT(); }
+          else { toast('No se pudo eliminar (¿tiene movimientos asociados?).'); }
+        }).catch(function(){ toast('No se pudo eliminar.'); });
       });
     });
   }
