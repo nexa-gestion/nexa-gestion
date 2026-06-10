@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.14</title>
+<title>Nexa · Gestión — v0.15</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.14</div>
+    <div class="marca-sub">Gestión · v0.15</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -100,6 +100,7 @@
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
       <a data-v="deposito">📦 Depósito / Stock</a>
+      <a data-v="cuadrillas-adm">🔧 Cuadrillas</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
     </div>
@@ -116,7 +117,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.14';
+  var VER='v0.15';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -167,7 +168,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   // accesos directos desde las tarjetas KPI del dashboard
@@ -926,6 +927,97 @@
       d.forEach(function(mv){ var f=(mv.created_at||'').substring(0,16).replace('T',' ');
         h+='<tr><td class="muted">'+esc(f)+'</td><td>'+esc(tip[mv.tipo]||mv.tipo)+'</td><td>'+esc(mv.catalogo_materiales?mv.catalogo_materiales.nombre:'')+'</td><td><b>'+esc(mv.cantidad)+'</b></td><td>'+esc(mv.cuadrillas?mv.cuadrillas.nombre:'—')+'</td><td class="muted">'+esc(mv.observaciones||'')+'</td></tr>'; });
       h+='</tbody></table>'; cont.innerHTML=h;
+    });
+  }
+
+  // ── CUADRILLAS / TÉCNICOS ── (ABM calcado de FG: cuadrilla con sus técnicos)
+  var cuadState={ tab:'cuadrillas' };
+  function reloadCuadrillas(){ return sbGet('cuadrillas?select=*&activa=eq.true&order=nombre').then(function(d){ REF.cuadrillas=Array.isArray(d)?d:[]; }); }
+  function vCuadrillas(){
+    view.innerHTML='<h1>Cuadrillas y técnicos</h1><p class="sub">Equipos de campo y sus integrantes (igual que FG).</p>'
+      +'<div class="toolbar" id="cu-tabs">'
+      +'<button class="btn '+(cuadState.tab==='cuadrillas'?'btn-pri':'btn-2')+'" data-tab="cuadrillas">🔧 Cuadrillas</button>'
+      +'<button class="btn '+(cuadState.tab==='tecnicos'?'btn-pri':'btn-2')+'" data-tab="tecnicos">👷 Técnicos</button>'
+      +'</div><div id="cu-cont"></div>';
+    Array.prototype.forEach.call(document.querySelectorAll('#cu-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ cuadState.tab=b.getAttribute('data-tab'); vCuadrillas(); }); });
+    if(cuadState.tab==='tecnicos') tecLista(); else cuLista();
+  }
+  function cuLista(){
+    var cont=document.getElementById('cu-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    Promise.all([ sbGet('cuadrillas?select=*&order=activa.desc,nombre'), sbGet('tecnicos?select=id,nombre,cuadrilla_id&order=nombre') ]).then(function(r){
+      var cuads=Array.isArray(r[0])?r[0]:[], tecs=Array.isArray(r[1])?r[1]:[], porCuad={};
+      tecs.forEach(function(t){ if(t.cuadrilla_id){ (porCuad[t.cuadrilla_id]||(porCuad[t.cuadrilla_id]=[])).push(t.nombre); } });
+      var h='<div class="toolbar"><button class="btn btn-ok" id="cu-nueva">+ Nueva cuadrilla</button><span class="muted">'+cuads.length+' cuadrillas</span></div>';
+      if(!cuads.length){ cont.innerHTML=h+'<div class="center">Todavía no hay cuadrillas. Creá la primera.</div>'; document.getElementById('cu-nueva').addEventListener('click',function(){ formCuadrilla(null); }); return; }
+      h+='<table><thead><tr><th>Cuadrilla</th><th>Técnicos</th><th>Estado</th></tr></thead><tbody>';
+      cuads.forEach(function(c){ h+='<tr data-id="'+c.id+'" style="cursor:pointer"><td><b>'+esc(c.nombre)+'</b></td><td class="muted">'+((porCuad[c.id]||[]).map(esc).join(' · '))+((porCuad[c.id]||[]).length?'':'<span style="color:#cbd5e1">sin técnicos</span>')+'</td><td>'+(c.activa?'<span class="pill p-activo">activa</span>':'<span class="pill p-baja">inactiva</span>')+'</td></tr>'; });
+      h+='</tbody></table>'; cont.innerHTML=h;
+      document.getElementById('cu-nueva').addEventListener('click',function(){ formCuadrilla(null); });
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ formCuadrilla(cuads.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+    });
+  }
+  function formCuadrilla(c){
+    c=c||{};
+    sbGet('tecnicos?select=id,nombre,cuadrilla_id&activo=eq.true&order=nombre').then(function(d){
+      var tecs=Array.isArray(d)?d:[], cuadNom={}; REF.cuadrillas.forEach(function(x){ cuadNom[x.id]=x.nombre; });
+      var checks=tecs.map(function(t){ var mine=(t.cuadrilla_id==c.id), otra=(t.cuadrilla_id&&t.cuadrilla_id!=c.id);
+        return '<label style="display:block;font-weight:500;'+(otra?'color:#b45309':'')+'"><input type="checkbox" class="cu-tec" value="'+t.id+'"'+(mine?' checked':'')+'> '+esc(t.nombre)+(otra?(' <span class="muted">(en '+esc(cuadNom[t.cuadrilla_id]||'otra')+')</span>'):'')+'</label>'; }).join('');
+      modal('<h2>'+(c.id?'Editar':'Nueva')+' cuadrilla</h2>'
+        +'<label class="l">Nombre</label><input id="cu-nombre" value="'+esc(c.nombre||'')+'" placeholder="Ej: Raúl / Fer">'
+        +'<div class="row"><div><label class="l">Color (mapa)</label><input id="cu-color" value="'+esc(c.color||'')+'" placeholder="#2563eb"></div><div><label class="l">Estado</label><select id="cu-activa"><option value="true"'+(c.activa!==false?' selected':'')+'>Activa</option><option value="false"'+(c.activa===false?' selected':'')+'>Inactiva</option></select></div></div>'
+        +'<label class="l">Técnicos de esta cuadrilla</label><div style="max-height:200px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+(checks||'<span class="muted">No hay técnicos cargados. Creálos en la pestaña Técnicos.</span>')+'</div>'
+        +'<div id="cu-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ok" id="cu-save">Guardar</button><button class="btn btn-2" id="cu-x">Cancelar</button></div>');
+      document.getElementById('cu-x').addEventListener('click',cerrarModal);
+      document.getElementById('cu-save').addEventListener('click',function(){
+        var body={ nombre:document.getElementById('cu-nombre').value.trim(), color:document.getElementById('cu-color').value.trim()||null, activa:document.getElementById('cu-activa').value==='true' };
+        if(!body.nombre){ document.getElementById('cu-err').textContent='Poné un nombre.'; return; }
+        var sel=[]; Array.prototype.forEach.call(document.querySelectorAll('.cu-tec:checked'),function(ck){ sel.push(Number(ck.value)); });
+        var btn=this; btn.disabled=true;
+        var prom=c.id? sbPatch('cuadrillas?id=eq.'+c.id,body).then(function(){return c.id;}) : sbPost('cuadrillas',body).then(function(r){ return (Array.isArray(r)&&r[0])?r[0].id:null; });
+        prom.then(function(cuadId){
+          if(!cuadId) throw 0;
+          var ops=[];
+          tecs.forEach(function(t){ var nowMine=(sel.indexOf(t.id)>=0), wasMine=(t.cuadrilla_id==cuadId);
+            if(nowMine && t.cuadrilla_id!=cuadId) ops.push(sbPatch('tecnicos?id=eq.'+t.id,{cuadrilla_id:cuadId}));
+            else if(!nowMine && wasMine) ops.push(sbPatch('tecnicos?id=eq.'+t.id,{cuadrilla_id:null})); });
+          return Promise.all(ops);
+        }).then(reloadCuadrillas).then(function(){ cerrarModal(); toast('Cuadrilla guardada ✓'); cuLista(); })
+          .catch(function(){ document.getElementById('cu-err').textContent='No se pudo guardar.'; btn.disabled=false; });
+      });
+    });
+  }
+  function tecLista(){
+    var cont=document.getElementById('cu-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('tecnicos?select=*,cuadrillas(nombre)&order=nombre').then(function(d){
+      var tecs=Array.isArray(d)?d:[];
+      var h='<div class="toolbar"><button class="btn btn-ok" id="tec-nuevo">+ Nuevo técnico</button><span class="muted">'+tecs.length+' técnicos</span></div>';
+      if(!tecs.length){ cont.innerHTML=h+'<div class="center">Todavía no hay técnicos.</div>'; document.getElementById('tec-nuevo').addEventListener('click',function(){ formTecnico(null); }); return; }
+      h+='<table><thead><tr><th>Técnico</th><th>Teléfono</th><th>Cuadrilla</th><th>Estado</th></tr></thead><tbody>';
+      tecs.forEach(function(t){ h+='<tr data-id="'+t.id+'" style="cursor:pointer"><td><b>'+esc(t.nombre)+'</b></td><td>'+esc(t.telefono||'—')+'</td><td>'+esc(t.cuadrillas?t.cuadrillas.nombre:'—')+'</td><td>'+(t.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">inactivo</span>')+'</td></tr>'; });
+      h+='</tbody></table>'; cont.innerHTML=h;
+      document.getElementById('tec-nuevo').addEventListener('click',function(){ formTecnico(null); });
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ formTecnico(tecs.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
+    });
+  }
+  function formTecnico(t){
+    t=t||{};
+    var cuadOpts='<option value="">— sin cuadrilla —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(t.cuadrilla_id==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+    modal('<h2>'+(t.id?'Editar':'Nuevo')+' técnico</h2>'
+      +'<label class="l">Nombre</label><input id="tec-nombre" value="'+esc(t.nombre||'')+'" placeholder="Nombre y apellido">'
+      +'<div class="row"><div><label class="l">Teléfono</label><input id="tec-tel" value="'+esc(t.telefono||'')+'"></div><div><label class="l">Cuadrilla</label><select id="tec-cuad">'+cuadOpts+'</select></div></div>'
+      +'<div style="margin-top:12px"><label style="font-weight:600"><input type="checkbox" id="tec-activo"'+(t.activo!==false?' checked':'')+'> Activo</label></div>'
+      +'<div id="tec-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ok" id="tec-save">Guardar</button><button class="btn btn-2" id="tec-x">Cancelar</button></div>');
+    document.getElementById('tec-x').addEventListener('click',cerrarModal);
+    document.getElementById('tec-save').addEventListener('click',function(){
+      var cv=document.getElementById('tec-cuad').value;
+      var body={ nombre:document.getElementById('tec-nombre').value.trim(), telefono:document.getElementById('tec-tel').value.trim()||null, cuadrilla_id:cv?Number(cv):null, activo:document.getElementById('tec-activo').checked };
+      if(!body.nombre){ document.getElementById('tec-err').textContent='Poné un nombre.'; return; }
+      var btn=this; btn.disabled=true;
+      var prom=t.id? sbPatch('tecnicos?id=eq.'+t.id,body) : sbPost('tecnicos',body);
+      prom.then(function(r){ if(!t.id && (!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Técnico guardado ✓'); tecLista(); })
+        .catch(function(){ document.getElementById('tec-err').textContent='No se pudo guardar.'; btn.disabled=false; });
     });
   }
 
