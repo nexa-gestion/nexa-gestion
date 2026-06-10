@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.21</title>
+<title>Nexa · Gestión — v0.22</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -90,7 +90,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.21</div>
+    <div class="marca-sub">Gestión · v0.22</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -111,7 +111,7 @@
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
       <a data-v="deposito">📦 Depósito / Stock</a>
       <a data-v="cuadrillas-adm">🔧 Cuadrillas</a>
-      <a data-v="manoobra">🧰 Tipos y M.O.</a>
+      <a data-v="manoobra">🧰 Tipos de trabajo</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
     </div>
@@ -128,7 +128,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.21';
+  var VER='v0.22';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -142,7 +142,7 @@
   function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2200); }
   function pill(estado){ return '<span class="pill p-'+esc(estado)+'">'+esc(estado)+'</span>'; }
 
-  var USER=null, REF={ empresas:[], barrios:[], planes:[], cuadrillas:[], motivos:[], tipos:[] };
+  var USER=null, REF={ empresas:[], barrios:[], planes:[], cuadrillas:[], motivos:[], tiposTrab:[] };
 
   // ── LOGIN ──
   function login(){
@@ -171,8 +171,8 @@
       sbGet('planes?select=*&order=bajada_mbps'),
       sbGet('cuadrillas?select=*&activa=eq.true&order=nombre'),
       sbGet('motivos_ot?select=*&activo=eq.true&order=orden'),
-      sbGet('tipos_ot?select=*&activo=eq.true&order=orden')
-    ]).then(function(r){ REF.empresas=r[0]||[]; REF.barrios=r[1]||[]; REF.planes=r[2]||[]; REF.cuadrillas=r[3]||[]; REF.motivos=r[4]||[]; REF.tipos=r[5]||[]; ir('dashboard'); });
+      sbGet('tipos_trabajo?select=*&activo=eq.true&order=orden')
+    ]).then(function(r){ REF.empresas=r[0]||[]; REF.barrios=r[1]||[]; REF.planes=r[2]||[]; REF.cuadrillas=r[3]||[]; REF.motivos=r[4]||[]; REF.tiposTrab=r[5]||[]; ir('dashboard'); });
   }
 
   // ── NAV ──
@@ -181,7 +181,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vManoObra,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cobertura:vCobertura,usuarios:vUsuarios}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   // accesos directos desde las tarjetas KPI del dashboard
@@ -221,7 +221,7 @@
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
       var now=new Date(), nombre=(USER.nombre||'').split(' ')[0];
       var qa=[['🛠️','Nueva OT','nuevaOT'],['📋','Órdenes','ordenes'],['👥','Clientes','clientes'],['📥','Solicitudes','solicitudes'],['📦','Depósito','deposito'],['🔧','Cuadrillas','cuadrillas-adm'],['📍','Cobertura','cobertura'],['⚠️','ISPcube','isp']];
-      var tipos=REF.tipos.map(function(t){ return [t.codigo,t.nombre]; });
+      var tipos=[['INSTALACION','🔧 Instalaciones'],['REPARACION','🛠️ Reparac./Servis'],['DESCONEXION','🔌 Desconexiones'],['RETIRO_EQUIPOS','📦 Retiros'],['RECONEXION','🔁 Reconexiones'],['OTRO','⚙️ Otros']];
       view.innerHTML=
         '<div class="dash-hero"><div><div class="dash-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dash-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Nexa SAS · Posadas, Misiones</div></div><div class="dash-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
         +'<div class="qa-row">'+qa.map(function(q){ return '<div class="qa" data-qa="'+q[2]+'"><div class="ico">'+q[0]+'</div><div class="lbl">'+q[1]+'</div></div>'; }).join('')+'</div>'
@@ -432,7 +432,7 @@
     view.innerHTML='<h1>Órdenes de trabajo</h1><p class="sub">Generación y seguimiento.</p>'
       +'<div class="toolbar">'
       +'<select id="ot-estado"><option value="">Todos los estados</option>'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],otState.estado)+'</select>'
-      +'<select id="ot-filtro-tipo"><option value=""'+(otState.tipo?'':' selected')+'>Todos los tipos</option>'+tipoOpts(otState.tipo)+'</select>'
+      +'<select id="ot-filtro-tipo"><option value=""'+(otState.tipo?'':' selected')+'>Todos los tipos</option>'+opt(OT_TIPOS,otState.tipo)+'</select>'
       +'<button class="btn btn-pri" id="ot-filtrar">Filtrar</button>'
       +'<button class="btn btn-ok" id="ot-nueva" style="margin-left:auto">+ Nueva OT</button>'
       +'</div><div id="ot-tabla"></div>';
@@ -469,7 +469,7 @@
       : '<label class="l">Buscar cliente (N° o nombre)</label><input id="ot-cli-q" placeholder="Escribí y Enter"><div id="ot-cli-res"></div><div id="ot-cli-sel" class="muted" style="margin-top:6px"></div>';
     var selId = cliente ? cliente.id : null;
     modal('<h2>Nueva orden de trabajo</h2>'+buscar
-      +'<label class="l">Tipo</label><select id="ot-tipo">'+tipoOpts('')+'</select>'
+      +'<label class="l">Tipo</label><select id="ot-tipo">'+opt(OT_TIPOS,'')+'</select>'
       +'<label class="l">Motivo (para service / reparación)</label><select id="ot-motivo"><option value="">— sin motivo —</option>'+REF.motivos.map(function(m){return '<option value="'+m.id+'">'+esc(m.nombre)+'</option>';}).join('')+'</select>'
       +'<label class="l">Prioridad</label><select id="ot-prio">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],'NORMAL')+'</select>'
       +'<label class="l">Fecha agendada (opcional)</label><input id="ot-fecha" type="date">'
@@ -506,7 +506,7 @@
       modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+'</p>'
         +fr('Cliente',cli)+fr('Teléfono',o.clientes?o.clientes.telefono:'')+fr('Domicilio',o.clientes?o.clientes.domicilio_full:'')+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',o.fecha_agendada)
-        +'<div class="row"><div><label class="l">Tipo</label><select id="ot-tipo-edit">'+tipoOpts(o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
+        +'<div class="row"><div><label class="l">Tipo</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
         +'<label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select>'
         +'<label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select>'
         +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-pri" id="ot-save">Guardar</button><button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>');
@@ -528,65 +528,75 @@
     });
   }
 
-  // ── TIPOS DE OT + MANO DE OBRA ── (tipos configurables; cada tipo con su mano de obra)
-  var moState={ tab:'tipos' };
+  // ── TIPOS DE TRABAJO ── (FTTH, Wireless, Tendido, Fusiones… c/u con materiales + mano de obra + cuadrillas)
+  var OT_TIPOS=['INSTALACION','REPARACION','DESCONEXION','RECONEXION','CAMBIO_PLAN','CAMBIO_DOMICILIO','MANTENIMIENTO','RETIRO_EQUIPOS','OTRO'];
+  var ttState={ tab:'trabajos' };
   function _slug(s){ return String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
-  function tipoOpts(sel){ var a=REF.tipos.slice(); if(sel&&!a.some(function(t){return t.codigo===sel;})) a.unshift({codigo:sel,nombre:sel}); return a.map(function(t){return '<option value="'+esc(t.codigo)+'"'+(t.codigo===sel?' selected':'')+'>'+esc(t.nombre)+'</option>';}).join(''); }
-  function reloadTipos(){ return sbGet('tipos_ot?select=*&activo=eq.true&order=orden').then(function(d){ REF.tipos=Array.isArray(d)?d:[]; }); }
-  function vManoObra(){
-    view.innerHTML='<h1>Tipos de OT y mano de obra</h1><p class="sub">Creá tus tipos (instalación, tendido, construcción…) y definí qué mano de obra lleva cada uno.</p>'
+  function trabOpts(sel){ return '<option value="">— elegí —</option>'+REF.tiposTrab.map(function(t){return '<option value="'+t.id+'"'+(t.id==sel?' selected':'')+'>'+esc(t.nombre)+'</option>';}).join(''); }
+  function reloadTrab(){ return sbGet('tipos_trabajo?select=*&activo=eq.true&order=orden').then(function(d){ REF.tiposTrab=Array.isArray(d)?d:[]; }); }
+  function vTiposTrabajo(){
+    view.innerHTML='<h1>Tipos de trabajo</h1><p class="sub">FTTH, Wireless, Tendido de red, Fusiones… Cada tipo con sus materiales, su mano de obra y las cuadrillas que lo hacen.</p>'
       +'<div class="toolbar" id="mo-tabs">'
-      +'<button class="btn '+(moState.tab==='tipos'?'btn-pri':'btn-2')+'" data-tab="tipos">🗂️ Tipos de OT</button>'
-      +'<button class="btn '+(moState.tab==='catalogo'?'btn-pri':'btn-2')+'" data-tab="catalogo">🧰 Catálogo de mano de obra</button>'
+      +'<button class="btn '+(ttState.tab==='trabajos'?'btn-pri':'btn-2')+'" data-tab="trabajos">🧰 Tipos de trabajo</button>'
+      +'<button class="btn '+(ttState.tab==='catalogo'?'btn-pri':'btn-2')+'" data-tab="catalogo">🛠️ Catálogo de mano de obra</button>'
       +'</div><div id="mo-cont"></div>';
-    Array.prototype.forEach.call(document.querySelectorAll('#mo-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ moState.tab=b.getAttribute('data-tab'); vManoObra(); }); });
-    if(moState.tab==='catalogo') moCatalogo(); else moTipos();
+    Array.prototype.forEach.call(document.querySelectorAll('#mo-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ ttState.tab=b.getAttribute('data-tab'); vTiposTrabajo(); }); });
+    if(ttState.tab==='catalogo') moCatalogo(); else ttList();
   }
-  function moTipos(){
+  function ttList(){
     var cont=document.getElementById('mo-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    Promise.all([ sbGet('tipos_ot?select=*&order=orden'), sbGet('tipo_mano_obra?select=tipo_codigo') ]).then(function(r){
-      var tipos=Array.isArray(r[0])?r[0]:[], tm=Array.isArray(r[1])?r[1]:[], cnt={};
-      tm.forEach(function(x){ cnt[x.tipo_codigo]=(cnt[x.tipo_codigo]||0)+1; });
-      var h='<div class="toolbar"><button class="btn btn-ok" id="tipo-nuevo">+ Nuevo tipo de OT</button><span class="muted">'+tipos.length+' tipos</span></div>';
-      h+='<table><thead><tr><th>Tipo</th><th>Código</th><th>Mano de obra</th><th>Estado</th></tr></thead><tbody>';
-      tipos.forEach(function(t){ h+='<tr data-c="'+esc(t.codigo)+'" style="cursor:pointer"><td><b>'+esc(t.nombre)+'</b></td><td class="muted" style="font-family:monospace">'+esc(t.codigo)+'</td><td><b>'+(cnt[t.codigo]||0)+'</b> ítems</td><td>'+(t.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">inactivo</span>')+'</td></tr>'; });
+    Promise.all([ sbGet('tipos_trabajo?select=*&order=orden'), sbGet('tipo_trabajo_material?select=tipo_trabajo_id'), sbGet('tipo_trabajo_mano_obra?select=tipo_trabajo_id') ]).then(function(r){
+      var tt=Array.isArray(r[0])?r[0]:[], cm={}, co={};
+      (r[1]||[]).forEach(function(x){ cm[x.tipo_trabajo_id]=(cm[x.tipo_trabajo_id]||0)+1; });
+      (r[2]||[]).forEach(function(x){ co[x.tipo_trabajo_id]=(co[x.tipo_trabajo_id]||0)+1; });
+      var h='<div class="toolbar"><button class="btn btn-ok" id="tt-nuevo">+ Nuevo tipo de trabajo</button><span class="muted">'+tt.length+' tipos</span></div>';
+      h+='<table><thead><tr><th>Tipo de trabajo</th><th>Materiales</th><th>Mano de obra</th><th>Estado</th></tr></thead><tbody>';
+      tt.forEach(function(t){ h+='<tr data-id="'+t.id+'" style="cursor:pointer"><td><b>'+esc(t.nombre)+'</b></td><td><b>'+(cm[t.id]||0)+'</b></td><td><b>'+(co[t.id]||0)+'</b></td><td>'+(t.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">inactivo</span>')+'</td></tr>'; });
       h+='</tbody></table>'; cont.innerHTML=h;
-      document.getElementById('tipo-nuevo').addEventListener('click',function(){ formTipo(null); });
-      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-c]'),function(tr){ tr.addEventListener('click',function(){ formTipo(tipos.filter(function(x){return x.codigo===tr.getAttribute('data-c');})[0]); }); });
+      document.getElementById('tt-nuevo').addEventListener('click',function(){ formTrab(null); });
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-id]'),function(tr){ tr.addEventListener('click',function(){ formTrab(tt.filter(function(x){return x.id==tr.getAttribute('data-id');})[0]); }); });
     });
   }
-  function formTipo(t){
+  function formTrab(t){
     t=t||{};
-    Promise.all([ sbGet('mano_obra_catalogo?select=id,nombre&activo=eq.true&order=orden'), t.codigo?sbGet('tipo_mano_obra?tipo_codigo=eq.'+encodeURIComponent(t.codigo)+'&select=mano_obra_id'):Promise.resolve([]) ]).then(function(r){
-      var mos=Array.isArray(r[0])?r[0]:[], asign=(Array.isArray(r[1])?r[1]:[]).map(function(x){return x.mano_obra_id;});
-      function checks(){ return mos.map(function(m){ return '<label style="display:block;font-weight:500"><input type="checkbox" class="tmo-ck" value="'+m.id+'"'+(asign.indexOf(m.id)>=0?' checked':'')+'> '+esc(m.nombre)+'</label>'; }).join(''); }
-      modal('<h2>'+(t.codigo?'Editar':'Nuevo')+' tipo de OT</h2>'
-        +'<div class="row"><div style="flex:2"><label class="l">Nombre</label><input id="tp-nombre" value="'+esc(t.nombre||'')+'" placeholder="Ej: Tendido de fibra"></div><div><label class="l">Orden</label><input id="tp-orden" type="number" value="'+esc(t.orden||100)+'"></div></div>'
-        +(t.codigo?'<div class="muted" style="font-size:12px;margin-top:4px">Código: <b style="font-family:monospace">'+esc(t.codigo)+'</b></div>':'')
-        +'<div style="margin-top:8px"><label style="font-weight:600"><input type="checkbox" id="tp-activo"'+(t.activo!==false?' checked':'')+'> Activo</label></div>'
-        +'<label class="l">Mano de obra de este tipo</label><div id="tmo-list" style="max-height:200px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+(mos.length?checks():'<span class="muted">No hay mano de obra en el catálogo todavía.</span>')+'</div>'
-        +'<div style="display:flex;gap:6px;margin-top:6px"><input id="tmo-nueva" placeholder="Crear nueva mano de obra y agregarla" style="flex:1"><button class="btn btn-2" id="tmo-add" type="button">+ Crear</button></div>'
-        +'<div id="tp-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
-        +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="tp-save">Guardar</button><button class="btn btn-2" id="tp-x">Cancelar</button></div>');
-      document.getElementById('tp-x').addEventListener('click',cerrarModal);
-      document.getElementById('tmo-add').addEventListener('click',function(){
-        var nom=document.getElementById('tmo-nueva').value.trim(); if(!nom) return;
-        sbPost('mano_obra_catalogo',{nombre:nom,tecnologia:'AMBAS',orden:999,activo:true}).then(function(rr){ var m=Array.isArray(rr)?rr[0]:null; if(!m) return; mos.push({id:m.id,nombre:m.nombre}); asign.push(m.id); document.getElementById('tmo-list').innerHTML=checks(); document.getElementById('tmo-nueva').value=''; });
+    Promise.all([
+      sbGet('catalogo_materiales?select=id,nombre&activo=eq.true&order=orden'),
+      sbGet('mano_obra_catalogo?select=id,nombre&activo=eq.true&order=orden'),
+      t.id?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+t.id+'&select=material_id'):Promise.resolve([]),
+      t.id?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+t.id+'&select=mano_obra_id'):Promise.resolve([]),
+      t.id?sbGet('cuadrilla_tipos_trabajo?tipo_trabajo_id=eq.'+t.id+'&select=cuadrilla_id'):Promise.resolve([])
+    ]).then(function(r){
+      var mats=r[0]||[], mos=r[1]||[], aMat=(r[2]||[]).map(function(x){return x.material_id;}), aMo=(r[3]||[]).map(function(x){return x.mano_obra_id;}), aCu=(r[4]||[]).map(function(x){return x.cuadrilla_id;});
+      function cks(arr,cls,sel){ return arr.length?arr.map(function(m){ return '<label style="display:block;font-weight:500"><input type="checkbox" class="'+cls+'" value="'+m.id+'"'+(sel.indexOf(m.id)>=0?' checked':'')+'> '+esc(m.nombre)+'</label>'; }).join(''):'<span class="muted">vacío</span>'; }
+      var cuaChecks=REF.cuadrillas.length?REF.cuadrillas.map(function(c){ return '<label style="display:inline-block;margin-right:14px;font-weight:500"><input type="checkbox" class="tt-cu" value="'+c.id+'"'+(aCu.indexOf(c.id)>=0?' checked':'')+'> '+esc(c.nombre)+'</label>'; }).join(''):'<span class="muted">No hay cuadrillas.</span>';
+      modal('<h2>'+(t.id?'Editar':'Nuevo')+' tipo de trabajo</h2>'
+        +'<div class="row"><div style="flex:2"><label class="l">Nombre</label><input id="tt-nombre" value="'+esc(t.nombre||'')+'" placeholder="Ej: Tendido de red"></div><div><label class="l">Orden</label><input id="tt-orden" type="number" value="'+esc(t.orden||100)+'"></div></div>'
+        +'<div style="margin-top:8px"><label style="font-weight:600"><input type="checkbox" id="tt-activo"'+(t.activo!==false?' checked':'')+'> Activo</label></div>'
+        +'<div class="row" style="margin-top:6px"><div><label class="l">Materiales de este tipo</label><div id="tt-mat" style="max-height:160px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+cks(mats,'tt-mt',aMat)+'</div></div>'
+        +'<div><label class="l">Mano de obra de este tipo</label><div id="tt-mo" style="max-height:160px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+cks(mos,'tt-moo',aMo)+'</div>'
+        +'<div style="display:flex;gap:6px;margin-top:6px"><input id="tt-mo-nueva" placeholder="Crear mano de obra" style="flex:1"><button class="btn btn-2" id="tt-mo-add" type="button">+</button></div></div></div>'
+        +'<label class="l">Cuadrillas que hacen este trabajo</label><div style="border:1px solid var(--bord);border-radius:8px;padding:8px">'+cuaChecks+'</div>'
+        +'<div id="tt-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="tt-save">Guardar</button><button class="btn btn-2" id="tt-x">Cancelar</button></div>');
+      document.getElementById('tt-x').addEventListener('click',cerrarModal);
+      document.getElementById('tt-mo-add').addEventListener('click',function(){
+        var nom=document.getElementById('tt-mo-nueva').value.trim(); if(!nom) return;
+        sbPost('mano_obra_catalogo',{nombre:nom,tecnologia:'AMBAS',orden:999,activo:true}).then(function(rr){ var m=Array.isArray(rr)?rr[0]:null; if(!m) return; mos.push({id:m.id,nombre:m.nombre}); aMo.push(m.id); document.getElementById('tt-mo').innerHTML=cks(mos,'tt-moo',aMo); document.getElementById('tt-mo-nueva').value=''; });
       });
-      document.getElementById('tp-save').addEventListener('click',function(){
-        var nombre=document.getElementById('tp-nombre').value.trim(); if(!nombre){ document.getElementById('tp-err').textContent='Poné un nombre.'; return; }
-        var sel=[]; Array.prototype.forEach.call(document.querySelectorAll('#tmo-list .tmo-ck:checked'),function(ck){ sel.push(Number(ck.value)); });
-        var body={ nombre:nombre, orden:parseInt(document.getElementById('tp-orden').value,10)||100, activo:document.getElementById('tp-activo').checked };
+      document.getElementById('tt-save').addEventListener('click',function(){
+        var nombre=document.getElementById('tt-nombre').value.trim(); if(!nombre){ document.getElementById('tt-err').textContent='Poné un nombre.'; return; }
+        function vals(cls){ var a=[]; Array.prototype.forEach.call(document.querySelectorAll('.'+cls+':checked'),function(ck){ a.push(Number(ck.value)); }); return a; }
+        var selMat=vals('tt-mt'), selMo=vals('tt-moo'), selCu=vals('tt-cu');
+        var body={ nombre:nombre, orden:parseInt(document.getElementById('tt-orden').value,10)||100, activo:document.getElementById('tt-activo').checked };
         var btn=this; btn.disabled=true;
         var prom;
-        if(t.codigo){ prom=sbPatch('tipos_ot?id=eq.'+t.id,body).then(function(){return t.codigo;}); }
-        else { body.codigo=_slug(nombre)||('TIPO_'+nombre.length); prom=sbPost('tipos_ot',body).then(function(rr){ var x=Array.isArray(rr)?rr[0]:null; if(!x) throw 0; return x.codigo; }); }
-        prom.then(function(codigo){
-          return fetch(SB_URL+'/rest/v1/tipo_mano_obra?tipo_codigo=eq.'+encodeURIComponent(codigo),{method:'DELETE',headers:H}).then(function(){
-            if(!sel.length) return; return sbPost('tipo_mano_obra',sel.map(function(mid){return {tipo_codigo:codigo,mano_obra_id:mid};}));
-          });
-        }).then(reloadTipos).then(function(){ cerrarModal(); toast('Tipo guardado ✓'); moTipos(); })
-          .catch(function(){ document.getElementById('tp-err').textContent='No se pudo guardar (¿nombre/código repetido?).'; btn.disabled=false; });
+        if(t.id){ prom=sbPatch('tipos_trabajo?id=eq.'+t.id,body).then(function(){return t.id;}); }
+        else { body.codigo=_slug(nombre)||('TT'+nombre.length); prom=sbPost('tipos_trabajo',body).then(function(rr){ var x=Array.isArray(rr)?rr[0]:null; if(!x) throw 0; return x.id; }); }
+        prom.then(function(ttid){
+          function sync(tabla,campo,vls){ return fetch(SB_URL+'/rest/v1/'+tabla+'?tipo_trabajo_id=eq.'+ttid,{method:'DELETE',headers:H}).then(function(){ if(!vls.length) return; return sbPost(tabla,vls.map(function(v){var o={tipo_trabajo_id:ttid};o[campo]=v;return o;})); }); }
+          return sync('tipo_trabajo_material','material_id',selMat).then(function(){ return sync('tipo_trabajo_mano_obra','mano_obra_id',selMo); }).then(function(){ return sync('cuadrilla_tipos_trabajo','cuadrilla_id',selCu); });
+        }).then(reloadTrab).then(function(){ cerrarModal(); toast('Tipo de trabajo guardado ✓'); ttList(); })
+          .catch(function(){ document.getElementById('tt-err').textContent='No se pudo guardar (¿nombre repetido?).'; btn.disabled=false; });
       });
     });
   }
@@ -635,7 +645,7 @@
       var _moIds={}; (r[4]||[]).forEach(function(x){ if(x.tipo_codigo===o.tipo) _moIds[x.mano_obra_id]=1; });
       var tecRaw=(cli.tecnologia||''); var techKit=/ftth/i.test(tecRaw)?'FTTH':(/(inalamb|wireless|wifi)/i.test(tecRaw)?'WIRELESS':null);
       function enKit(t){ return !techKit || t===techKit || t==='AMBAS'; }
-      var kitMat=mats.filter(function(m){return enKit(m.tecnologia);}), kitMo=mo.filter(function(m){return _moIds[m.id];});
+      var kitMat=mats.filter(function(m){return enKit(m.tecnologia);}), kitMo=mo.filter(function(m){return enKit(m.tecnologia);});
       var tecLabel=techKit==='FTTH'?'FTTH':(techKit==='WIRELESS'?'Wireless':(tecRaw||'s/tecnología'));
       var tipoLabel=String(o.tipo||'').replace(/_/g,' ')+(o.motivos_ot?(' · '+o.motivos_ot.nombre):'');
       function box(t){ return '<div style="display:flex;border:1px solid #000;margin-bottom:3px"><span style="flex:1;padding:3px 6px;font-size:10px">'+t+'</span><span style="width:38px;border-left:1px solid #000"></span></div>'; }
