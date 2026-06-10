@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.13</title>
+<title>Nexa · Gestión — v0.14</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.13</div>
+    <div class="marca-sub">Gestión · v0.14</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -116,7 +116,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.13';
+  var VER='v0.14';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -637,33 +637,49 @@
   function pointInPoly(lat,lng,poly){ var inside=false; for(var i=0,j=poly.length-1;i<poly.length;j=i++){ var yi=poly[i][0],xi=poly[i][1],yj=poly[j][0],xj=poly[j][1]; if(((yi>lat)!==(yj>lat)) && (lng < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
   function hav(la1,lo1,la2,lo2){ var R=6371000,d=Math.PI/180,s1=Math.sin((la2-la1)*d/2),s2=Math.sin((lo2-lo1)*d/2); var a=s1*s1+Math.cos(la1*d)*Math.cos(la2*d)*s2*s2; return 2*R*Math.asin(Math.sqrt(a)); }
 
-  // ── DEPÓSITO / STOCK ── (catálogo + depósito hermanado con stock de cuadrilla, como FG)
+  // ── DEPÓSITO / STOCK ── (paridad con FG: serial_tipo, ingreso con seriales, traslado a cuadrilla, movimientos)
   var depState={ tab:'materiales', cuad:'' };
   var TECS=['FTTH','WIRELESS','AMBAS'];
+  var INGRESO_TEMP=[];
   function tecPill(t){ var c=t==='FTTH'?'p-ASIGNADA':(t==='WIRELESS'?'p-EN_CURSO':'p-baja'); return '<span class="pill '+c+'">'+esc(t||'AMBAS')+'</span>'; }
+  function stipPill(t){ if(t==='INDIVIDUAL') return '<span class="pill p-ASIGNADA">equipo · serial</span>'; if(t==='CORRELATIVO') return '<span class="pill p-EN_CURSO">precinto · rango</span>'; return '<span class="pill p-baja">sin serie</span>'; }
+  function pad6(n){ var s=String(parseInt(n,10)); while(s.length<6) s='0'+s; return s; }
+  function normSerial(s){ return String(s||'').trim().toUpperCase().replace(/[\s:\-]/g,''); }
+  function _parseSeriales(txt){ return String(txt||'').split(/[\n,;\s]+/).map(normSerial).filter(Boolean); }
+  // conteo de seriales por material para un estado (y cuadrilla opcional)
+  function _conteoSeriales(estado, cuadId){
+    var p='stock_seriales?estado=eq.'+estado+'&select=material_id&limit=20000';
+    if(cuadId) p+='&cuadrilla_id=eq.'+cuadId;
+    return sbGet(p).then(function(d){ var m={}; (Array.isArray(d)?d:[]).forEach(function(s){ m[s.material_id]=(m[s.material_id]||0)+1; }); return m; });
+  }
+  function _upsertDeposito(matId,delta){
+    return sbGet('stock_deposito?material_id=eq.'+matId+'&select=id,cantidad').then(function(d){
+      if(Array.isArray(d)&&d.length) return sbPatch('stock_deposito?id=eq.'+d[0].id,{cantidad:(Number(d[0].cantidad)||0)+delta});
+      return sbPost('stock_deposito',{material_id:Number(matId),cantidad:delta});
+    });
+  }
+
   function vDeposito(){
-    view.innerHTML='<h1>Depósito / Stock</h1><p class="sub">Catálogo de materiales y stock (depósito ↔ cuadrillas), como en FG.</p>'
+    view.innerHTML='<h1>Depósito / Stock</h1><p class="sub">Catálogo, ingreso con seriales, entrega a cuadrillas y movimientos — como en FG.</p>'
       +'<div class="toolbar" id="dep-tabs">'
-      +'<button class="btn '+(depState.tab==='materiales'?'btn-pri':'btn-2')+'" data-tab="materiales">📋 Materiales</button>'
-      +'<button class="btn '+(depState.tab==='deposito'?'btn-pri':'btn-2')+'" data-tab="deposito">🏭 Stock depósito</button>'
-      +'<button class="btn '+(depState.tab==='cuadrillas'?'btn-pri':'btn-2')+'" data-tab="cuadrillas">🚚 Stock cuadrillas</button>'
+      +['materiales|📋 Materiales','ingreso|📥 Ingreso','deposito|🏭 Stock depósito','cuadrillas|🚚 Stock cuadrillas','movimientos|🔄 Movimientos']
+        .map(function(t){ var p=t.split('|'); return '<button class="btn '+(depState.tab===p[0]?'btn-pri':'btn-2')+'" data-tab="'+p[0]+'">'+p[1]+'</button>'; }).join('')
       +'</div><div id="dep-cont"></div>';
     Array.prototype.forEach.call(document.querySelectorAll('#dep-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ depState.tab=b.getAttribute('data-tab'); vDeposito(); }); });
-    if(depState.tab==='materiales') depMateriales();
-    else if(depState.tab==='deposito') depStock();
-    else depCuadrillas();
+    ({materiales:depMateriales,ingreso:depIngreso,deposito:depStock,cuadrillas:depCuadrillas,movimientos:depMovs}[depState.tab]||depMateriales)();
   }
-  // — Catálogo de materiales: agregar / editar / deshabilitar / mover —
+
+  // ===== MATERIALES (catálogo con serial_tipo + paquete) =====
   function depMateriales(){
     var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
     sbGet('catalogo_materiales?select=*&order=orden.asc,nombre.asc').then(function(d){
       d=Array.isArray(d)?d:[];
       var h='<div class="toolbar"><button class="btn btn-ok" id="mat-nuevo">+ Nuevo material</button><span class="muted">'+d.length+' materiales en el catálogo</span></div>';
-      h+='<table><thead><tr><th>Orden</th><th>Material</th><th>Tecnología</th><th>Unidad</th><th>Serie</th><th>Estado</th></tr></thead><tbody>';
+      h+='<table><thead><tr><th>Orden</th><th>Material</th><th>Tecnología</th><th>Unidad</th><th>Serial</th><th>Estado</th></tr></thead><tbody>';
       d.forEach(function(m,i){
         h+='<tr><td style="white-space:nowrap"><b>'+esc(m.orden)+'</b> <button class="btn btn-2 mat-mv" data-id="'+m.id+'" data-dir="-1" style="padding:2px 7px"'+(i===0?' disabled':'')+'>↑</button> <button class="btn btn-2 mat-mv" data-id="'+m.id+'" data-dir="1" style="padding:2px 7px"'+(i===d.length-1?' disabled':'')+'>↓</button></td>'
           +'<td data-edit="'+m.id+'" style="cursor:pointer"><b>'+esc(m.nombre)+'</b>'+(m.codigo?' <span class="muted">('+esc(m.codigo)+')</span>':'')+'</td>'
-          +'<td>'+tecPill(m.tecnologia)+'</td><td>'+esc(m.unidad||'UN')+'</td><td>'+(m.requiere_serie?'🔢 sí':'—')+'</td>'
+          +'<td>'+tecPill(m.tecnologia)+'</td><td>'+esc(m.unidad||'UN')+(m.cant_por_paquete>1?(' <span class="muted">×'+m.cant_por_paquete+'/'+esc(m.nombre_paquete||'paq')+'</span>'):'')+'</td><td>'+stipPill(m.serial_tipo)+'</td>'
           +'<td>'+(m.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">deshabilitado</span>')+'</td></tr>';
       });
       h+='</tbody></table>'; cont.innerHTML=h;
@@ -680,18 +696,25 @@
   }
   function formMaterial(m){
     m=m||{};
+    function stipOpt(v,txt,cur){ return '<option value="'+v+'"'+((cur||'NINGUNO')===v?' selected':'')+'>'+txt+'</option>'; }
     modal('<h2>'+(m.id?'Editar':'Nuevo')+' material</h2>'
       +'<label class="l">Nombre</label><input id="mt-nombre" value="'+esc(m.nombre||'')+'" placeholder="Ej: Cable drop">'
       +'<div class="row"><div><label class="l">Código</label><input id="mt-codigo" value="'+esc(m.codigo||'')+'" placeholder="opcional"></div><div><label class="l">Unidad</label><input id="mt-unidad" value="'+esc(m.unidad||'UN')+'" placeholder="UN / MTS"></div></div>'
-      +'<label class="l">Tecnología</label><select id="mt-tec">'+opt(TECS, m.tecnologia||'AMBAS')+'</select>'
-      +'<div style="display:flex;gap:18px;margin-top:12px"><label style="font-weight:600"><input type="checkbox" id="mt-serie"'+(m.requiere_serie?' checked':'')+'> Lleva N° de serie (equipo)</label><label style="font-weight:600"><input type="checkbox" id="mt-activo"'+(m.activo!==false?' checked':'')+'> Activo</label></div>'
+      +'<div class="row"><div><label class="l">Tecnología</label><select id="mt-tec">'+opt(TECS, m.tecnologia||'AMBAS')+'</select></div><div><label class="l">Tipo de serial</label><select id="mt-stip">'
+        +stipOpt('NINGUNO','Sin serie (cable, grampas…)',m.serial_tipo)+stipOpt('INDIVIDUAL','Equipo (MAC / serial)',m.serial_tipo)+stipOpt('CORRELATIVO','Precinto (rango numérico)',m.serial_tipo)
+        +'</select></div></div>'
+      +'<div class="row"><div><label class="l">Cant. por paquete</label><input id="mt-paq" type="number" min="1" value="'+esc(m.cant_por_paquete||1)+'"></div><div><label class="l">Nombre del paquete</label><input id="mt-paqn" value="'+esc(m.nombre_paquete||'unidad')+'" placeholder="bolsa / bobina"></div></div>'
+      +'<div style="margin-top:12px"><label style="font-weight:600"><input type="checkbox" id="mt-activo"'+(m.activo!==false?' checked':'')+'> Activo</label></div>'
       +'<div id="mt-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ok" id="mt-save">Guardar</button><button class="btn btn-2" id="mt-cancel">Cancelar</button></div>');
     document.getElementById('mt-cancel').addEventListener('click',cerrarModal);
     document.getElementById('mt-save').addEventListener('click',function(){
+      var stip=document.getElementById('mt-stip').value;
       var body={ nombre:document.getElementById('mt-nombre').value.trim(), codigo:document.getElementById('mt-codigo').value.trim()||null,
         unidad:document.getElementById('mt-unidad').value.trim()||'UN', tecnologia:document.getElementById('mt-tec').value,
-        requiere_serie:document.getElementById('mt-serie').checked, activo:document.getElementById('mt-activo').checked };
+        serial_tipo:stip, requiere_serie:(stip!=='NINGUNO'),
+        cant_por_paquete:Math.max(1,parseInt(document.getElementById('mt-paq').value,10)||1),
+        nombre_paquete:document.getElementById('mt-paqn').value.trim()||'unidad', activo:document.getElementById('mt-activo').checked };
       if(!body.nombre){ document.getElementById('mt-err').textContent='Poné un nombre.'; return; }
       if(!m.id) body.orden=999;
       var btn=this; btn.disabled=true;
@@ -700,76 +723,209 @@
         .catch(function(){ document.getElementById('mt-err').textContent='No se pudo guardar (¿código repetido?).'; btn.disabled=false; });
     });
   }
-  // — Stock depósito: ingreso + entrega a cuadrilla (no serializados) —
+
+  // ===== INGRESO al depósito (3 tipos de serial, con carrito temporal) =====
+  function _matById(id){ return (window._depMats||[]).filter(function(m){return m.id==id;})[0]; }
+  function depIngreso(){
+    var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('catalogo_materiales?select=id,nombre,unidad,serial_tipo&activo=eq.true&order=orden.asc').then(function(d){
+      var mats=Array.isArray(d)?d:[]; window._depMats=mats;
+      var matOpts='<option value="">— elegí un material —</option>'+mats.map(function(m){return '<option value="'+m.id+'">'+esc(m.nombre)+'</option>';}).join('');
+      cont.innerHTML='<div class="kpi" style="margin-bottom:14px"><b>Ingreso de material al depósito.</b> <span class="muted">Cargá uno o varios y confirmá al final.</span></div>'
+        +'<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">'
+        +'<div style="flex:1;min-width:300px;border:1px solid var(--bord);border-radius:12px;padding:14px">'
+          +'<label class="l">Material</label><select id="ing-mat">'+matOpts+'</select>'
+          +'<div id="ing-dyn" style="margin-top:8px"></div>'
+          +'<button class="btn btn-2" id="ing-add" style="margin-top:10px" disabled>+ Agregar al ingreso</button>'
+        +'</div>'
+        +'<div style="flex:1;min-width:300px"><div class="l">A ingresar</div><div id="ing-lista"></div>'
+          +'<button class="btn btn-ok" id="ing-confirm" style="margin-top:10px" disabled>✅ Confirmar ingreso al depósito</button></div>'
+        +'</div>';
+      document.getElementById('ing-mat').addEventListener('change',ingDyn);
+      document.getElementById('ing-add').addEventListener('click',ingAdd);
+      document.getElementById('ing-confirm').addEventListener('click',ingConfirm);
+      ingRenderLista();
+    });
+  }
+  function ingDyn(){
+    var m=_matById(document.getElementById('ing-mat').value), dyn=document.getElementById('ing-dyn'), add=document.getElementById('ing-add');
+    if(!m){ dyn.innerHTML=''; add.disabled=true; return; }
+    add.disabled=false;
+    if(m.serial_tipo==='NINGUNO'){
+      dyn.innerHTML='<label class="l">Cantidad</label><input id="ing-cant" type="number" min="1" value="1">';
+    } else if(m.serial_tipo==='CORRELATIVO'){
+      dyn.innerHTML='<div class="row"><div><label class="l">Primer número</label><input id="ing-ini" type="number" min="0" placeholder="Ej: 100"></div><div><label class="l">Cantidad</label><input id="ing-cant" type="number" min="1" placeholder="Ej: 50"></div></div><div id="ing-prev" class="muted" style="margin-top:6px;font-size:12px"></div>';
+      var upd=function(){ var i=parseInt(document.getElementById('ing-ini').value,10), c=parseInt(document.getElementById('ing-cant').value,10); var p=document.getElementById('ing-prev'); p.textContent=(i>=0&&c>0)?('→ del '+pad6(i)+' al '+pad6(i+c-1)+' ('+c+' precintos)'):''; };
+      dyn.querySelector('#ing-ini').addEventListener('input',upd); dyn.querySelector('#ing-cant').addEventListener('input',upd);
+    } else {
+      dyn.innerHTML='<label class="l">Seriales / MACs (uno por línea)</label><textarea id="ing-ser" rows="6" placeholder="1C60D2F96288"></textarea><div id="ing-prev" class="muted" style="margin-top:4px;font-size:12px">0 seriales</div>';
+      dyn.querySelector('#ing-ser').addEventListener('input',function(){ document.getElementById('ing-prev').textContent=_parseSeriales(this.value).length+' seriales'; });
+    }
+  }
+  function ingAdd(){
+    var m=_matById(document.getElementById('ing-mat').value); if(!m) return;
+    var item={ material_id:m.id, nombre:m.nombre, unidad:m.unidad, serial_tipo:m.serial_tipo, cantidad:0, seriales:[] };
+    if(m.serial_tipo==='NINGUNO'){ var c=parseInt(document.getElementById('ing-cant').value,10); if(!(c>0)){ toast('Cantidad inválida.'); return; } item.cantidad=c; }
+    else if(m.serial_tipo==='CORRELATIVO'){ var i=parseInt(document.getElementById('ing-ini').value,10), c2=parseInt(document.getElementById('ing-cant').value,10); if(!(i>=0)||!(c2>0)){ toast('Completá número inicial y cantidad.'); return; } for(var k=0;k<c2;k++) item.seriales.push(pad6(i+k)); item.cantidad=c2; }
+    else { var ss=_parseSeriales(document.getElementById('ing-ser').value); if(!ss.length){ toast('Pegá al menos un serial.'); return; } item.seriales=ss; item.cantidad=ss.length; }
+    INGRESO_TEMP.push(item); ingRenderLista();
+    document.getElementById('ing-mat').value=''; ingDyn();
+  }
+  function ingRenderLista(){
+    var c=document.getElementById('ing-lista'); if(!c) return;
+    var cf=document.getElementById('ing-confirm');
+    if(!INGRESO_TEMP.length){ c.innerHTML='<div class="muted" style="padding:10px">Todavía no agregaste nada.</div>'; if(cf) cf.disabled=true; return; }
+    var h='<table><thead><tr><th>Material</th><th>Tipo</th><th>Cant.</th><th></th></tr></thead><tbody>';
+    INGRESO_TEMP.forEach(function(it,idx){ h+='<tr><td><b>'+esc(it.nombre)+'</b></td><td>'+stipPill(it.serial_tipo)+'</td><td><b>'+it.cantidad+'</b> '+esc(it.unidad||'')+'</td><td><button class="btn btn-x ing-del" data-i="'+idx+'" style="padding:2px 8px">✕</button></td></tr>'; });
+    h+='</tbody></table>'; c.innerHTML=h;
+    Array.prototype.forEach.call(c.querySelectorAll('.ing-del'),function(b){ b.addEventListener('click',function(){ INGRESO_TEMP.splice(Number(b.getAttribute('data-i')),1); ingRenderLista(); }); });
+    if(cf) cf.disabled=false;
+  }
+  function _insertSeriales(matId, seriales){
+    var dup=0, ok=0, i=0, BATCH=200;
+    function next(){
+      if(i>=seriales.length) return Promise.resolve({ok:ok,dup:dup});
+      var lote=seriales.slice(i,i+BATCH).map(function(s){return {material_id:Number(matId),serial:s,estado:'EN_DEPOSITO'};}); i+=BATCH;
+      return sbPost('stock_seriales',lote).then(function(r){ if(Array.isArray(r)){ ok+=r.length; return next(); } throw 0; })
+        .catch(function(){ var j=0; function one(){ if(j>=lote.length) return next(); var reg=lote[j++]; return sbPost('stock_seriales',reg).then(function(rr){ if(Array.isArray(rr)&&rr.length) ok++; else dup++; return one(); }).catch(function(){ dup++; return one(); }); } return one(); });
+    }
+    return next();
+  }
+  function ingConfirm(){
+    if(!INGRESO_TEMP.length) return;
+    var btn=document.getElementById('ing-confirm'); btn.disabled=true; btn.textContent='Procesando…';
+    var items=INGRESO_TEMP.slice(), idx=0;
+    function step(){
+      if(idx>=items.length){ INGRESO_TEMP=[]; toast('Ingreso confirmado ✓'); depState.tab='deposito'; vDeposito(); return; }
+      var it=items[idx++];
+      var p=(it.serial_tipo==='NINGUNO')? _upsertDeposito(it.material_id,it.cantidad) : _insertSeriales(it.material_id,it.seriales);
+      p.then(function(res){ return sbPost('stock_movimientos',{material_id:Number(it.material_id),tipo:'INGRESO',cantidad:(res&&res.ok!=null?res.ok:it.cantidad),usuario_id:USER.id,observaciones:(res&&res.dup?('('+res.dup+' duplicados omitidos)'):null)}); })
+        .then(step).catch(step);
+    }
+    step();
+  }
+
+  // ===== STOCK DEPÓSITO (vista, contando seriales) =====
   function depStock(){
     var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    Promise.all([ sbGet('catalogo_materiales?select=*&activo=eq.true&requiere_serie=eq.false&order=orden.asc'), sbGet('stock_deposito?select=material_id,cantidad') ]).then(function(r){
-      var mats=Array.isArray(r[0])?r[0]:[], st=Array.isArray(r[1])?r[1]:[], smap={};
+    Promise.all([ sbGet('catalogo_materiales?select=*&activo=eq.true&order=orden.asc'), sbGet('stock_deposito?select=material_id,cantidad'), _conteoSeriales('EN_DEPOSITO') ]).then(function(r){
+      var mats=Array.isArray(r[0])?r[0]:[], st=Array.isArray(r[1])?r[1]:[], serCnt=r[2]||{}, smap={};
       st.forEach(function(s){ smap[s.material_id]=Number(s.cantidad)||0; });
-      var h='<p class="muted">Materiales no serializados. Los equipos con N° de serie (ONU, Force, etc.) se gestionan por serie — próximo bloque.</p>'
-        +'<table><thead><tr><th>Material</th><th>Tecnología</th><th>En depósito</th><th></th></tr></thead><tbody>';
-      mats.forEach(function(m){ var c=smap[m.id]||0;
-        h+='<tr><td><b>'+esc(m.nombre)+'</b></td><td>'+tecPill(m.tecnologia)+'</td><td><b>'+c+'</b> <span class="muted">'+esc(m.unidad||'')+'</span></td>'
-          +'<td style="white-space:nowrap"><button class="btn btn-2 dep-ing" data-id="'+m.id+'" data-n="'+esc(m.nombre)+'">+ Ingreso</button> <button class="btn btn-2 dep-ent" data-id="'+m.id+'" data-n="'+esc(m.nombre)+'" data-c="'+c+'">→ A cuadrilla</button></td></tr>';
+      var h='<div class="toolbar"><button class="btn btn-ok" id="dep-entregar">🚚 Entregar a una cuadrilla</button></div>'
+        +'<table><thead><tr><th>Material</th><th>Tecnología</th><th>Serial</th><th>En depósito</th></tr></thead><tbody>';
+      mats.forEach(function(m){ var c=(m.serial_tipo&&m.serial_tipo!=='NINGUNO')?(serCnt[m.id]||0):(smap[m.id]||0);
+        h+='<tr><td><b>'+esc(m.nombre)+'</b></td><td>'+tecPill(m.tecnologia)+'</td><td>'+stipPill(m.serial_tipo)+'</td><td><b>'+c+'</b> <span class="muted">'+esc(m.unidad||'')+'</span></td></tr>';
       });
       h+='</tbody></table>'; cont.innerHTML=h;
-      Array.prototype.forEach.call(cont.querySelectorAll('.dep-ing'),function(b){ b.addEventListener('click',function(){ ingresoStock(b.getAttribute('data-id'), b.getAttribute('data-n')); }); });
-      Array.prototype.forEach.call(cont.querySelectorAll('.dep-ent'),function(b){ b.addEventListener('click',function(){ entregaCuadrilla(b.getAttribute('data-id'), b.getAttribute('data-n'), Number(b.getAttribute('data-c'))); }); });
+      document.getElementById('dep-entregar').addEventListener('click',function(){ entregaCuad(null); });
     });
   }
-  function _upsertDeposito(matId,delta){
-    return sbGet('stock_deposito?material_id=eq.'+matId+'&select=id,cantidad').then(function(d){
-      if(Array.isArray(d)&&d.length) return sbPatch('stock_deposito?id=eq.'+d[0].id,{cantidad:(Number(d[0].cantidad)||0)+delta});
-      return sbPost('stock_deposito',{material_id:Number(matId),cantidad:delta});
+
+  // ===== ENTREGA a cuadrilla (con traslado de serial DEPÓSITO → CUADRILLA) =====
+  function entregaCuad(presetCuad){
+    if(!REF.cuadrillas.length){ toast('No hay cuadrillas activas cargadas.'); return; }
+    var cuadOpts=REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(presetCuad==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+    sbGet('catalogo_materiales?select=id,nombre,unidad,serial_tipo&activo=eq.true&order=orden.asc').then(function(d){
+      window._entMats=Array.isArray(d)?d:[];
+      var matOpts='<option value="">— material —</option>'+window._entMats.map(function(m){return '<option value="'+m.id+'">'+esc(m.nombre)+'</option>';}).join('');
+      modal('<h2>Entregar a cuadrilla</h2>'
+        +'<label class="l">Cuadrilla</label><select id="ent-cuad">'+cuadOpts+'</select>'
+        +'<label class="l">Material</label><select id="ent-mat">'+matOpts+'</select>'
+        +'<div id="ent-dyn" style="margin-top:6px"></div>'
+        +'<div id="ent-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="ent-go" disabled>Entregar</button><button class="btn btn-2" id="ent-x">Cerrar</button></div>');
+      document.getElementById('ent-x').addEventListener('click',cerrarModal);
+      document.getElementById('ent-mat').addEventListener('change',entDyn);
+      document.getElementById('ent-go').addEventListener('click',entGo);
     });
   }
-  function ingresoStock(matId,nombre){
-    var q=prompt('Ingreso de stock — '+nombre+'\n\n¿Cuántas unidades entran al depósito?');
-    if(q==null) return; var n=parseFloat(q); if(!(n>0)){ toast('Cantidad inválida.'); return; }
-    _upsertDeposito(matId,n).then(function(){ return sbPost('stock_movimientos',{material_id:Number(matId),tipo:'INGRESO',cantidad:n,usuario_id:USER.id}); })
-      .then(function(){ toast('Ingreso registrado ✓'); depStock(); })
-      .catch(function(){ toast('No se pudo registrar el ingreso.'); });
+  function entDyn(){
+    var m=(window._entMats||[]).filter(function(x){return x.id==document.getElementById('ent-mat').value;})[0];
+    var dyn=document.getElementById('ent-dyn'), go=document.getElementById('ent-go');
+    if(!m){ dyn.innerHTML=''; go.disabled=true; return; }
+    go.disabled=false;
+    if(m.serial_tipo==='NINGUNO'){
+      sbGet('stock_deposito?material_id=eq.'+m.id+'&select=cantidad').then(function(d){ var disp=(d&&d[0])?Number(d[0].cantidad)||0:0;
+        dyn.innerHTML='<label class="l">Cantidad <span class="muted">(en depósito: '+disp+')</span></label><input id="ent-cant" type="number" min="1" value="1" data-disp="'+disp+'">'; });
+    } else if(m.serial_tipo==='CORRELATIVO'){
+      dyn.innerHTML='<div class="row"><div><label class="l">Primer número</label><input id="ent-ini" type="number" min="0"></div><div><label class="l">Cantidad</label><input id="ent-cant" type="number" min="1"></div></div><div id="ent-prev" class="muted" style="font-size:12px;margin-top:4px"></div>';
+      var upd=function(){ var i=parseInt(document.getElementById('ent-ini').value,10), c=parseInt(document.getElementById('ent-cant').value,10); document.getElementById('ent-prev').textContent=(i>=0&&c>0)?('→ del '+pad6(i)+' al '+pad6(i+c-1)):''; };
+      dyn.querySelector('#ent-ini').addEventListener('input',upd); dyn.querySelector('#ent-cant').addEventListener('input',upd);
+    } else {
+      dyn.innerHTML='<div class="muted">Cargando seriales en depósito…</div>';
+      sbGet('stock_seriales?estado=eq.EN_DEPOSITO&material_id=eq.'+m.id+'&select=serial&order=serial&limit=3000').then(function(d){
+        var ss=Array.isArray(d)?d:[];
+        if(!ss.length){ dyn.innerHTML='<div class="muted">No hay seriales de este equipo en depósito. Cargalos primero en Ingreso.</div>'; return; }
+        dyn.innerHTML='<label class="l">Elegí los equipos a entregar ('+ss.length+' en depósito)</label><div id="ent-ser" style="max-height:180px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'
+          +ss.map(function(s){return '<label style="display:block;font-weight:500"><input type="checkbox" class="ent-ck" value="'+esc(s.serial)+'"> '+esc(s.serial)+'</label>';}).join('')+'</div><div id="ent-prev" class="muted" style="font-size:12px;margin-top:4px">0 elegidos</div>';
+        Array.prototype.forEach.call(dyn.querySelectorAll('.ent-ck'),function(ck){ ck.addEventListener('change',function(){ document.getElementById('ent-prev').textContent=dyn.querySelectorAll('.ent-ck:checked').length+' elegidos'; }); });
+      });
+    }
   }
-  function entregaCuadrilla(matId,nombre,disp){
-    var cuadOpts=REF.cuadrillas.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
-    if(!cuadOpts){ toast('No hay cuadrillas activas cargadas.'); return; }
-    modal('<h2>Entregar a cuadrilla</h2><p class="muted">'+esc(nombre)+' · en depósito: <b>'+disp+'</b></p>'
-      +'<label class="l">Cuadrilla</label><select id="en-cuad">'+cuadOpts+'</select>'
-      +'<label class="l">Cantidad</label><input id="en-cant" type="number" min="1" value="1">'
-      +'<div id="en-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
-      +'<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ok" id="en-go">Entregar</button><button class="btn btn-2" id="en-x">Cancelar</button></div>');
-    document.getElementById('en-x').addEventListener('click',cerrarModal);
-    document.getElementById('en-go').addEventListener('click',function(){
-      var cuad=Number(document.getElementById('en-cuad').value), n=parseFloat(document.getElementById('en-cant').value);
-      if(!(n>0)){ document.getElementById('en-err').textContent='Cantidad inválida.'; return; }
-      if(n>disp){ document.getElementById('en-err').textContent='No hay tanto en depósito (hay '+disp+').'; return; }
-      var btn=this; btn.disabled=true;
-      _upsertDeposito(matId,-n)
-        .then(function(){ return sbGet('stock_cuadrillas?cuadrilla_id=eq.'+cuad+'&material_id=eq.'+matId+'&select=id,cantidad'); })
-        .then(function(d){ if(Array.isArray(d)&&d.length) return sbPatch('stock_cuadrillas?id=eq.'+d[0].id,{cantidad:(Number(d[0].cantidad)||0)+n,updated_at:new Date().toISOString()}); return sbPost('stock_cuadrillas',{cuadrilla_id:cuad,material_id:Number(matId),cantidad:n}); })
-        .then(function(){ return sbPost('stock_movimientos',{material_id:Number(matId),tipo:'ENTREGA_CUADRILLA',cantidad:n,cuadrilla_id:cuad,usuario_id:USER.id}); })
-        .then(function(){ cerrarModal(); toast('Entregado a la cuadrilla ✓'); depStock(); })
-        .catch(function(){ document.getElementById('en-err').textContent='No se pudo completar la entrega.'; btn.disabled=false; });
-    });
+  function entGo(){
+    var cuad=Number(document.getElementById('ent-cuad').value);
+    var m=(window._entMats||[]).filter(function(x){return x.id==document.getElementById('ent-mat').value;})[0];
+    var err=document.getElementById('ent-err'); if(!m||!cuad){ err.textContent='Elegí cuadrilla y material.'; return; }
+    var btn=document.getElementById('ent-go'); btn.disabled=true; btn.textContent='Entregando…';
+    function fin(n){ return sbPost('stock_movimientos',{material_id:Number(m.id),tipo:'ENTREGA_CUADRILLA',cantidad:n,cuadrilla_id:cuad,usuario_id:USER.id}).then(function(){ cerrarModal(); toast('Entregado a la cuadrilla ✓'); if(depState.tab==='cuadrillas') cargarStockCuad(); else depStock(); }); }
+    function falla(msg){ err.textContent=msg||'No se pudo completar.'; btn.disabled=false; btn.textContent='Entregar'; }
+    if(m.serial_tipo==='NINGUNO'){
+      var inp=document.getElementById('ent-cant'), n=parseFloat(inp.value), disp=Number(inp.getAttribute('data-disp'))||0;
+      if(!(n>0)) return falla('Cantidad inválida.');
+      if(n>disp) return falla('No hay tanto en depósito (hay '+disp+').');
+      _upsertDeposito(m.id,-n)
+        .then(function(){ return sbGet('stock_cuadrillas?cuadrilla_id=eq.'+cuad+'&material_id=eq.'+m.id+'&select=id,cantidad'); })
+        .then(function(d){ if(Array.isArray(d)&&d.length) return sbPatch('stock_cuadrillas?id=eq.'+d[0].id,{cantidad:(Number(d[0].cantidad)||0)+n,updated_at:new Date().toISOString()}); return sbPost('stock_cuadrillas',{cuadrilla_id:cuad,material_id:Number(m.id),cantidad:n}); })
+        .then(function(){ return fin(n); }).catch(function(){ falla(); });
+    } else {
+      var seriales=[];
+      if(m.serial_tipo==='CORRELATIVO'){ var i=parseInt(document.getElementById('ent-ini').value,10), c=parseInt(document.getElementById('ent-cant').value,10); if(!(i>=0)||!(c>0)) return falla('Completá número y cantidad.'); for(var k=0;k<c;k++) seriales.push(pad6(i+k)); }
+      else { Array.prototype.forEach.call(document.querySelectorAll('#ent-ser .ent-ck:checked'),function(ck){ seriales.push(ck.value); }); if(!seriales.length) return falla('Elegí al menos un equipo.'); }
+      var movidos=0, faltan=[];
+      var seq=seriales.reduce(function(pr,ser){ return pr.then(function(){
+        return sbGet('stock_seriales?material_id=eq.'+m.id+'&serial=eq.'+encodeURIComponent(ser)+'&estado=eq.EN_DEPOSITO&select=id').then(function(d){
+          if(Array.isArray(d)&&d.length) return sbPatch('stock_seriales?id=eq.'+d[0].id,{estado:'EN_CUADRILLA',cuadrilla_id:cuad}).then(function(){ movidos++; });
+          faltan.push(ser);
+        });
+      }); }, Promise.resolve());
+      seq.then(function(){ if(!movidos) return falla('Ninguno de esos seriales está en depósito'+(faltan.length?(' ('+faltan.slice(0,5).join(', ')+'…)'):'')+'.'); if(faltan.length) toast(faltan.length+' serial(es) no estaban en depósito, se omitieron.'); return fin(movidos); }).catch(function(){ falla(); });
+    }
   }
-  // — Stock por cuadrilla —
+
+  // ===== STOCK CUADRILLAS (vista, contando seriales) =====
   function depCuadrillas(){
     var cont=document.getElementById('dep-cont');
     var cuadOpts='<option value="">— elegí una cuadrilla —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(depState.cuad==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
-    cont.innerHTML='<div class="toolbar"><span class="muted">Mostrar el stock entregado a:</span><select id="dc-cuad" style="width:auto">'+cuadOpts+'</select></div><div id="dc-tabla"></div>';
+    cont.innerHTML='<div class="toolbar"><span class="muted">Stock de:</span><select id="dc-cuad" style="width:auto">'+cuadOpts+'</select><button class="btn btn-ok" id="dc-entregar" style="margin-left:auto">🚚 Entregar materiales</button></div><div id="dc-tabla"></div>';
     document.getElementById('dc-cuad').addEventListener('change',function(){ depState.cuad=this.value; cargarStockCuad(); });
+    document.getElementById('dc-entregar').addEventListener('click',function(){ entregaCuad(depState.cuad||null); });
     if(depState.cuad) cargarStockCuad();
   }
   function cargarStockCuad(){
-    var t=document.getElementById('dc-tabla'); if(!depState.cuad){ t.innerHTML=''; return; }
+    var t=document.getElementById('dc-tabla'); if(!t) return; if(!depState.cuad){ t.innerHTML='<div class="center">Elegí una cuadrilla.</div>'; return; }
     t.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('stock_cuadrillas?cuadrilla_id=eq.'+depState.cuad+'&select=cantidad,catalogo_materiales(nombre,unidad,tecnologia,orden)').then(function(d){
-      d=Array.isArray(d)?d:[];
-      if(!d.length){ t.innerHTML='<div class="center">Esta cuadrilla todavía no tiene stock cargado.</div>'; return; }
-      d.sort(function(a,b){ return ((a.catalogo_materiales||{}).orden||0)-((b.catalogo_materiales||{}).orden||0); });
-      var h='<table><thead><tr><th>Material</th><th>Tecnología</th><th>Cantidad</th></tr></thead><tbody>';
-      d.forEach(function(s){ var m=s.catalogo_materiales||{}; h+='<tr><td><b>'+esc(m.nombre||'')+'</b></td><td>'+tecPill(m.tecnologia)+'</td><td><b>'+(Number(s.cantidad)||0)+'</b> <span class="muted">'+esc(m.unidad||'')+'</span></td></tr>'; });
+    Promise.all([ sbGet('catalogo_materiales?select=id,nombre,unidad,tecnologia,serial_tipo,orden&order=orden.asc'), sbGet('stock_cuadrillas?cuadrilla_id=eq.'+depState.cuad+'&select=material_id,cantidad'), _conteoSeriales('EN_CUADRILLA',depState.cuad) ]).then(function(r){
+      var mats=Array.isArray(r[0])?r[0]:[], sc=Array.isArray(r[1])?r[1]:[], serCnt=r[2]||{}, scmap={};
+      sc.forEach(function(s){ scmap[s.material_id]=Number(s.cantidad)||0; });
+      var rows=mats.map(function(m){ var c=(m.serial_tipo&&m.serial_tipo!=='NINGUNO')?(serCnt[m.id]||0):(scmap[m.id]||0); return {m:m,c:c}; }).filter(function(x){return x.c>0;});
+      if(!rows.length){ t.innerHTML='<div class="center">Esta cuadrilla todavía no tiene stock cargado.</div>'; return; }
+      var h='<table><thead><tr><th>Material</th><th>Tecnología</th><th>Serial</th><th>Cantidad</th></tr></thead><tbody>';
+      rows.forEach(function(x){ h+='<tr><td><b>'+esc(x.m.nombre)+'</b></td><td>'+tecPill(x.m.tecnologia)+'</td><td>'+stipPill(x.m.serial_tipo)+'</td><td><b>'+x.c+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span></td></tr>'; });
       h+='</tbody></table>'; t.innerHTML=h;
+    });
+  }
+
+  // ===== MOVIMIENTOS (auditoría) =====
+  function depMovs(){
+    var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('stock_movimientos?select=created_at,tipo,cantidad,observaciones,catalogo_materiales(nombre),cuadrillas(nombre)&order=created_at.desc&limit=200').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(!d.length){ cont.innerHTML='<div class="center">Todavía no hay movimientos de stock.</div>'; return; }
+      var tip={INGRESO:'📦 Ingreso',ENTREGA_CUADRILLA:'🚚 A cuadrilla',CONSUMO_OT:'🔩 Consumo OT',DEVOLUCION:'↩️ Devolución',AJUSTE:'⚖️ Ajuste',EGRESO:'➖ Egreso'};
+      var h='<p class="muted">Últimos 200 movimientos.</p><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Material</th><th>Cant.</th><th>Cuadrilla</th><th>Obs.</th></tr></thead><tbody>';
+      d.forEach(function(mv){ var f=(mv.created_at||'').substring(0,16).replace('T',' ');
+        h+='<tr><td class="muted">'+esc(f)+'</td><td>'+esc(tip[mv.tipo]||mv.tipo)+'</td><td>'+esc(mv.catalogo_materiales?mv.catalogo_materiales.nombre:'')+'</td><td><b>'+esc(mv.cantidad)+'</b></td><td>'+esc(mv.cuadrillas?mv.cuadrillas.nombre:'—')+'</td><td class="muted">'+esc(mv.observaciones||'')+'</td></tr>'; });
+      h+='</tbody></table>'; cont.innerHTML=h;
     });
   }
 
