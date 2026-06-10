@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.25</title>
+<title>Nexa · Gestión — v0.26</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.25</div>
+    <div class="marca-sub">Gestión · v0.26</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -130,7 +130,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.25';
+  var VER='v0.26';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -582,21 +582,33 @@
         +'<div style="margin-top:8px"><label style="font-weight:600"><input type="checkbox" id="tt-activo"'+(t.activo!==false?' checked':'')+'> Activo</label></div>'
         +'<div class="row" style="margin-top:6px">'+colHtml('mat','Materiales de este tipo')+colHtml('mo','Mano de obra de este tipo')+'</div>'
         +'<div style="display:flex;gap:6px;margin-top:6px"><input id="tt-mo-nueva" placeholder="Crear mano de obra nueva y agregarla" style="flex:1"><button class="btn btn-2" id="tt-mo-add" type="button">+ Crear</button></div>'
-        +'<label class="l">Cuadrillas que hacen este trabajo</label><div style="border:1px solid var(--bord);border-radius:8px;padding:8px">'+cuaChecks+'</div>'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-top:8px"><label class="l" style="margin:0">Cuadrillas que hacen este trabajo</label><button class="btn btn-2" id="tt-cu-all" type="button" style="padding:3px 10px;font-size:12px">✓ Todas / ninguna</button></div><div style="border:1px solid var(--bord);border-radius:8px;padding:8px;margin-top:4px">'+cuaChecks+'</div>'
         +'<div id="tt-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
         +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="tt-save">Guardar</button><button class="btn btn-2" id="tt-x">Cancelar</button></div>','wide');
+      var _drag={kind:null,idx:-1};
       function renderOrd(kind){
         var asg= kind==='mat'?asgMat:asgMo, av= kind==='mat'?avMat:avMo;
+        var tint= kind==='mat'?['#eff6ff','#dbeafe','#1e40af']:['#f0fdf4','#dcfce7','#166534'];
         var ae=document.getElementById('tt-'+kind+'-asg'), ve=document.getElementById('tt-'+kind+'-av');
-        ae.innerHTML= asg.length? asg.map(function(m,i){ return '<div style="display:flex;align-items:center;gap:4px;padding:2px;border-bottom:1px solid var(--bord)"><span style="flex:1;font-weight:500">'+esc(m.nombre)+'</span><button class="btn btn-2 o-up" data-i="'+i+'" style="padding:1px 7px"'+(i===0?' disabled':'')+'>↑</button><button class="btn btn-2 o-dn" data-i="'+i+'" style="padding:1px 7px"'+(i===asg.length-1?' disabled':'')+'>↓</button><button class="btn btn-x o-rm" data-i="'+i+'" style="padding:1px 7px">✕</button></div>'; }).join(''):'<span class="muted">sin asignar</span>';
-        ve.innerHTML= av.length? av.map(function(m){ return '<div class="o-add" data-id="'+m.id+'" style="cursor:pointer;padding:2px 6px;color:var(--pri);font-weight:500">+ '+esc(m.nombre)+'</div>'; }).join(''):'<span class="muted">— todo agregado —</span>';
-        Array.prototype.forEach.call(ae.querySelectorAll('.o-up'),function(b){ b.addEventListener('click',function(){ var i=+b.getAttribute('data-i'),x=asg[i-1]; asg[i-1]=asg[i]; asg[i]=x; renderOrd(kind); }); });
-        Array.prototype.forEach.call(ae.querySelectorAll('.o-dn'),function(b){ b.addEventListener('click',function(){ var i=+b.getAttribute('data-i'),x=asg[i+1]; asg[i+1]=asg[i]; asg[i]=x; renderOrd(kind); }); });
-        Array.prototype.forEach.call(ae.querySelectorAll('.o-rm'),function(b){ b.addEventListener('click',function(){ var i=+b.getAttribute('data-i'); av.push(asg[i]); asg.splice(i,1); renderOrd(kind); }); });
+        ae.innerHTML= asg.length? asg.map(function(m,i){ return '<div class="ord-row" draggable="true" data-i="'+i+'" style="display:flex;align-items:center;gap:6px;padding:5px 6px;margin-bottom:3px;border:1px solid '+tint[1]+';border-radius:6px;background:'+(i%2?tint[0]:tint[1])+';cursor:grab">'
+          +'<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;background:'+tint[2]+';color:#fff;font-size:11px;font-weight:700;flex:none">'+(i+1)+'</span>'
+          +'<span style="flex:1;font-weight:700;font-size:13px;color:'+tint[2]+'">'+esc(m.nombre)+'</span>'
+          +'<button class="btn btn-2 o-up" data-i="'+i+'" style="padding:1px 7px"'+(i===0?' disabled':'')+'>↑</button><button class="btn btn-2 o-dn" data-i="'+i+'" style="padding:1px 7px"'+(i===asg.length-1?' disabled':'')+'>↓</button><button class="btn btn-x o-rm" data-i="'+i+'" style="padding:1px 7px">✕</button></div>'; }).join(''):'<span class="muted">sin asignar</span>';
+        ve.innerHTML= av.length? av.map(function(m){ return '<div class="o-add" data-id="'+m.id+'" style="cursor:pointer;padding:3px 8px;margin-bottom:2px;border-radius:5px;background:#f8fafc;color:var(--pri);font-weight:600;font-size:12px">+ '+esc(m.nombre)+'</div>'; }).join(''):'<span class="muted">— todo agregado —</span>';
+        Array.prototype.forEach.call(ae.querySelectorAll('.o-up'),function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); var i=+b.getAttribute('data-i'),x=asg[i-1]; asg[i-1]=asg[i]; asg[i]=x; renderOrd(kind); }); });
+        Array.prototype.forEach.call(ae.querySelectorAll('.o-dn'),function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); var i=+b.getAttribute('data-i'),x=asg[i+1]; asg[i+1]=asg[i]; asg[i]=x; renderOrd(kind); }); });
+        Array.prototype.forEach.call(ae.querySelectorAll('.o-rm'),function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); var i=+b.getAttribute('data-i'); av.push(asg[i]); asg.splice(i,1); renderOrd(kind); }); });
         Array.prototype.forEach.call(ve.querySelectorAll('.o-add'),function(b){ b.addEventListener('click',function(){ var id=+b.getAttribute('data-id'),idx=-1; for(var k=0;k<av.length;k++){if(av[k].id===id){idx=k;break;}} if(idx>=0){ asg.push(av[idx]); av.splice(idx,1); renderOrd(kind); } }); });
+        Array.prototype.forEach.call(ae.querySelectorAll('.ord-row'),function(row){
+          row.addEventListener('dragstart',function(){ _drag.kind=kind; _drag.idx=+row.getAttribute('data-i'); row.style.opacity='.4'; });
+          row.addEventListener('dragend',function(){ row.style.opacity=''; });
+          row.addEventListener('dragover',function(e){ e.preventDefault(); });
+          row.addEventListener('drop',function(e){ e.preventDefault(); if(_drag.kind!==kind||_drag.idx<0) return; var to=+row.getAttribute('data-i'), from=_drag.idx; if(from===to){ _drag.idx=-1; return; } var it=asg.splice(from,1)[0]; asg.splice(to,0,it); _drag.idx=-1; renderOrd(kind); });
+        });
       }
       renderOrd('mat'); renderOrd('mo');
       document.getElementById('tt-x').addEventListener('click',cerrarModal);
+      document.getElementById('tt-cu-all').addEventListener('click',function(){ var cks=document.querySelectorAll('.tt-cu'); var allOn=true; Array.prototype.forEach.call(cks,function(c){ if(!c.checked) allOn=false; }); Array.prototype.forEach.call(cks,function(c){ c.checked=!allOn; }); });
       document.getElementById('tt-mo-add').addEventListener('click',function(){
         var nom=document.getElementById('tt-mo-nueva').value.trim(); if(!nom) return;
         sbPost('mano_obra_catalogo',{nombre:nom,tecnologia:'AMBAS',orden:999,activo:true}).then(function(rr){ var m=Array.isArray(rr)?rr[0]:null; if(!m) return; asgMo.push({id:m.id,nombre:m.nombre}); document.getElementById('tt-mo-nueva').value=''; renderOrd('mo'); });
@@ -657,8 +669,8 @@
       var ttId=o.tipo_trabajo_id;
       if(!ttId){ var trc0=(cli.tecnologia||''); var cod=/ftth/i.test(trc0)?'FTTH':(/(inalamb|wireless|wifi)/i.test(trc0)?'WIRELESS':null); if(cod){ var f0=REF.tiposTrab.filter(function(t){return t.codigo===cod;})[0]; if(f0) ttId=f0.id; } }
       Promise.all([
-        ttId?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=catalogo_materiales(nombre)&order=orden'):Promise.resolve(null),
-        ttId?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=mano_obra_catalogo(nombre)&order=orden'):Promise.resolve(null),
+        ttId?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=catalogo_materiales(nombre,activo)&order=orden'):Promise.resolve(null),
+        ttId?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=mano_obra_catalogo(nombre,activo)&order=orden'):Promise.resolve(null),
         sbGet('ot_datos_servicio?ot_id=eq.'+id+'&select=clave,valor'),
         ttId?Promise.resolve(null):sbGet('catalogo_materiales?activo=eq.true&select=nombre,tecnologia&order=orden.asc'),
         ttId?Promise.resolve(null):sbGet('mano_obra_catalogo?activo=eq.true&select=nombre,tecnologia&order=orden.asc')
@@ -666,8 +678,8 @@
       var datos={}; (r[2]||[]).forEach(function(x){ datos[x.clave]=x.valor; });
       var kitMat, kitMo, tecLabel;
       if(ttId){
-        kitMat=(r[0]||[]).map(function(x){return x.catalogo_materiales;}).filter(Boolean);
-        kitMo=(r[1]||[]).map(function(x){return x.mano_obra_catalogo;}).filter(Boolean);
+        kitMat=(r[0]||[]).map(function(x){return x.catalogo_materiales;}).filter(function(m){return m&&m.activo!==false;});
+        kitMo=(r[1]||[]).map(function(x){return x.mano_obra_catalogo;}).filter(function(m){return m&&m.activo!==false;});
         tecLabel=o.tipos_trabajo?o.tipos_trabajo.nombre:((REF.tiposTrab.filter(function(t){return t.id==ttId;})[0]||{}).nombre||'');
       } else {
         var trc=(cli.tecnologia||''); var techKit=/ftth/i.test(trc)?'FTTH':(/(inalamb|wireless|wifi)/i.test(trc)?'WIRELESS':null);
