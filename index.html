@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexa · Gestión — v0.26</title>
+<title>Nexa · Gestión — v0.27</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -92,7 +92,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.26</div>
+    <div class="marca-sub">Gestión · v0.27</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -130,7 +130,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.26';
+  var VER='v0.27';
 
   // ── REST helpers ──
   function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
@@ -468,10 +468,12 @@
   }
   function nuevaOT(cliente){
     var buscar = cliente ? '<div class="ficha-row"><span class="k">Cliente</span><span class="v">N°'+esc(cliente.numero_cliente)+' · '+esc(cliente.nombre||'')+' '+esc(cliente.apellido||'')+'</span></div>'
-      : '<label class="l">Buscar cliente (N° o nombre)</label><input id="ot-cli-q" placeholder="Escribí y Enter"><div id="ot-cli-res"></div><div id="ot-cli-sel" class="muted" style="margin-top:6px"></div>';
+      : '<label class="l">Buscar cliente <span class="muted" style="text-transform:none;font-weight:400">(opcional — dejalo vacío para obra de red)</span></label><input id="ot-cli-q" placeholder="N° o nombre, y Enter"><div id="ot-cli-res"></div><div id="ot-cli-sel" class="muted" style="margin-top:6px"></div>';
     var selId = cliente ? cliente.id : null;
+    function autoTrab(tec){ var cod=/ftth/i.test(tec||'')?'FTTH':(/(inalamb|wireless|wifi)/i.test(tec||'')?'WIRELESS':null); if(!cod) return; var f=REF.tiposTrab.filter(function(t){return t.codigo===cod;})[0]; var sel=document.getElementById('ot-trab'); if(f&&sel&&!sel.value) sel.value=f.id; }
     modal('<h2>Nueva orden de trabajo</h2>'+buscar
-      +'<label class="l">Tipo</label><select id="ot-tipo">'+opt(OT_TIPOS,'')+'</select>'
+      +'<label class="l">Tipo de trabajo</label><select id="ot-trab">'+trabOpts('')+'</select>'
+      +'<label class="l">Tipo de OT</label><select id="ot-tipo">'+opt(OT_TIPOS,'')+'</select>'
       +'<label class="l">Motivo (para service / reparación)</label><select id="ot-motivo"><option value="">— sin motivo —</option>'+REF.motivos.map(function(m){return '<option value="'+m.id+'">'+esc(m.nombre)+'</option>';}).join('')+'</select>'
       +'<label class="l">Prioridad</label><select id="ot-prio">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],'NORMAL')+'</select>'
       +'<label class="l">Fecha agendada (opcional)</label><input id="ot-fecha" type="date">'
@@ -479,21 +481,23 @@
       +'<div id="ot-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="ot-go">Crear OT</button><button class="btn btn-2" id="ot-cancel">Cancelar</button></div>');
     document.getElementById('ot-cancel').addEventListener('click',cerrarModal);
+    if(cliente) autoTrab(cliente.tecnologia);
     if(!cliente){
       var qi=document.getElementById('ot-cli-q');
       qi.addEventListener('keydown',function(e){ if(e.key!=='Enter')return; var q=qi.value.trim().replace(/[(),]/g,' ');
         var ors=/^\d+$/.test(q)?('numero_cliente.eq.'+q+',nombre.ilike.*'+q+'*'):'nombre.ilike.*'+q+'*';
-        sbGet('clientes?or=('+ors+')&select=id,numero_cliente,nombre,apellido&limit=8').then(function(rs){
-          document.getElementById('ot-cli-res').innerHTML=rs.map(function(c){return '<div style="padding:6px;border:1px solid var(--bord);border-radius:8px;margin-top:4px;cursor:pointer" data-cid="'+c.id+'">N°'+esc(c.numero_cliente)+' · '+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</div>';}).join('');
-          Array.prototype.forEach.call(document.getElementById('ot-cli-res').querySelectorAll('[data-cid]'),function(el){ el.addEventListener('click',function(){ selId=el.getAttribute('data-cid'); document.getElementById('ot-cli-sel').innerHTML='✓ '+el.textContent; document.getElementById('ot-cli-res').innerHTML=''; }); });
+        sbGet('clientes?or=('+ors+')&select=id,numero_cliente,nombre,apellido,tecnologia&limit=8').then(function(rs){
+          document.getElementById('ot-cli-res').innerHTML=rs.map(function(c){return '<div style="padding:6px;border:1px solid var(--bord);border-radius:8px;margin-top:4px;cursor:pointer" data-cid="'+c.id+'" data-tec="'+esc(c.tecnologia||'')+'">N°'+esc(c.numero_cliente)+' · '+esc(c.nombre||'')+' '+esc(c.apellido||'')+'</div>';}).join('');
+          Array.prototype.forEach.call(document.getElementById('ot-cli-res').querySelectorAll('[data-cid]'),function(el){ el.addEventListener('click',function(){ selId=el.getAttribute('data-cid'); document.getElementById('ot-cli-sel').innerHTML='✓ '+el.textContent.trim(); document.getElementById('ot-cli-res').innerHTML=''; autoTrab(el.getAttribute('data-tec')); }); });
         });
       });
     }
     document.getElementById('ot-go').addEventListener('click',function(){
-      if(!selId){ document.getElementById('ot-err').textContent='Elegí un cliente.'; return; }
+      var trab=document.getElementById('ot-trab').value;
+      if(!selId && !trab){ document.getElementById('ot-err').textContent='Elegí un cliente o un tipo de trabajo.'; return; }
       var btn=document.getElementById('ot-go'); btn.disabled=true; btn.textContent='Creando…';
       var mtv=document.getElementById('ot-motivo').value;
-      sbPost('ordenes_trabajo',{ cliente_id:Number(selId), tipo:document.getElementById('ot-tipo').value, prioridad:document.getElementById('ot-prio').value,
+      sbPost('ordenes_trabajo',{ cliente_id:(selId?Number(selId):null), tipo_trabajo_id:(trab?Number(trab):null), tipo:document.getElementById('ot-tipo').value, prioridad:document.getElementById('ot-prio').value,
         motivo_id:(mtv?Number(mtv):null), estado:'PENDIENTE', fecha_agendada:document.getElementById('ot-fecha').value||null, descripcion:document.getElementById('ot-desc').value||null, created_by:USER.id })
         .then(function(r){ if(!r[0])throw 0; cerrarModal(); toast('OT N° '+r[0].numero+' creada ✓'); if(typeof cargarOT==='function'&&document.getElementById('ot-tabla'))cargarOT(); })
         .catch(function(){ document.getElementById('ot-err').textContent='No se pudo crear.'; btn.disabled=false; btn.textContent='Crear OT'; });
@@ -508,15 +512,16 @@
       modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+'</p>'
         +fr('Cliente',cli)+fr('Teléfono',o.clientes?o.clientes.telefono:'')+fr('Domicilio',o.clientes?o.clientes.domicilio_full:'')+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',o.fecha_agendada)
-        +'<div class="row"><div><label class="l">Tipo</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
+        +'<label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select>'
+        +'<div class="row"><div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
         +'<label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select>'
         +'<label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select>'
         +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-pri" id="ot-save">Guardar</button><button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
       document.getElementById('ot-print').addEventListener('click',function(){ imprimirOT(id); });
       document.getElementById('ot-save').addEventListener('click',function(){
-        var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value;
-        var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value };
+        var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
+        var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null) };
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
         sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ cerrarModal(); toast('OT actualizada ✓'); cargarOT(); });
       });
