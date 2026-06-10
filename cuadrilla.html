@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.4</title>
+<title>Nexa · Técnico — v0.5</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.4';
+  var VER='v0.5';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -381,7 +381,7 @@
   }
   function cargarDescon(){
     getGPS().then(function(g){ desconState.gps=g;
-      sbGet('clientes?estado=eq.bloqueado&select=id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube&limit=1000').then(function(d){
+      sbGet('clientes?estado=eq.bloqueado&select=id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,estado,caja_nap,puerto,precinto,lat,lng,codigo_ispcube&limit=1000').then(function(d){
         d=Array.isArray(d)?d:[];
         if(g) d.forEach(function(c){ c._dist=(c.lat!=null&&c.lng!=null)?haversine(g.lat,g.lng,c.lat,c.lng):1e9; });
         else d.forEach(function(c){ c._dist=null; });
