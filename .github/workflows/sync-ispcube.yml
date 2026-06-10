@@ -1,0 +1,47 @@
+# =====================================================================
+#  NEXA — Robot de sincronización ISPcube -> Supabase
+#  Este archivo va en el repo en:  .github/workflows/sync-ispcube.yml
+#
+#  Corre solo 2 veces por día (y también a mano con "Run workflow").
+#  Las credenciales se leen de los GitHub Secrets (Settings > Secrets and
+#  variables > Actions). NUNCA van en el código.
+#
+#  Secrets a cargar en el repo:
+#    ISPCUBE_APIKEY    = 9a4c14b2-...   (api-key de ISPcube)
+#    ISPCUBE_CLIENTID  = 651
+#    ISPCUBE_USER      = api
+#    ISPCUBE_PASS      = (password del usuario api)
+#    SUPABASE_URL      = https://xlfntplfhdjoqrofhcwe.supabase.co
+#    SUPABASE_KEY      = (anon key de Nexa)
+# =====================================================================
+name: Sync ISPcube -> Nexa
+
+on:
+  schedule:
+    - cron: '0 9,21 * * *'   # 2 veces/día (UTC) ≈ 6 y 18 hs Argentina
+                             # ~10 llamadas API por corrida × 2 = ~600/mes
+                             # (cupo ISPcube incluido ≈ 2,5 × conexiones activas)
+  workflow_dispatch:         # botón manual "Run workflow"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run sync
+        env:
+          ISPCUBE_BASE: 'https://online22.ispcube.com/api'
+          ISPCUBE_APIKEY: ${{ secrets.ISPCUBE_APIKEY }}
+          ISPCUBE_CLIENTID: ${{ secrets.ISPCUBE_CLIENTID }}
+          ISPCUBE_USER: ${{ secrets.ISPCUBE_USER }}
+          ISPCUBE_PASS: ${{ secrets.ISPCUBE_PASS }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python3 sync_ispcube.py
