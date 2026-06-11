@@ -134,6 +134,7 @@
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
       <a data-v="asignar">📍 Asignar OTs</a>
       <a data-v="agenda">📅 Agenda</a>
+      <a data-v="mapadia">🗺️ Mapa del día</a>
       <a data-v="validacion">✅ Validación <span class="nbadge" id="nav-val-badge" style="display:none">0</span></a>
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
@@ -162,7 +163,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.49';
+  var VER='v0.50';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -268,7 +269,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(typeof cargarOT==='function'){ cargarOT(); } }
@@ -1028,6 +1029,60 @@
       pts.push([depot.lat,depot.lng]); if(c.stops.length) L.polyline(c.geometry||pts,{color:col,weight:4,opacity:.75}).addTo(m);
     });
     if(all.length>1) m.fitBounds(all,{padding:[40,40]});
+  }
+
+  // ===== MAPA DEL DÍA (OTs agendadas del día por cuadrilla, con estado/cumplimiento) =====
+  function vMapaDia(){
+    view.innerHTML='<h1>🗺️ Mapa del día</h1><p class="sub">Las OTs agendadas del día, por cuadrilla, con su estado de cumplimiento.</p>'
+      +'<div class="toolbar"><label class="l" style="margin:0">Día</label><input type="date" id="md-fecha" value="'+_hoyISO()+'" style="width:auto"><button class="btn btn-pri" id="md-go">Ver</button></div>'
+      +'<div id="md-cont"></div>';
+    document.getElementById('md-go').addEventListener('click',mdCargar);
+    mdCargar();
+  }
+  function mdCargar(){
+    var cont=document.getElementById('md-cont'), fecha=(document.getElementById('md-fecha')||{}).value; if(!cont)return; if(!fecha){toast('Elegí un día.');return;}
+    cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('ordenes_trabajo?fecha_agendada=eq.'+fecha+'&cuadrilla_id=not.is.null&select=id,numero,tipo,estado,cuadrilla_id,cuadrillas(nombre),clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,lat,lng,geo_origen)&limit=2000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(!d.length){ cont.innerHTML='<div class="center">No hay OTs agendadas para ese día.</div>'; return; }
+      var byCuad={};
+      d.forEach(function(o){ var cid=o.cuadrilla_id, cu=byCuad[cid]||(byCuad[cid]={id:cid,nombre:o.cuadrillas?o.cuadrillas.nombre:('Cuad '+cid),visitas:{}}); var c=o.clientes; if(!c)return;
+        var v=cu.visitas[c.id]||(cu.visitas[c.id]={cliId:c.id,num:c.numero_cliente,nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(),dir:c.domicilio_full||'',barrio:c.barrio||'',tel:c.telefono||'',caja_nap:c.caja_nap,lat:c.lat,lng:c.lng,geo_src:(c.lat!=null?(c.geo_origen==='nap'?'nap':'gps'):null),estados:[],tipos:{}});
+        v.estados.push(o.estado); v.tipos[o.tipo]=(v.tipos[o.tipo]||0)+1; });
+      var cuads=Object.keys(byCuad).map(function(k){ var cu=byCuad[k]; cu.stops=Object.keys(cu.visitas).map(function(kk){ var v=cu.visitas[kk]; v._done=v.estados.every(function(e){return e==='FINALIZADA'||e==='CERRADA_TECNICO';}); return v; }); cu.total=cu.stops.length; cu.done=cu.stops.filter(function(s){return s._done;}).length; return cu; });
+      cuads.forEach(function(c,i){ c.color=AG_COLORES[i%AG_COLORES.length]; });
+      var allVis=[]; cuads.forEach(function(c){ allVis=allVis.concat(c.stops); });
+      cont.innerHTML='<div class="center"><div class="spin"></div><div class="muted" style="margin-top:8px">Ubicando…</div></div>';
+      _agGeo(allVis).then(function(){ mdRender(cont,cuads); });
+    });
+  }
+  function mdRender(cont,cuads){
+    var tot=cuads.reduce(function(a,c){return a+c.total;},0), don=cuads.reduce(function(a,c){return a+c.done;},0);
+    var h='<div class="toolbar"><button class="btn btn-pri" id="md-mapa">🗺️ Ver en el mapa</button><span class="muted">'+cuads.length+' cuadrillas · '+don+'/'+tot+' visitas cumplidas</span></div>';
+    cuads.forEach(function(c){ var col=c.color, pct=c.total?Math.round(c.done/c.total*100):0;
+      h+='<div style="border:1px solid var(--bord);border-left:5px solid '+col+';border-radius:12px;margin-bottom:12px;overflow:hidden"><div style="background:'+col+'14;padding:10px 14px;font-weight:700">'+esc(c.nombre)+' <span class="muted" style="font-weight:400">· '+c.done+'/'+c.total+' cumplidas ('+pct+'%)</span></div><div>';
+      c.stops.forEach(function(v){ h+='<div style="display:flex;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid #f1f5f9"><div style="width:24px;text-align:center;font-size:16px">'+(v._done?'✅':'⏳')+'</div><div style="flex:1"><b>N°'+esc(v.num)+' · '+esc(v.nombre)+'</b><div class="muted" style="font-size:12px">'+esc(v.dir)+_agGeoBadge(v.geo_src)+'</div><div style="margin-top:2px">'+Object.keys(v.tipos).map(function(t){return _agChip(t,v.tipos[t]);}).join('')+'</div></div>'+(v.tel?('<a class="btn btn-2" href="tel:'+esc(v.tel)+'" style="padding:6px 10px;text-decoration:none">📞</a>'):'')+'</div>'; });
+      h+='</div></div>';
+    });
+    cont.innerHTML=h;
+    document.getElementById('md-mapa').addEventListener('click',function(){ ensureLeaflet(function(){ mdVerMapa(cuads); }); });
+  }
+  function mdVerMapa(cuads){
+    var depot=agDepot();
+    var ov=document.createElement('div'); ov.id='ag-mapov'; ov.style.cssText='position:fixed;inset:0;z-index:4000;background:#fff';
+    ov.innerHTML='<div style="position:absolute;top:10px;right:10px;z-index:4100"><button class="btn btn-x" id="ag-mapx">✕ Cerrar</button></div><div id="md-leg" style="position:absolute;top:10px;left:10px;z-index:4100;background:#fff;border:1px solid var(--bord);border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:10px 12px;font-size:13px;max-height:80vh;overflow:auto"></div><div id="ag-map" style="width:100%;height:100%"></div>';
+    document.body.appendChild(ov); document.getElementById('ag-mapx').addEventListener('click',function(){ ov.remove(); });
+    var m=L.map('ag-map').setView([depot.lat,depot.lng],12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+    var all=[[depot.lat,depot.lng]]; L.marker([depot.lat,depot.lng]).addTo(m).bindPopup('🚚 Depósito');
+    var leg='<div style="font-weight:700;margin-bottom:6px">🚦 Cumplimiento del día</div>';
+    cuads.forEach(function(c){ var col=c.color; leg+='<div style="display:flex;align-items:center;gap:6px;margin:3px 0"><span style="width:12px;height:12px;border-radius:50%;background:'+col+';display:inline-block"></span> '+esc(c.nombre)+' <b>'+c.done+'/'+c.total+'</b></div>';
+      c.stops.forEach(function(v){ if(v.lat==null)return; all.push([v.lat,v.lng]);
+        L.circleMarker([v.lat,v.lng],{radius:11,color:'#fff',weight:2,fillColor:(v._done?'#16a34a':col),fillOpacity:1}).addTo(m).bindTooltip(v._done?'✓':'',{permanent:true,direction:'center',className:'ag-numlbl'}).bindPopup('<b>N°'+v.num+' '+esc(v.nombre)+'</b><br>'+esc(v.dir)+'<br><b>'+esc(c.nombre)+'</b> · '+(v._done?'✅ cumplida':'⏳ pendiente'));
+      });
+    });
+    document.getElementById('md-leg').innerHTML=leg;
+    if(all.length>1) m.fitBounds(all,{padding:[50,260]});
   }
 
   // ===== ASIGNAR OTs (pendientes sin cuadrilla → asignar cuadrilla + fecha agendada) =====
