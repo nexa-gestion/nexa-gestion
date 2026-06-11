@@ -69,6 +69,8 @@
   .colmenu label{ display:flex; gap:8px; align-items:center; padding:7px 10px; border-radius:7px; font-size:13px; cursor:pointer; font-weight:500; }
   .colmenu label:hover{ background:#f1f5f9; }
   .thsort:hover{ background:#eef2f7; }
+  .ag-numlbl{ background:transparent!important; border:0!important; box-shadow:none!important; color:#fff!important; font-weight:700; font-size:11px; }
+  .ag-numlbl::before{ display:none!important; }
   /* Modal */
   .ov{ position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
   .modal{ background:#fff; border-radius:16px; padding:22px; width:560px; max-width:100%; max-height:90vh; overflow:auto; }
@@ -131,6 +133,7 @@
       <a data-v="dashboard" class="on">📊 Dashboard</a>
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
       <a data-v="asignar">📍 Asignar OTs</a>
+      <a data-v="agenda">📅 Agenda</a>
       <a data-v="validacion">✅ Validación <span class="nbadge" id="nav-val-badge" style="display:none">0</span></a>
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
@@ -159,7 +162,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.44';
+  var VER='v0.45';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -265,7 +268,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(typeof cargarOT==='function'){ cargarOT(); } }
@@ -862,6 +865,98 @@
       jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(m.serial)+'&material_id=eq.'+m.material_id,{ estado:'INSTALADO', cliente_id:(o.cliente_id||null), cuadrilla_id:null, ot_id:o.id }));
     });
     Promise.all(jobs).then(function(){ cerrarModal(); toast('OT N° '+o.numero+' validada y finalizada ✓'); refrescarOT(); }).catch(function(){ toast('Error al validar.'); if(vb){vb.disabled=false;vb.textContent='✅ Validar y finalizar';} });
+  }
+
+  // ===== AGENDA — planificación por cercanía (clustering capacitado + ruta NN+2-opt + mapa) =====
+  var AG_COLORES=['#2563eb','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2','#db2777','#65a30d','#475569','#ea580c'];
+  var AG_PESOS_DEF={INSTALACION:1,REPARACION:0.333,RECONEXION:0.5,DESCONEXION:0.333,RETIRO_EQUIPOS:0.5,CAMBIO_PLAN:0.5,CAMBIO_DOMICILIO:1,MANTENIMIENTO:0.5,OTRO:1};
+  function agPesos(){ var p; try{ p=JSON.parse(localStorage.getItem('nexa_ag_pesos')||'null'); }catch(e){} return Object.assign({},AG_PESOS_DEF,p||{}); }
+  function agDepot(){ var d; try{ d=JSON.parse(localStorage.getItem('nexa_ag_depot')||'null'); }catch(e){} return d&&d.lat?d:{lat:-27.3667,lng:-55.8967}; }
+  function _agHav(a,b){ var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,la1=a.lat*Math.PI/180,la2=b.lat*Math.PI/180; var x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)*Math.sin(dLng/2); return 2*R*Math.asin(Math.sqrt(x)); }
+  function vAgenda(){
+    var pesos=agPesos(), dep=agDepot();
+    var tipos=[['INSTALACION','Instalación'],['REPARACION','Reparación'],['RECONEXION','Reconexión'],['DESCONEXION','Desconexión'],['RETIRO_EQUIPOS','Retiro'],['CAMBIO_PLAN','Cambio plan'],['MANTENIMIENTO','Mantenim.'],['OTRO','Otro']];
+    view.innerHTML='<h1>📅 Agenda — Planificación</h1><p class="sub">Agrupá las OTs pendientes por cercanía y ruteá por cuadrilla.</p>'
+      +'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-bottom:12px">🚚 <b>Salida y vuelta:</b> <input id="ag-depot" value="'+esc(dep.lat+', '+dep.lng)+'" style="width:210px;display:inline-block" title="lat, lng del depósito"> <span class="muted">— las rutas salen y vuelven al depósito</span></div>'
+      +'<h3 style="margin:14px 0 6px">⚖️ Pesos por tipo <span class="muted" style="font-weight:400;font-size:12px">1 visita = peso del trabajo dominante · 3 reparaciones ≈ 1 instalación</span></h3>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap">'+tipos.map(function(t){return '<div style="flex:1;min-width:120px"><label class="l">'+t[1]+'</label><input class="ag-peso" data-k="'+t[0]+'" value="'+(pesos[t[0]]!=null?pesos[t[0]]:1)+'"></div>';}).join('')+'</div>'
+      +'<h3 style="margin:16px 0 6px">👷 Cuadrillas y cupo <span class="muted" style="font-weight:400;font-size:12px">cupo = instalaciones equivalentes · más cupo = zona con más pendientes</span></h3>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap">'+REF.cuadrillas.map(function(c){return '<div style="flex:1;min-width:200px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--bord);border-radius:10px;padding:10px"><input type="checkbox" class="ag-cuad-on" data-id="'+c.id+'" checked><span style="flex:1;font-weight:600">'+esc(c.nombre)+'</span><input class="ag-cuad-cupo" data-id="'+c.id+'" value="6" style="width:60px"></div>';}).join('')+'</div>'
+      +'<label style="display:block;margin:14px 0;font-weight:600"><input type="checkbox" id="ag-priofecha"> 📅 Priorizar por fecha — primero las OTs más viejas</label>'
+      +'<button class="btn btn-pri" id="ag-armar" style="padding:12px 22px">⚡ Armar grupos por cercanía</button>'
+      +'<div id="ag-out" style="margin-top:16px"></div>';
+    document.getElementById('ag-armar').addEventListener('click',agArmar);
+  }
+  function agArmar(){
+    var pesos={}; Array.prototype.forEach.call(document.querySelectorAll('.ag-peso'),function(i){ pesos[i.getAttribute('data-k')]=parseFloat(i.value)||0; });
+    try{ localStorage.setItem('nexa_ag_pesos',JSON.stringify(pesos)); }catch(e){}
+    var dv=(document.getElementById('ag-depot').value||'').split(','), depot={lat:parseFloat(dv[0]),lng:parseFloat(dv[1])};
+    if(!(depot.lat&&depot.lng)) depot=agDepot(); else { try{ localStorage.setItem('nexa_ag_depot',JSON.stringify(depot)); }catch(e){} }
+    var cuads=[]; Array.prototype.forEach.call(document.querySelectorAll('.ag-cuad-on:checked'),function(ch){ var id=ch.getAttribute('data-id'), cupo=parseFloat((document.querySelector('.ag-cuad-cupo[data-id="'+id+'"]')||{}).value)||6, c=REF.cuadrillas.filter(function(x){return x.id==id;})[0]; cuads.push({id:Number(id),nombre:c?c.nombre:('Cuad '+id),cupo:cupo}); });
+    if(!cuads.length){ toast('Elegí al menos una cuadrilla.'); return; }
+    var prioFecha=document.getElementById('ag-priofecha').checked, out=document.getElementById('ag-out'); out.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,created_at,clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,lat,lng)&limit=2000').then(function(d){
+      d=Array.isArray(d)?d:[]; var byCli={};
+      d.forEach(function(o){ var c=o.clientes; if(!c)return; var v=byCli[c.id]||(byCli[c.id]={cliId:c.id,nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(),num:c.numero_cliente,dir:c.domicilio_full||'',barrio:c.barrio||'',tel:c.telefono||'',lat:c.lat,lng:c.lng,tipos:{},edad:0,peso:0});
+        v.tipos[o.tipo]=(v.tipos[o.tipo]||0)+1; var dias=Math.floor((Date.now()-new Date(o.created_at))/86400000); if(dias>v.edad)v.edad=dias; });
+      var visitas=Object.keys(byCli).map(function(k){ var v=byCli[k],pmax=0; Object.keys(v.tipos).forEach(function(t){ var p=pesos[t]!=null?pesos[t]:1; if(p>pmax)pmax=p; }); v.peso=pmax||1; return v; });
+      var ubic=visitas.filter(function(v){return v.lat!=null&&v.lng!=null;}), sinUbic=visitas.filter(function(v){return v.lat==null||v.lng==null;});
+      if(!ubic.length){ out.innerHTML='<div class="center">No hay OTs pendientes con ubicación para planificar.'+(sinUbic.length?(' ('+sinUbic.length+' sin ubicar)'):'')+'</div>'; return; }
+      var plan=_agCluster(ubic,cuads,prioFecha);
+      plan.cuads.forEach(function(c){ c.color=AG_COLORES[plan.cuads.indexOf(c)%AG_COLORES.length]; _agRoute(c,depot); });
+      agRender(out,plan,sinUbic,depot);
+    });
+  }
+  function _agCluster(visitas,cuads,prioFecha){
+    var pts=visitas.slice(); pts.forEach(function(v){ v._dens=pts.filter(function(w){return _agHav(v,w)<=1.5;}).length; });
+    pts.sort(function(a,b){return b._dens-a._dens;});
+    var seeds=[pts[0]];
+    while(seeds.length<cuads.length){ var best=null,bd=-1; pts.forEach(function(v){ var dmin=Math.min.apply(null,seeds.map(function(s){return _agHav(v,s);})); if(dmin>bd){bd=dmin;best=v;} }); if(!best)break; seeds.push(best); }
+    var cs=cuads.slice().sort(function(a,b){return b.cupo-a.cupo;}), sd=seeds.slice().sort(function(a,b){return b._dens-a._dens;});
+    cs.forEach(function(c,i){ c.seed=sd[i]||sd[sd.length-1]; c.stops=[]; c.usado=0; });
+    if(prioFecha){
+      var sinAsig=[]; visitas.slice().sort(function(a,b){return b.edad-a.edad;}).forEach(function(v){ var cand=cs.filter(function(c){return c.usado+v.peso<=c.cupo+0.001;}); if(!cand.length){sinAsig.push(v);return;} cand.sort(function(a,b){return _agHav(v,a.seed)-_agHav(v,b.seed);}); cand[0].stops.push(v); cand[0].usado+=v.peso; });
+      return {cuads:cs,sinAsig:sinAsig};
+    }
+    var pares=[]; visitas.forEach(function(v){ cs.forEach(function(c){ pares.push({v:v,c:c,d:_agHav(v,c.seed)}); }); }); pares.sort(function(a,b){return a.d-b.d;});
+    var asign={}; pares.forEach(function(p){ if(asign[p.v.cliId])return; if(p.c.usado+p.v.peso<=p.c.cupo+0.001){ p.c.stops.push(p.v); p.c.usado+=p.v.peso; asign[p.v.cliId]=1; } });
+    return {cuads:cs,sinAsig:visitas.filter(function(v){return !asign[v.cliId];})};
+  }
+  function _agRoute(c,depot){
+    var rem=c.stops.slice(); if(!rem.length){ c.km=0; return; }
+    var route=[],cur=depot;
+    while(rem.length){ var bi=0,bd=1e9; for(var i=0;i<rem.length;i++){ var dd=_agHav(cur,rem[i]); if(dd<bd){bd=dd;bi=i;} } route.push(rem[bi]); cur=rem[bi]; rem.splice(bi,1); }
+    function km(r){ var t=_agHav(depot,r[0]); for(var i=0;i<r.length-1;i++)t+=_agHav(r[i],r[i+1]); return t+_agHav(r[r.length-1],depot); }
+    var improved=true,guard=0;
+    while(improved&&guard<60){ improved=false; guard++; for(var i=0;i<route.length-1;i++){ for(var j=i+1;j<route.length;j++){ var nr=route.slice(0,i).concat(route.slice(i,j+1).reverse(),route.slice(j+1)); if(km(nr)<km(route)-0.0001){ route=nr; improved=true; } } } }
+    c.stops=route; c.km=km(route);
+  }
+  function _agChip(t,n){ return '<span style="display:inline-block;background:#eef2ff;color:#3730a3;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:3px">'+esc(t)+(n>1?(' ×'+n):'')+'</span>'; }
+  function agRender(out,plan,sinUbic,depot){
+    var kmTot=Math.round(plan.cuads.reduce(function(a,c){return a+(c.km||0);},0)), vis=plan.cuads.reduce(function(a,c){return a+c.stops.length;},0);
+    var h='<div class="toolbar"><button class="btn btn-pri" id="ag-mapa">🗺️ Ver recorrido en el mapa</button><span class="muted">'+vis+' visitas asignadas · '+kmTot+' km total</span></div>';
+    plan.cuads.forEach(function(c){ var col=c.color;
+      h+='<div style="border:1px solid var(--bord);border-left:5px solid '+col+';border-radius:12px;margin-bottom:12px;overflow:hidden"><div style="background:'+col+'14;padding:10px 14px;font-weight:700">'+esc(c.nombre)+' <span class="muted" style="font-weight:400">· '+c.stops.length+' visitas · cupo '+(Math.round(c.usado*100)/100)+'/'+c.cupo+' · '+Math.round(c.km||0)+' km</span></div><div>';
+      if(!c.stops.length) h+='<div class="muted" style="padding:8px 14px">Sin visitas.</div>';
+      c.stops.forEach(function(v,i){ h+='<div style="display:flex;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid #f1f5f9"><div style="width:26px;height:26px;border-radius:50%;background:'+col+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">'+(i+1)+'</div><div style="flex:1"><b>N°'+esc(v.num)+' · '+esc(v.nombre)+'</b><div class="muted" style="font-size:12px">'+esc(v.dir)+(v.barrio?(' · '+esc(v.barrio)):'')+'</div><div style="margin-top:2px">'+Object.keys(v.tipos).map(function(t){return _agChip(t,v.tipos[t]);}).join('')+(v.edad?(' <span class="muted" style="font-size:11px">'+v.edad+'d</span>'):'')+'</div></div>'+(v.tel?('<a class="btn btn-2" href="tel:'+esc(v.tel)+'" style="padding:6px 10px;text-decoration:none">📞</a>'):'')+'</div>'; });
+      h+='</div></div>';
+    });
+    if(plan.sinAsig.length) h+='<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:12px;padding:10px 14px;margin-bottom:10px"><b style="color:#b91c1c">⚠️ Sin asignar ('+plan.sinAsig.length+')</b> <span class="muted">— superan el cupo. Subí cupo o agregá cuadrillas.</span><div class="muted" style="font-size:12px;margin-top:4px">'+plan.sinAsig.map(function(v){return 'N°'+v.num+' '+esc(v.nombre);}).join(' · ')+'</div></div>';
+    if(sinUbic.length) h+='<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:10px 14px"><b style="color:#92400e">📍 Sin ubicar ('+sinUbic.length+')</b> <span class="muted">— sin GPS, coordinar aparte.</span><div class="muted" style="font-size:12px;margin-top:4px">'+sinUbic.map(function(v){return 'N°'+v.num+' '+esc(v.nombre);}).join(' · ')+'</div></div>';
+    out.innerHTML=h;
+    document.getElementById('ag-mapa').addEventListener('click',function(){ ensureLeaflet(function(){ agVerMapa(plan,depot); }); });
+  }
+  function agVerMapa(plan,depot){
+    var ov=document.createElement('div'); ov.id='ag-mapov'; ov.style.cssText='position:fixed;inset:0;z-index:4000;background:#fff'; ov.innerHTML='<div style="position:absolute;top:10px;right:10px;z-index:4100"><button class="btn btn-x" id="ag-mapx">✕ Cerrar</button></div><div id="ag-map" style="width:100%;height:100%"></div>'; document.body.appendChild(ov);
+    document.getElementById('ag-mapx').addEventListener('click',function(){ ov.remove(); });
+    var m=L.map('ag-map').setView([depot.lat,depot.lng],12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+    var all=[[depot.lat,depot.lng]]; L.marker([depot.lat,depot.lng]).addTo(m).bindPopup('🚚 Depósito');
+    plan.cuads.forEach(function(c){ var col=c.color, pts=[[depot.lat,depot.lng]];
+      c.stops.forEach(function(v,i){ pts.push([v.lat,v.lng]); all.push([v.lat,v.lng]); L.circleMarker([v.lat,v.lng],{radius:12,color:'#fff',weight:2,fillColor:col,fillOpacity:1}).addTo(m).bindTooltip(String(i+1),{permanent:true,direction:'center',className:'ag-numlbl'}).bindPopup('<b>N°'+v.num+' '+esc(v.nombre)+'</b><br>'+esc(v.dir)+'<br><b>'+esc(c.nombre)+'</b>'); });
+      pts.push([depot.lat,depot.lng]); if(c.stops.length) L.polyline(pts,{color:col,weight:3,opacity:.7}).addTo(m);
+    });
+    if(all.length>1) m.fitBounds(all,{padding:[40,40]});
   }
 
   // ===== ASIGNAR OTs (pendientes sin cuadrilla → asignar cuadrilla + fecha agendada) =====
