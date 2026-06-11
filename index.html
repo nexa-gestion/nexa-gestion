@@ -144,6 +144,7 @@
       <a data-v="asignar">📍 Asignar OTs</a>
       <a data-v="agenda">📅 Agenda</a>
       <a data-v="mapadia">🗺️ Mapa del día</a>
+      <a data-v="cerrarot">✔️ Cerrar OTs</a>
       <a data-v="validacion">✅ Validación <span class="nbadge" id="nav-val-badge" style="display:none">0</span></a>
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
@@ -172,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.60';
+  var VER='v0.61';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -332,10 +333,10 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
-  function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(typeof cargarOT==='function'){ cargarOT(); } }
+  function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
   // accesos directos desde las tarjetas KPI del dashboard
   function goKpi(act){
     var p=String(act).split('|'); var v=p[0];
@@ -1129,6 +1130,84 @@
     });
     Promise.all(jobs).then(function(){ logOT(o.id,'CIERRE_MANUAL',{ de:o.estado, a:'FINALIZADA', cuadId:o.cuadrilla_id, detalle:'Cierre manual por administración. '+(mats.length?(mats.length+' material(es). '):'')+(obs||'') }); cerrarModal(); toast('OT N° '+o.numero+' cerrada y finalizada ✓'); refrescarOT(); })
       .catch(function(){ btn.disabled=false; btn.textContent='✔️ Cerrar y finalizar'; err.textContent='Error al cerrar. Reintentá.'; });
+  }
+  // ════════ MÓDULO "CERRAR OTs" — pantalla dedicada (estilo FG): todas las asignadas + cerrar/devolver/reasignar ════════
+  var cerrState={ desde:'', hasta:'', cuad:'', q:'' };
+  function vCerrarOT(){
+    var cuadOpts='<option value="">Todas las cuadrillas</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(cerrState.cuad==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+    view.innerHTML='<h1>✔️ Cerrar OTs</h1><p class="sub">Órdenes asignadas a las cuadrillas. Cerralas, devolvelas al pool o reasignalas.</p>'
+      +'<div class="toolbar" style="flex-wrap:wrap;align-items:center;gap:8px">'
+      +'<label class="l" style="margin:0">Desde</label><input type="date" id="cerr-desde" value="'+esc(cerrState.desde)+'" style="width:auto">'
+      +'<label class="l" style="margin:0">Hasta</label><input type="date" id="cerr-hasta" value="'+esc(cerrState.hasta)+'" style="width:auto">'
+      +'<button class="btn btn-2" id="cerr-hoy">Hoy</button><button class="btn btn-2" id="cerr-todas">Todas</button>'
+      +'<select id="cerr-cuad" style="width:auto">'+cuadOpts+'</select>'
+      +'<input id="cerr-q" placeholder="Cliente, barrio, caja, N° OT…" value="'+esc(cerrState.q)+'" style="min-width:200px;flex:1">'
+      +'<button class="btn btn-pri" id="cerr-go">Actualizar</button></div>'
+      +'<div id="cerr-cont"></div>';
+    function leer(){ cerrState.desde=document.getElementById('cerr-desde').value; cerrState.hasta=document.getElementById('cerr-hasta').value; cerrState.cuad=document.getElementById('cerr-cuad').value; cerrState.q=document.getElementById('cerr-q').value.trim(); }
+    document.getElementById('cerr-go').addEventListener('click',function(){ leer(); cargarCerrarOT(); });
+    document.getElementById('cerr-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leer(); cargarCerrarOT(); } });
+    document.getElementById('cerr-hoy').addEventListener('click',function(){ var h=_hoyISO(); cerrState.desde=h; cerrState.hasta=h; cerrState.cuad=document.getElementById('cerr-cuad').value; cerrState.q=document.getElementById('cerr-q').value.trim(); vCerrarOT(); });
+    document.getElementById('cerr-todas').addEventListener('click',function(){ cerrState.desde=''; cerrState.hasta=''; cerrState.cuad=document.getElementById('cerr-cuad').value; cerrState.q=document.getElementById('cerr-q').value.trim(); vCerrarOT(); });
+    document.getElementById('cerr-cuad').addEventListener('change',function(){ leer(); cargarCerrarOT(); });
+    cargarCerrarOT();
+  }
+  function cargarCerrarOT(){
+    var cont=document.getElementById('cerr-cont'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO)&select=id,numero,tipo,estado,tipo_trabajo_id,cliente_id,fecha_agendada,asignada_at,cuadrilla_id,clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,caja_nap,telefono,precinto,puerto),cuadrillas(nombre)&order=fecha_agendada.asc&limit=2000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var q=cerrState.q.toLowerCase();
+      d=d.filter(function(o){
+        if(cerrState.cuad && String(o.cuadrilla_id)!==String(cerrState.cuad)) return false;
+        if(cerrState.desde && (!o.fecha_agendada || o.fecha_agendada<cerrState.desde)) return false;
+        if(cerrState.hasta && (!o.fecha_agendada || o.fecha_agendada>cerrState.hasta)) return false;
+        if(q){ var c=o.clientes||{}; var hay=((c.numero_cliente||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.caja_nap||'')+' '+(o.numero||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+        return true;
+      });
+      if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes asignadas'+((cerrState.cuad||cerrState.desde||cerrState.q)?' con esos filtros':'')+'. 🎉</div>'; return; }
+      var grupos={};
+      d.forEach(function(o){ var k=(o.cliente_id||('red'+o.id))+'|'+(o.cuadrilla_id||0); var g=grupos[k]||(grupos[k]={cli:o.clientes,cuadrilla_id:o.cuadrilla_id,cuadNom:o.cuadrillas?o.cuadrillas.nombre:'—',fecha:o.fecha_agendada,ots:[]}); g.ots.push(o); if(o.fecha_agendada&&(!g.fecha||o.fecha_agendada<g.fecha))g.fecha=o.fecha_agendada; });
+      var arr=Object.keys(grupos).map(function(k){return grupos[k];});
+      var h='<div class="muted" style="margin-bottom:8px">'+arr.length+' grupo(s) · '+d.length+' OT asignadas</div>';
+      h+='<table><thead><tr><th>Agendada</th><th>Cuadrilla</th><th>Cliente</th><th>OTs</th><th>Acciones</th></tr></thead><tbody>';
+      arr.forEach(function(g,i){ var c=g.cli||{};
+        var cliTxt=c.numero_cliente?('<b>N°'+esc(c.numero_cliente)+'</b> '+esc((c.nombre||'')+' '+(c.apellido||''))):'(obra de red)';
+        var dom='<div class="muted" style="font-size:12px">'+esc(_domLimpio(c.domicilio_full)||'')+(c.barrio?(' · '+esc(c.barrio)):'')+(c.caja_nap?(' · caja '+esc(c.caja_nap)):'')+'</div>';
+        var badges=g.ots.map(function(o){return '<span style="display:inline-block;background:#dcfce7;color:#166534;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;margin:1px">'+esc(o.tipo)+'</span>';}).join(' ')+(g.ots.length>1?(' <span class="muted" style="font-size:11px">'+g.ots.length+' OTs</span>'):'');
+        h+='<tr><td>'+esc(fmtFecha(g.fecha))+'</td><td>'+esc(g.cuadNom)+'</td><td>'+cliTxt+dom+'</td><td>'+badges+'</td>'
+          +'<td><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn btn-2 cerr-volver" data-i="'+i+'">↩️ Volver a pendiente</button><button class="btn btn-pri cerr-reasig" data-i="'+i+'">🔄 Reasignar</button><button class="btn btn-ok cerr-cerrar" data-i="'+i+'">✔️ Cerrar'+(g.ots.length>1?(' ('+g.ots.length+')'):'')+'</button></div></td></tr>';
+      });
+      h+='</tbody></table>'; cont.innerHTML=h;
+      Array.prototype.forEach.call(cont.querySelectorAll('.cerr-volver'),function(b){ b.addEventListener('click',function(){ var g=arr[+b.getAttribute('data-i')]; devolverOTpoolUI(g.ots.map(function(o){return o.id;}),{numero:(g.cli?('N°'+g.cli.numero_cliente):'grupo')}); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.cerr-reasig'),function(b){ b.addEventListener('click',function(){ var g=arr[+b.getAttribute('data-i')]; reasignarOTs(g.ots.map(function(o){return o.id;}),g.cuadrilla_id,g.cuadNom); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.cerr-cerrar'),function(b){ b.addEventListener('click',function(){ var g=arr[+b.getAttribute('data-i')]; cerrarGrupoUI(g); }); });
+    }).catch(function(){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudieron cargar las órdenes asignadas.</div>'; });
+  }
+  function _cerrOTobj(g,o){ return { id:o.id, numero:o.numero, tipo:o.tipo, tipo_trabajo_id:o.tipo_trabajo_id, cuadrilla_id:o.cuadrilla_id, cliente_id:o.cliente_id, estado:o.estado, clientes:g.cli }; }
+  function cerrarGrupoUI(g){
+    if(g.ots.length===1){ cierreManualOT(_cerrOTobj(g,g.ots[0])); return; }
+    var h='<h2>Cerrar OTs · '+(g.cli?('N°'+esc(g.cli.numero_cliente)+' '+esc(g.cli.nombre||'')):'grupo')+'</h2><p class="muted">Este cliente tiene varias órdenes. Cerralas una por una.</p>';
+    g.ots.forEach(function(o){ h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid #f1f5f9;padding:9px 0"><div style="flex:1"><b>OT N° '+esc(o.numero)+'</b> · '+esc(o.tipo)+'</div><button class="btn btn-ok cg-cerrar" data-id="'+o.id+'">✍️ Cerrar</button></div>'; });
+    h+='<div style="margin-top:12px"><button class="btn btn-2" id="cg-x">Cerrar ventana</button></div>';
+    modal(h,'wide');
+    document.getElementById('cg-x').addEventListener('click',cerrarModal);
+    Array.prototype.forEach.call(document.querySelectorAll('.cg-cerrar'),function(b){ b.addEventListener('click',function(){ var o=g.ots.filter(function(x){return String(x.id)===b.getAttribute('data-id');})[0]; cerrarModal(); cierreManualOT(_cerrOTobj(g,o)); }); });
+  }
+  function reasignarOTs(otIds, cuadActual, cuadNom){
+    var cuadOpts=REF.cuadrillas.filter(function(c){return c.id!=cuadActual;}).map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
+    modal('<h2>🔄 Reasignar '+otIds.length+' OT</h2><p class="muted">De <b>'+esc(cuadNom||'—')+'</b> a otra cuadrilla. Queda en el historial.</p>'
+      +'<label class="l">Nueva cuadrilla</label><select id="rea-cuad"><option value="">— elegí —</option>'+cuadOpts+'</select>'
+      +'<label class="l">Fecha agendada (opcional)</label><input type="date" id="rea-fecha">'
+      +'<label class="l">Motivo (opcional)</label><input id="rea-mot">'
+      +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="rea-ok">🔄 Reasignar</button><button class="btn btn-2" id="rea-no">Cancelar</button></div>');
+    document.getElementById('rea-no').addEventListener('click',cerrarModal);
+    document.getElementById('rea-ok').addEventListener('click',function(){
+      var nc=document.getElementById('rea-cuad').value; if(!nc){ toast('Elegí una cuadrilla.'); return; }
+      var fecha=document.getElementById('rea-fecha').value, mot=document.getElementById('rea-mot').value.trim(), btn=this; btn.disabled=true; btn.textContent='Reasignando…';
+      var upd={ cuadrilla_id:Number(nc), estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha)upd.fecha_agendada=fecha;
+      sbPatch('ordenes_trabajo?id=in.('+otIds.join(',')+')',upd).then(function(){ logOTmuchas(otIds,'REASIGNADA',{ a:'ASIGNADA', cuadId:Number(nc), detalle:'De '+(cuadNom||'—')+' a '+_cuadNombre(Number(nc))+(mot?(' · '+mot):'') }); cerrarModal(); toast('✅ '+otIds.length+' OT reasignadas'); refrescarOT(); })
+        .catch(function(){ btn.disabled=false; btn.textContent='🔄 Reasignar'; toast('No se pudo reasignar.'); });
+    });
   }
   // ── Cuenta TV de la OT: vincula una cuenta del pool (usuario+clave) y la deja lista para imprimir en la orden ──
   function cargarTvOT(o){
