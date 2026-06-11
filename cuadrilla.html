@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.8</title>
+<title>Nexa · Técnico — v0.9</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.8';
+  var VER='v0.9';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -241,18 +241,19 @@
       h+='<div class="card"><div class="label">Materiales usados</div>';
       if(!CIE.kitMat.length) h+='<div class="muted">'+(CIE.ttId?'Este tipo de trabajo no tiene materiales cargados.':'Elegí el tipo de trabajo arriba para ver los materiales.')+'</div>';
       CIE.kitMat.forEach(function(m){ var st=cieMat(m.id), ser=(m.serial_tipo==='INDIVIDUAL'||m.serial_tipo==='CORRELATIVO');
-        h+='<div style="border-bottom:1px solid var(--bord);padding:9px 0"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;font-weight:600">'+esc(m.nombre)+(ser?' <span class="badge-tt">serial</span>':'')+'</div>'
-          +'<button class="btn mat-menos" data-m="'+m.id+'" style="width:38px;padding:7px">−</button><div style="width:34px;text-align:center;font-weight:800">'+st.cant+'</div><button class="btn mat-mas" data-m="'+m.id+'" style="width:38px;padding:7px">+</button></div>';
-        if(ser&&st.cant>0){ var disp=CIE.seriales.filter(function(s){return s.material_id==m.id;});
-          h+='<div style="margin-top:7px;font-size:13px;color:var(--gris)">Seriales ('+st.sel.length+'/'+st.cant+'):</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">';
+        if(ser){ var disp=CIE.seriales.filter(function(s){return s.material_id==m.id;});
+          h+='<div style="border-bottom:1px solid var(--bord);padding:9px 0"><div style="font-weight:600">'+esc(m.nombre)+' <span class="badge-tt">serial</span> <span class="muted" style="font-size:12px">· '+st.sel.length+' usados</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px">';
           disp.forEach(function(s){ var on=st.sel.indexOf(s.serial)>=0; h+='<button class="btn ser-chip" data-m="'+m.id+'" data-s="'+esc(s.serial)+'" style="width:auto;padding:6px 11px;font-size:13px;'+(on?'background:var(--azul2);color:#fff':'background:#fff;color:var(--azul2);border:1.5px solid var(--azul2)')+'">'+esc(s.serial)+'</button>'; });
-          h+='<input class="ser-man" data-m="'+m.id+'" placeholder="Otro serial…" style="width:auto;flex:1;min-width:130px;padding:9px"></div>'; }
-        h+='</div>';
+          st.sel.forEach(function(v){ if(!disp.some(function(s){return s.serial===v;})) h+='<button class="btn ser-chip" data-m="'+m.id+'" data-s="'+esc(v)+'" style="width:auto;padding:6px 11px;font-size:13px;background:var(--azul2);color:#fff">'+esc(v)+' ✕</button>'; });
+          h+='<input class="ser-man" data-m="'+m.id+'" placeholder="Escaneá / otro serial…" autocomplete="off" style="width:auto;flex:1;min-width:140px;padding:9px"></div></div>';
+        } else {
+          h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><input type="number" inputmode="numeric" min="0" class="mat-cant" data-m="'+m.id+'" value="'+(st.cant>0?st.cant:'')+'" placeholder="0" style="width:92px;text-align:center;font-weight:700"></div>';
+        }
       });
       h+='</div><div class="card"><div class="label">Mano de obra</div>';
       if(!CIE.kitMo.length) h+='<div class="muted">Sin mano de obra para este tipo de trabajo.</div>';
       CIE.kitMo.forEach(function(m){ var c=CIE.mos[m.id]||0;
-        h+='<div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><button class="btn mo-menos" data-m="'+m.id+'" style="width:38px;padding:7px">−</button><div style="width:34px;text-align:center;font-weight:800">'+c+'</div><button class="btn mo-mas" data-m="'+m.id+'" style="width:38px;padding:7px">+</button></div>';
+        h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><input type="number" inputmode="numeric" min="0" class="mo-cant" data-m="'+m.id+'" value="'+(c>0?c:'')+'" placeholder="0" style="width:92px;text-align:center;font-weight:700"></div>';
       });
       h+='</div><div class="card"><div class="label">Datos de la conexión (para ISPcube)</div>'
         +dInput('precinto','Precinto')+dInput('caja_nap','Caja (NAP)')+dInput('puerto','Puerto de fibra')+dInput('access_point','Access Point')+dInput('mac','MAC')+dInput('serial','Serial / Modelo')+'</div>'
@@ -274,12 +275,12 @@
     if(asi) asi.addEventListener('click',function(){ CIE.accion='REALIZADA'; renderCierre(); });
     if(ano) ano.addEventListener('click',function(){ CIE.accion='NO_REALIZADA'; renderCierre(); });
     var ctt=document.getElementById('cie-tt'); if(ctt) ctt.addEventListener('change',function(){ CIE.ttId=ctt.value?Number(ctt.value):null; CIE.mats={}; CIE.mos={}; cieCargarKit(); });
-    each('.mat-mas',function(b){ b.onclick=function(){ cieMat(b.getAttribute('data-m')).cant++; renderCierre(); }; });
-    each('.mat-menos',function(b){ b.onclick=function(){ var s=cieMat(b.getAttribute('data-m')); if(s.cant>0)s.cant--; if(s.sel.length>s.cant)s.sel=s.sel.slice(0,s.cant); renderCierre(); }; });
-    each('.mo-mas',function(b){ b.onclick=function(){ var k=b.getAttribute('data-m'); CIE.mos[k]=(CIE.mos[k]||0)+1; renderCierre(); }; });
-    each('.mo-menos',function(b){ b.onclick=function(){ var k=b.getAttribute('data-m'),c=(CIE.mos[k]||0); if(c>0)CIE.mos[k]=c-1; renderCierre(); }; });
-    each('.ser-chip',function(b){ b.onclick=function(){ var s=cieMat(b.getAttribute('data-m')),v=b.getAttribute('data-s'),i=s.sel.indexOf(v); if(i>=0)s.sel.splice(i,1); else { if(s.sel.length>=s.cant){toast('Ya elegiste '+s.cant);return;} s.sel.push(v); } renderCierre(); }; });
-    each('.ser-man',function(inp){ inp.onchange=function(){ var s=cieMat(inp.getAttribute('data-m')),v=inp.value.trim(); if(v&&s.sel.indexOf(v)<0){ if(s.sel.length>=s.cant){toast('Ya elegiste '+s.cant);return;} s.sel.push(v); renderCierre(); } }; });
+    // Cantidad editable (se escribe directo, arranca vacío) — guarda sin re-renderizar para no perder el foco
+    each('.mat-cant',function(inp){ inp.oninput=function(){ cieMat(inp.getAttribute('data-m')).cant=Math.max(0,parseInt(inp.value,10)||0); }; });
+    each('.mo-cant',function(inp){ inp.oninput=function(){ CIE.mos[inp.getAttribute('data-m')]=Math.max(0,parseInt(inp.value,10)||0); }; });
+    // Serial: tildar/destildar (sin tope) o escanear/escribir; la cantidad la dan los seriales elegidos
+    each('.ser-chip',function(b){ b.onclick=function(){ var s=cieMat(b.getAttribute('data-m')),v=b.getAttribute('data-s'),i=s.sel.indexOf(v); if(i>=0)s.sel.splice(i,1); else s.sel.push(v); renderCierre(); }; });
+    each('.ser-man',function(inp){ var add=function(){ var s=cieMat(inp.getAttribute('data-m')),v=(inp.value||'').trim().toUpperCase().replace(/[:\-.\s]/g,''); if(v&&s.sel.indexOf(v)<0){ s.sel.push(v); renderCierre(); } }; inp.onchange=add; inp.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } }; });
     each('.foto-del',function(b){ b.onclick=function(){ CIE.fotos.splice(+b.getAttribute('data-i'),1); renderCierre(); }; });
     var fin=document.getElementById('cie-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirFotos(e.target.files); });
     document.getElementById('cie-confirmar').addEventListener('click',confirmarCierre);
@@ -302,8 +303,6 @@
     var obsEl=document.getElementById('cie-obs'), obs=obsEl?obsEl.value.trim():'';
     if(CIE.accion==='NO_REALIZADA'){ var mEl=document.getElementById('cie-motivo'),mot=mEl?mEl.value:''; if(!mot){ err.textContent='Elegí un motivo.'; return; } CIE._motivo=mot; }
     else {
-      var faltan=CIE.kitMat.filter(function(m){ var s=CIE.mats[m.id]; return s&&s.cant>0&&(m.serial_tipo==='INDIVIDUAL'||m.serial_tipo==='CORRELATIVO')&&s.sel.length<s.cant; });
-      if(faltan.length){ err.textContent='Faltan seriales en: '+faltan.map(function(m){return m.nombre;}).join(', '); return; }
       if(CIE.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá a que terminen de subir las fotos.'; return; }
     }
     btn.disabled=true; btn.textContent='Guardando…';
@@ -315,7 +314,7 @@
       if(CIE.accion==='NO_REALIZADA') upd.motivo_cancelacion=CIE._motivo;
       jobs.push(sbPatch('ordenes_trabajo?id=eq.'+o.id,upd));
       if(CIE.accion==='REALIZADA'){
-        var mats=[]; CIE.kitMat.forEach(function(m){ var s=CIE.mats[m.id]; if(s&&s.cant>0){ if(s.sel.length) s.sel.forEach(function(ser){ mats.push({ot_id:o.id,material_id:m.id,cantidad:1,serial:ser}); }); else mats.push({ot_id:o.id,material_id:m.id,cantidad:s.cant,serial:null}); } });
+        var mats=[]; CIE.kitMat.forEach(function(m){ var s=CIE.mats[m.id]; if(!s)return; if(s.sel.length) s.sel.forEach(function(ser){ mats.push({ot_id:o.id,material_id:m.id,cantidad:1,serial:ser}); }); else if(s.cant>0) mats.push({ot_id:o.id,material_id:m.id,cantidad:s.cant,serial:null}); });
         if(mats.length) jobs.push(sbPost('ot_materiales',mats));
         var mos=[]; CIE.kitMo.forEach(function(m){ var c=CIE.mos[m.id]; if(c>0) mos.push({ot_id:o.id,mano_obra_id:m.id,nombre:m.nombre,cantidad:c}); });
         if(mos.length) jobs.push(sbPost('ot_mano_obra',mos));
