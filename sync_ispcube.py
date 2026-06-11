@@ -112,11 +112,17 @@ def sb_post(path, rows):
     _req(SB_URL + "/rest/v1/" + path, rows, "POST",
          {"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Prefer": "return=minimal"})
 
+def sb_insert_one(path, body):
+    r = _req(SB_URL + "/rest/v1/" + path, body, "POST",
+             {"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Prefer": "return=representation"})
+    d = json.load(r)
+    return d[0] if isinstance(d, list) and d else None
+
 def fetch_nexa():
     out, page = {}, 0
     while True:
         r = urllib.request.Request(
-            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,estado,deuda,caja_nap,puerto,precinto&codigo_ispcube=not.is.null&order=id.asc",
+            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto&codigo_ispcube=not.is.null&order=id.asc",
             headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
         chunk = json.load(urllib.request.urlopen(r, timeout=60))
         for c in chunk: out[c["codigo_ispcube"]] = c
@@ -124,8 +130,14 @@ def fetch_nexa():
         page += 1
     return out
 
+# DNIs comodín de ISPcube (sin documento real) → NO sirven para matchear/deduplicar
+_DNI_PLACEHOLDER = {"9999999", "99999999", "0", "00000000", "11111111", "12345678"}
 def _dni(s):
-    return re.sub(r"\D", "", str(s or "")) or None
+    d = re.sub(r"\D", "", str(s or "")) or None
+    if not d: return None
+    if d in _DNI_PLACEHOLDER: return None          # comodín → tratar como "sin DNI"
+    if len(d) < 7 or len(set(d)) == 1: return None  # muy corto o todos iguales (0000000) → no confiable
+    return d
 
 def fetch_prospectos():
     # Prospectos/clientes SIN código ISPcube pero CON DNI → indexados por DNI.
@@ -195,23 +207,35 @@ def main():
         for k in sorted(cli.keys()): print(f"  {k} = {cli[k]!r}")
         print("\n=== conex() detecta:", conex(cli))
         return
+    # registro de la corrida (para progreso + última/próxima en el panel)
+    log_id = None
+    if not DRY:
+        try: row = sb_insert_one("sync_log", {"estado": "corriendo"}); log_id = row and row.get("id")
+        except Exception as e: print("WARN sync_log insert:", e)
     token = isp_login()
     isp = isp_list_all(token)
     portmap = isp_ftthboxes(token)
     nexa = fetch_nexa()
     prospectos = fetch_prospectos()   # por DNI, para graduar en vez de duplicar
     planes = plan_map(); bemap = barrio_emp_map()
+    # DNI (real) -> código de los clientes Nexa que YA tienen código → para NO insertar un duplicado de la misma persona
+    dni_con_codigo = {}
+    for code, c in nexa.items():
+        k = _dni(c.get("doc_numero"))
+        if k and k not in dni_con_codigo: dni_con_codigo[k] = code
     print(f"Nexa: {len(nexa)} clientes con codigo_ispcube · {len(prospectos)} prospectos sin código (con DNI)")
 
-    updates, graduados, nuevos = [], [], []
+    updates, graduados, nuevos, isp_codes, evitados = [], [], [], set(), []
     for c in isp:
         code = str(c.get("code") or "").strip()
         if not code: continue
+        isp_codes.add(code)
         est = STATUS_MAP.get(c.get("status"))
         deu = _f(c.get("duedebt"))
         if code in nexa:
             cur = nexa[code]; upd = {}
             if est and est != cur["estado"]: upd["estado"] = est
+            if cur["estado"] == "eliminado": upd["eliminado_isp_at"] = None   # reapareció en ISPcube → revivir
             if deu is not None and float(deu) != float(cur.get("deuda") or 0): upd["deuda"] = deu
             cx = conex(c, portmap)
             for f in ("caja_nap", "puerto", "precinto"):
@@ -232,14 +256,25 @@ def main():
                 if not pros.get("domicilio_full"): upd["domicilio_full"] = c.get("address") or c.get("tax_residence")
                 if not pros.get("plan_id"): upd["plan_id"] = planes.get(c.get("plan_name"))
                 graduados.append((pros["id"], upd))
+            elif dni and dni in dni_con_codigo:
+                # Ya existe en Nexa un cliente con ese DNI y código → NO duplico (ISPcube tiene 2 registros de la persona).
+                evitados.append((code, dni_con_codigo[dni]))
             else:
                 nuevos.append(nuevo_cliente(c, planes, bemap, portmap))
 
-    print(f"\nA actualizar: {len(updates)} · a GRADUAR (prospecto→cliente por DNI): {len(graduados)} · NUEVOS a insertar: {len(nuevos)}")
+    print(f"\nA actualizar: {len(updates)} · a GRADUAR (prospecto→cliente por DNI): {len(graduados)} · NUEVOS a insertar: {len(nuevos)} · duplicados EVITADOS: {len(evitados)}")
     for g in graduados[:20]:
         print(f"  GRADÚA prospecto id={g[0]} → código {g[1]['codigo_ispcube']}")
     for n in nuevos[:20]:
         print(f"  NUEVO {n['codigo_ispcube']} {n['nombre']} ({n['estado']})")
+    if evitados:
+        print(f"  ⚠️ NO insertados (la persona ya existe en Nexa con otro código — duplicado en ISPcube a depurar):")
+        for code, ya in evitados[:20]: print(f"     ISPcube {code} ≈ ya cargado como {ya}")
+    # Posibles duplicados YA existentes en Nexa: prospecto sin código cuyo DNI ya tiene un cliente con código (revisar/fusionar a mano)
+    revisar = [(p["id"], d, dni_con_codigo[d]) for d, p in prospectos.items() if d in dni_con_codigo]
+    if revisar:
+        print(f"  ⚠️ PROSPECTOS que parecen duplicados (mismo DNI que un cliente ya con código) — revisar/fusionar:")
+        for pid, d, code in revisar[:20]: print(f"     prospecto id={pid} (DNI {d}) ≈ cliente código {code}")
 
     if DRY:
         print("\n[DRY] No se escribió nada.")
@@ -254,7 +289,31 @@ def main():
     for i in range(0, len(nuevos), 200):
         try: sb_post("clientes", nuevos[i:i+200])
         except Exception as e: print(f"  ERROR insert lote {i}: {e}")
-    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos. {round(time.time()-t0)}s")
+
+    # ELIMINADOS: clientes en Nexa con código que YA NO están en ISPcube (Gastón los borró).
+    # Se marcan estado='eliminado' (no se muestran ni cuentan; queda el registro p/ avisar por DNI).
+    # SEGURO: solo si la lista de ISPcube vino completa (evita borrado masivo por falla de API).
+    eliminados = 0
+    huerfanos = [(cur["id"]) for code, cur in nexa.items()
+                 if code not in isp_codes and cur.get("estado") != "eliminado"]
+    if len(isp_codes) < 0.6 * len(nexa):
+        print(f"\n⚠️ ISPcube devolvió {len(isp_codes)} de ~{len(nexa)} esperados — lista incompleta, NO marco eliminados (seguro).")
+    else:
+        for cid in huerfanos:
+            try:
+                sb_patch("clientes?id=eq." + str(cid),
+                         {"estado": "eliminado", "eliminado_isp_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+                eliminados += 1
+            except Exception as e: print(f"  ERROR eliminar {cid}: {e}")
+        if eliminados: print(f"\n🗑️ Marcados 'eliminado' (borrados de ISPcube): {eliminados}")
+
+    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados. {round(time.time()-t0)}s")
+    if log_id:
+        try: sb_patch("sync_log?id=eq." + str(log_id),
+                      {"estado": "ok", "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                       "isp_total": len(isp_codes), "actualizados": len(updates), "nuevos": len(nuevos),
+                       "graduados": len(graduados), "eliminados": eliminados})
+        except Exception as e: print("WARN sync_log update:", e)
 
 if __name__ == "__main__":
     main()
