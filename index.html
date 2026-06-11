@@ -172,7 +172,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.54';
+  var VER='v0.55';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -320,7 +320,7 @@
   function goKpi(act){
     var p=String(act).split('|'); var v=p[0];
     if(v==='cl'){
-      clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0 };
+      clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0, orderBy:'numero_cliente', orderDir:'desc', sel:{}, cols:null };
       if(p[1]==='pend') clState.pend=true;
       else if(p[1]){ var kv=p[1].split('='); clState[kv[0]]=kv[1]; }
       navTo('clientes');
@@ -329,7 +329,7 @@
     else if(v==='val'){ navTo('validacion'); }
     else if(v==='nav'){ navTo(p[1]); }
     else if(v==='nuevaOT'){ navTo('ordenes'); setTimeout(function(){ if(typeof nuevaOT==='function') nuevaOT(); },60); }
-    else if(v==='isp'){ clState={ q:'', estado:'', empresa:'', barrio:'', pend:true, page:0, size:50, total:0 }; navTo('clientes'); }
+    else if(v==='isp'){ clState={ q:'', estado:'', empresa:'', barrio:'', pend:true, page:0, size:50, total:0, orderBy:'numero_cliente', orderDir:'desc', sel:{}, cols:null }; navTo('clientes'); }
   }
   var view=document.getElementById('view');
   function loading(){ view.innerHTML='<div class="center"><div class="spin"></div></div>'; }
@@ -489,6 +489,7 @@
   }
   function cargarClientes(){
     var cont=document.getElementById('cl-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    if(!clState.sel) clState.sel={};   // defensivo: si se reinició clState desde un acceso directo del dashboard
     var base=clQuery();
     sbCount('clientes?'+base.replace(/select=[^&]*/,'select=id')).then(function(tot){ clState.total=tot; });
     fetch(SB_URL+'/rest/v1/clientes?'+base,{headers:Object.assign({},H,{'Range':(clState.page*clState.size)+'-'+((clState.page+1)*clState.size-1)})})
@@ -515,7 +516,7 @@
       var pv=document.getElementById('cl-prev'), nx=document.getElementById('cl-next');
       if(pv) pv.addEventListener('click',function(){ if(clState.page>0){clState.page--; cargarClientes();} });
       if(nx) nx.addEventListener('click',function(){ clState.page++; cargarClientes(); });
-    });
+    }).catch(function(e){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar la lista de clientes. Probá de nuevo.<div class="muted" style="font-size:12px;margin-top:6px">'+esc(e&&e.message||e)+'</div></div>'; });
   }
   function updateClSelUI(){
     var box=document.getElementById('cl-del-box'); if(!box) return;
@@ -753,27 +754,29 @@
   }
 
   // ── ORDENES ──
-  var otState={ estado:'', tipo:'', page:0, size:50, total:0, orderBy:'created_at', orderDir:'desc', cols:null, sel:{} };
+  var otState={ estado:'', tipo:'', page:0, size:50, total:0, orderBy:'creada', orderDir:'desc', cols:null, sel:{}, rows:[] };
+  var _PRIO_ORD={BAJA:0,NORMAL:1,ALTA:2,URGENTE:3};
+  // ord = orden del lado del cliente (sobre la lista ya traída) → permite ordenar por CUALQUIER columna, barrio incluido
   var OT_COLS=[
-    {k:'numero',t:'N° OT',ord:'numero',r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
-    {k:'tipo',t:'Tipo',ord:'tipo',r:function(o){return esc(o.tipo);}},
-    {k:'cliente',t:'Cliente',ord:null,r:function(o){return esc(o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)');}},
-    {k:'cli_nexa',t:'N° Nexa',ord:null,r:function(o){return o.clientes?'<b>'+esc(o.clientes.numero_cliente)+'</b>':'—';}},
-    {k:'dni',t:'DNI',ord:null,def:false,r:function(o){return esc(o.clientes&&o.clientes.doc_numero?o.clientes.doc_numero:'');}},
-    {k:'telefono',t:'Teléfono',ord:null,def:false,r:function(o){return o.clientes?'<span class="telcell">'+esc(o.clientes.telefono||'')+waMini(o.clientes.telefono,(o.clientes.nombre||'')+' '+(o.clientes.apellido||''),o.tipo,o.clientes.domicilio_full)+'</span>':'';}},
-    {k:'cli_isp',t:'Cód. ISP',ord:null,r:function(o){return o.clientes&&o.clientes.codigo_ispcube?esc(o.clientes.codigo_ispcube):'<span class="muted">—</span>';}},
-    {k:'barrio',t:'Barrio',ord:null,def:false,r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
-    {k:'cuadrilla',t:'Cuadrilla',ord:null,r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
-    {k:'prioridad',t:'Prioridad',ord:'prioridad',def:false,r:function(o){return esc(o.prioridad||'');}},
-    {k:'agendada',t:'Agendada',ord:'fecha_agendada',r:function(o){return esc(fmtFecha(o.fecha_agendada));}},
-    {k:'creada',t:'Creada',ord:'created_at',def:false,r:function(o){return esc(fmtFecha(o.created_at));}},
-    {k:'estado',t:'Estado',ord:'estado',r:function(o){return pill(o.estado);}}
+    {k:'numero',t:'N° OT',ord:function(o){return Number(o.numero)||0;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
+    {k:'tipo',t:'Tipo',ord:function(o){return o.tipo||'';},r:function(o){return esc(o.tipo);}},
+    {k:'cliente',t:'Cliente',ord:function(o){return o.clientes?((o.clientes.apellido||'')+' '+(o.clientes.nombre||'')).toLowerCase():'';},r:function(o){return esc(o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)');}},
+    {k:'cli_nexa',t:'N° Nexa',ord:function(o){return o.clientes?Number(o.clientes.numero_cliente)||0:-1;},r:function(o){return o.clientes?'<b>'+esc(o.clientes.numero_cliente)+'</b>':'—';}},
+    {k:'dni',t:'DNI',ord:function(o){return o.clientes&&o.clientes.doc_numero?o.clientes.doc_numero:'';},def:false,r:function(o){return esc(o.clientes&&o.clientes.doc_numero?o.clientes.doc_numero:'');}},
+    {k:'telefono',t:'Teléfono',ord:function(o){return o.clientes?o.clientes.telefono||'':'';},def:false,r:function(o){return o.clientes?'<span class="telcell">'+esc(o.clientes.telefono||'')+waMini(o.clientes.telefono,(o.clientes.nombre||'')+' '+(o.clientes.apellido||''),o.tipo,o.clientes.domicilio_full)+'</span>':'';}},
+    {k:'cli_isp',t:'Cód. ISP',ord:function(o){return o.clientes&&o.clientes.codigo_ispcube?o.clientes.codigo_ispcube:'';},r:function(o){return o.clientes&&o.clientes.codigo_ispcube?esc(o.clientes.codigo_ispcube):'<span class="muted">—</span>';}},
+    {k:'barrio',t:'Barrio',ord:function(o){return o.clientes?(o.clientes.barrio||'').toLowerCase():'';},def:false,r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
+    {k:'cuadrilla',t:'Cuadrilla',ord:function(o){return o.cuadrillas?o.cuadrillas.nombre.toLowerCase():'';},r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
+    {k:'prioridad',t:'Prioridad',ord:function(o){return _PRIO_ORD[o.prioridad]!=null?_PRIO_ORD[o.prioridad]:1;},def:false,r:function(o){return esc(o.prioridad||'');}},
+    {k:'agendada',t:'Agendada',ord:function(o){return o.fecha_agendada||'';},r:function(o){return esc(fmtFecha(o.fecha_agendada));}},
+    {k:'creada',t:'Creada',ord:function(o){return o.created_at||'';},def:false,r:function(o){return esc(fmtFecha(o.created_at));}},
+    {k:'estado',t:'Estado',ord:function(o){return o.estado||'';},r:function(o){return pill(o.estado);}}
   ];
-  var OT_COLS_DEF=['numero','tipo','cliente','cli_nexa','cli_isp','cuadrilla','agendada','estado'];
+  var OT_COLS_DEF=['numero','tipo','cliente','cli_nexa','cli_isp','barrio','cuadrilla','agendada','estado'];
   function otCols(){ if(!otState.cols){ try{ otState.cols=JSON.parse(localStorage.getItem('ot_cols')||'null'); }catch(e){} if(!otState.cols||!otState.cols.length) otState.cols=OT_COLS_DEF.slice(); } return otState.cols; }
   function otColVis(k){ return otCols().indexOf(k)>=0; }
-  function otToggleCol(k){ var v=otCols(),i=v.indexOf(k); if(i>=0)v.splice(i,1); else v.push(k); try{localStorage.setItem('ot_cols',JSON.stringify(v));}catch(e){} cargarOT(); }
-  function otSort(ord){ if(!ord)return; if(otState.orderBy===ord)otState.orderDir=otState.orderDir==='asc'?'desc':'asc'; else{otState.orderBy=ord;otState.orderDir='asc';} otState.page=0; cargarOT(); }
+  function otToggleCol(k){ var v=otCols(),i=v.indexOf(k); if(i>=0)v.splice(i,1); else v.push(k); try{localStorage.setItem('ot_cols',JSON.stringify(v));}catch(e){} renderOT(); }
+  function otSort(k){ if(!k)return; if(otState.orderBy===k)otState.orderDir=otState.orderDir==='asc'?'desc':'asc'; else{otState.orderBy=k;otState.orderDir='asc';} otState.page=0; renderOT(); }
   function vOrdenes(){
     view.innerHTML='<h1>Órdenes de trabajo</h1><p class="sub">Generación y seguimiento.</p>'
       +'<div class="toolbar">'
@@ -788,29 +791,38 @@
   }
   function cargarOT(){
     var cont=document.getElementById('ot-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,doc_numero,nombre,apellido,telefono,domicilio_full,barrio),cuadrillas(nombre)&order='+(otState.orderBy||'created_at')+'.'+(otState.orderDir||'desc');
+    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,doc_numero,nombre,apellido,telefono,domicilio_full,barrio),cuadrillas(nombre)';
     if(otState.estado) base+='&estado=eq.'+otState.estado;
     if(otState.tipo) base+='&tipo=eq.'+otState.tipo;
-    sbCount('ordenes_trabajo?select=id'+(otState.estado?'&estado=eq.'+otState.estado:'')+(otState.tipo?'&tipo=eq.'+otState.tipo:'')).then(function(t){ otState.total=t; });
-    fetch(SB_URL+'/rest/v1/ordenes_trabajo?'+base,{headers:Object.assign({},H,{'Range':(otState.page*otState.size)+'-'+((otState.page+1)*otState.size-1)})})
+    // Traemos todas las que matchean el filtro (tope 3000) y ordenamos/paginamos del lado del cliente → se puede ordenar por CUALQUIER columna (barrio incluido)
+    fetch(SB_URL+'/rest/v1/ordenes_trabajo?'+base,{headers:Object.assign({},H,{'Range':'0-2999'})})
      .then(function(r){return r.json();}).then(function(d){
-      var cols=OT_COLS.filter(function(co){return otColVis(co.k);});
-      var top='<div class="toolbar" style="justify-content:flex-end;gap:8px;margin-bottom:8px"><div id="ot-asig-box" style="margin-right:auto"></div><div style="position:relative"><button class="btn btn-2" id="ot-cb">⚙️ Columnas</button><div id="ot-cm" class="colmenu" style="display:none"></div></div></div>';
-      if(!Array.isArray(d)||!d.length){ cont.innerHTML=top+'<div class="center">No hay órdenes'+(otState.estado?' en ese estado':'')+'.</div>'; wireOtCols(); updateOtSelUI(); return; }
-      var h=top+'<table><thead><tr><th style="width:30px"><input type="checkbox" id="ot-all"></th>'+cols.map(function(co){ var act=co.ord&&otState.orderBy===co.ord, ar=act?(otState.orderDir==='asc'?' ▲':' ▼'):(co.ord?' ⇅':''); return '<th'+(co.ord?' class="thsort" data-ord="'+co.ord+'" style="cursor:pointer;user-select:none"':'')+'>'+esc(co.t)+'<span style="color:#94a3b8;font-size:10px">'+ar+'</span></th>'; }).join('')+'</tr></thead><tbody>';
-      d.forEach(function(o){ h+='<tr data-id="'+o.id+'"><td><input type="checkbox" class="ot-chk" data-id="'+o.id+'" data-num="'+esc(o.numero)+'"'+(otState.sel[o.id]?' checked':'')+'></td>'+cols.map(function(co){return '<td style="cursor:pointer" class="ot-cell">'+co.r(o)+'</td>';}).join('')+'</tr>'; });
-      h+='</tbody></table>';
-      var pages=Math.ceil(otState.total/otState.size)||1;
-      h+='<div class="pag"><button class="btn btn-2" id="ot-prev" '+(otState.page<=0?'disabled':'')+'>‹</button><span class="muted">Página '+(otState.page+1)+' de '+pages+' · '+otState.total+' OT · orden: '+esc(otState.orderBy)+' '+otState.orderDir+'</span><button class="btn btn-2" id="ot-next" '+(otState.page>=pages-1?'disabled':'')+'>›</button></div>';
-      cont.innerHTML=h; wireOtCols(); updateOtSelUI();
-      Array.prototype.forEach.call(cont.querySelectorAll('.ot-cell'),function(td){ td.addEventListener('click',function(){ detalleOT(td.parentNode.getAttribute('data-id')); }); });
-      Array.prototype.forEach.call(cont.querySelectorAll('.ot-chk'),function(ck){ ck.addEventListener('change',function(ev){ ev.stopPropagation(); otState.sel[ck.getAttribute('data-id')]=ck.checked?{num:ck.getAttribute('data-num')}:false; updateOtSelUI(); }); });
-      var all=document.getElementById('ot-all'); if(all) all.addEventListener('change',function(){ Array.prototype.forEach.call(cont.querySelectorAll('.ot-chk'),function(ck){ ck.checked=all.checked; otState.sel[ck.getAttribute('data-id')]=all.checked?{num:ck.getAttribute('data-num')}:false; }); updateOtSelUI(); });
-      Array.prototype.forEach.call(cont.querySelectorAll('.thsort'),function(th){ th.addEventListener('click',function(){ otSort(th.getAttribute('data-ord')); }); });
-      var pv=document.getElementById('ot-prev'),nx=document.getElementById('ot-next');
-      if(pv)pv.addEventListener('click',function(){ if(otState.page>0){otState.page--;cargarOT();} });
-      if(nx)nx.addEventListener('click',function(){ otState.page++; cargarOT(); });
-    });
+      otState.rows=Array.isArray(d)?d:[]; otState.page=0; renderOT();
+    }).catch(function(e){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudieron cargar las órdenes. Probá de nuevo.</div>'; });
+  }
+  function renderOT(){
+    var cont=document.getElementById('ot-tabla'); if(!cont) return;
+    var rows=(otState.rows||[]).slice();
+    var col=OT_COLS.filter(function(c){return c.k===otState.orderBy;})[0]||OT_COLS.filter(function(c){return c.k==='creada';})[0];
+    if(col&&col.ord){ var dir=otState.orderDir==='asc'?1:-1; rows.sort(function(a,b){ var va=col.ord(a),vb=col.ord(b); if(va<vb)return -dir; if(va>vb)return dir; return 0; }); }
+    otState.total=rows.length;
+    var pages=Math.ceil(otState.total/otState.size)||1; if(otState.page>=pages)otState.page=pages-1; if(otState.page<0)otState.page=0;
+    var pageRows=rows.slice(otState.page*otState.size,(otState.page+1)*otState.size);
+    var cols=OT_COLS.filter(function(co){return otColVis(co.k);});
+    var top='<div class="toolbar" style="justify-content:flex-end;gap:8px;margin-bottom:8px"><div id="ot-asig-box" style="margin-right:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div><div style="position:relative"><button class="btn btn-2" id="ot-cb">⚙️ Columnas</button><div id="ot-cm" class="colmenu" style="display:none"></div></div></div>';
+    if(!otState.total){ cont.innerHTML=top+'<div class="center">No hay órdenes'+(otState.estado?' en ese estado':'')+'.</div>'; wireOtCols(); updateOtSelUI(); return; }
+    var h=top+'<table><thead><tr><th style="width:30px"><input type="checkbox" id="ot-all"></th>'+cols.map(function(co){ var act=otState.orderBy===co.k, ar=act?(otState.orderDir==='asc'?' ▲':' ▼'):(co.ord?' ⇅':''); return '<th'+(co.ord?' class="thsort" data-k="'+co.k+'" style="cursor:pointer;user-select:none"':'')+'>'+esc(co.t)+'<span style="color:#94a3b8;font-size:10px">'+ar+'</span></th>'; }).join('')+'</tr></thead><tbody>';
+    pageRows.forEach(function(o){ h+='<tr data-id="'+o.id+'"><td><input type="checkbox" class="ot-chk" data-id="'+o.id+'" data-num="'+esc(o.numero)+'"'+(otState.sel[o.id]?' checked':'')+'></td>'+cols.map(function(co){return '<td style="cursor:pointer" class="ot-cell">'+co.r(o)+'</td>';}).join('')+'</tr>'; });
+    h+='</tbody></table>';
+    h+='<div class="pag"><button class="btn btn-2" id="ot-prev" '+(otState.page<=0?'disabled':'')+'>‹</button><span class="muted">Página '+(otState.page+1)+' de '+pages+' · '+otState.total+' OT'+(otState.total>=3000?' (primeras 3000)':'')+' · orden: '+esc(otState.orderBy)+' '+otState.orderDir+'</span><button class="btn btn-2" id="ot-next" '+(otState.page>=pages-1?'disabled':'')+'>›</button></div>';
+    cont.innerHTML=h; wireOtCols(); updateOtSelUI();
+    Array.prototype.forEach.call(cont.querySelectorAll('.ot-cell'),function(td){ td.addEventListener('click',function(){ detalleOT(td.parentNode.getAttribute('data-id')); }); });
+    Array.prototype.forEach.call(cont.querySelectorAll('.ot-chk'),function(ck){ ck.addEventListener('change',function(ev){ ev.stopPropagation(); otState.sel[ck.getAttribute('data-id')]=ck.checked?{num:ck.getAttribute('data-num')}:false; updateOtSelUI(); }); });
+    var all=document.getElementById('ot-all'); if(all) all.addEventListener('change',function(){ Array.prototype.forEach.call(cont.querySelectorAll('.ot-chk'),function(ck){ ck.checked=all.checked; otState.sel[ck.getAttribute('data-id')]=all.checked?{num:ck.getAttribute('data-num')}:false; }); updateOtSelUI(); });
+    Array.prototype.forEach.call(cont.querySelectorAll('.thsort'),function(th){ th.addEventListener('click',function(){ otSort(th.getAttribute('data-k')); }); });
+    var pv=document.getElementById('ot-prev'),nx=document.getElementById('ot-next');
+    if(pv)pv.addEventListener('click',function(){ if(otState.page>0){otState.page--;renderOT();} });
+    if(nx)nx.addEventListener('click',function(){ otState.page++; renderOT(); });
   }
   // Asignar a cuadrilla varias OTs seleccionadas, directo desde la lista
   function updateOtSelUI(){
@@ -821,8 +833,10 @@
       +'<select id="ot-sel-cuad" style="width:auto"><option value="">— cuadrilla —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('')+'</select>'
       +'<input type="date" id="ot-sel-fecha" style="width:auto" title="Fecha agendada (opcional)">'
       +'<button class="btn btn-ok" id="ot-sel-asig">✅ Asignar ('+n+')</button>'
+      +'<button class="btn btn-pri" id="ot-sel-print">🖨️ Imprimir ('+n+')</button>'
       +'<button class="btn btn-2" id="ot-sel-clear">Limpiar</button>';
-    document.getElementById('ot-sel-clear').addEventListener('click',function(){ otState.sel={}; cargarOT(); });
+    document.getElementById('ot-sel-clear').addEventListener('click',function(){ otState.sel={}; renderOT(); });
+    document.getElementById('ot-sel-print').addEventListener('click',function(){ var ids=Object.keys(otState.sel).filter(function(k){return otState.sel[k];}); imprimirOTs(ids); });
     document.getElementById('ot-sel-asig').addEventListener('click',function(){
       var ids=Object.keys(otState.sel).filter(function(k){return otState.sel[k];});
       var cuad=document.getElementById('ot-sel-cuad').value, fecha=document.getElementById('ot-sel-fecha').value;
@@ -876,9 +890,12 @@
     });
   }
   function detalleOT(id){
-    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,domicilio_full,barrio,caja_nap,puerto,precinto),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
+    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,domicilio_full,barrio,caja_nap,puerto,precinto,tv_online,pack_futbol),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
       var o=d[0]; if(!o)return;
       function fr(k,v){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+esc(v||'—')+'</span></div>'; }
+      function frHtml(k,vh){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+vh+'</span></div>'; }
+      var _tv=o.clientes&&o.clientes.tv_online, _fut=o.clientes&&o.clientes.pack_futbol;
+      var servHtml=(_tv||_fut)?('<b style="color:#0f172a">'+(_tv?'📺 TV':'')+(_tv&&_fut?' · ':'')+(_fut?'⚽ Pack Fútbol':'')+'</b>'):'<span class="muted">Sin TV / Sin Fútbol</span>';
       var cuadOpts='<option value="">— sin asignar —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(o.cuadrilla_id==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
       var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)';
       var nums=o.clientes?('N° Nexa '+o.clientes.numero_cliente+(o.clientes.codigo_ispcube?(' · Cód. ISPcube '+o.clientes.codigo_ispcube):' · sin cargar en ISPcube')):'';
@@ -886,7 +903,8 @@
       modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+(oTel?waLink(oTel,cli,o.tipo,oDom,'Coordinar visita'):'')+'</p>'
         +'<div class="fichagrid">'+fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+(o.clientes?fr('DNI',(o.clientes.tipo_doc||'DNI')+' '+(o.clientes.doc_numero||'—')):'')+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(oTel||'—')+' '+waLink(oTel,cli,o.tipo,oDom)+'</span></div>'+fr('Domicilio',oDom)+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
-        +(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))+'</div>'
+        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))+'</div>'
+        +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Este cliente lleva TV</div><div class="muted" style="font-size:12px">Asignale una cuenta de TV (usuario y contraseña) para que se imprima en la orden y el técnico la habilite.</div><div id="ot-tv-cont" style="margin-top:8px"></div></div>':'')
         +'<label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select>'
         +'<div class="row"><div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
         +'<label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select>'
@@ -894,6 +912,7 @@
         +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button><button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>', 'wide');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
       document.getElementById('ot-print').addEventListener('click',function(){ imprimirOT(id); });
+      if(_tv) cargarTvOT(o);
       if(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'||o.estado==='NO_REALIZADA') cargarCierreOT(o);
       document.getElementById('ot-save').addEventListener('click',function(){
         var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
@@ -912,6 +931,36 @@
           else { toast('No se pudo eliminar (¿tiene movimientos asociados?).'); }
         }).catch(function(){ toast('No se pudo eliminar.'); });
       });
+    });
+  }
+  // ── Cuenta TV de la OT: vincula una cuenta del pool (usuario+clave) y la deja lista para imprimir en la orden ──
+  function cargarTvOT(o){
+    var cont=document.getElementById('ot-tv-cont'); if(!cont) return;
+    cont.innerHTML='<div class="muted" style="font-size:12px">Cargando cuentas…</div>';
+    Promise.all([
+      sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&clave=in.(usuario_tv,pass_tv)&select=clave,valor'),
+      sbGet('cuentas_tv?estado=eq.DISPONIBLE&select=id,usuario,contrasena,mail,pack_futbol&order=usuario&limit=500')
+    ]).then(function(r){
+      var dm={}; (r[0]||[]).forEach(function(x){ dm[x.clave]=x.valor; }); var disp=r[1]||[];
+      if(dm.usuario_tv){
+        cont.innerHTML='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>✅ Cuenta asignada: <b>'+esc(dm.usuario_tv)+'</b> · clave <b>'+esc(dm.pass_tv||'—')+'</b> <span class="muted">(se imprime en la OT)</span></span><button class="btn btn-2" id="ot-tv-change">Cambiar</button></div>';
+        var ch=document.getElementById('ot-tv-change'); if(ch) ch.addEventListener('click',function(){ _tvPicker(o,disp,cont); });
+      } else { _tvPicker(o,disp,cont); }
+    }).catch(function(){ cont.innerHTML='<div class="muted" style="font-size:12px;color:var(--rojo)">No se pudieron cargar las cuentas TV.</div>'; });
+  }
+  function _tvPicker(o,disp,cont){
+    if(!disp.length){ cont.innerHTML='<div style="color:#b45309;font-size:13px">No hay cuentas TV <b>DISPONIBLES</b> en el pool. Cargá una en «Cuentas TV» y volvé.</div>'; return; }
+    cont.innerHTML='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select id="ot-tv-sel" style="width:auto;max-width:260px">'+disp.map(function(t){return '<option value="'+t.id+'">'+esc(t.usuario||('cuenta '+t.id))+(t.pack_futbol?' ⚽':'')+'</option>';}).join('')+'</select><button class="btn btn-ok" id="ot-tv-asig">📺 Asignar a la OT</button></div>';
+    document.getElementById('ot-tv-asig').addEventListener('click',function(){
+      var id=document.getElementById('ot-tv-sel').value, cta=disp.filter(function(t){return String(t.id)===String(id);})[0]; if(!cta) return;
+      var btn=this; btn.disabled=true; btn.textContent='Asignando…';
+      var cliId=o.cliente_id||(o.clientes&&o.clientes.id)||null;
+      Promise.all([
+        sbPatch('cuentas_tv?id=eq.'+cta.id,{ estado:'EN_USO', cliente_id:cliId }),
+        fetch(SB_URL+'/rest/v1/ot_datos_servicio?ot_id=eq.'+o.id+'&clave=in.(usuario_tv,pass_tv)',{method:'DELETE',headers:H})
+          .then(function(){ return sbPost('ot_datos_servicio',[{ot_id:o.id,clave:'usuario_tv',valor:cta.usuario||'',origen:'ADMIN'},{ot_id:o.id,clave:'pass_tv',valor:cta.contrasena||'',origen:'ADMIN'}]); })
+      ]).then(function(){ toast('Cuenta TV asignada ✓ — ya se imprime en la OT'); cargarTvOT(o); })
+        .catch(function(){ btn.disabled=false; btn.textContent='📺 Asignar a la OT'; toast('No se pudo asignar la cuenta.'); });
     });
   }
 
@@ -1274,21 +1323,33 @@
   }
   function cargarAsignar(){
     var cont=document.getElementById('asig-cont'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,prioridad,clientes(numero_cliente,nombre,apellido,barrio),tipos_trabajo(nombre)&order=created_at.asc&limit=500').then(function(d){
+    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,prioridad,created_at,clientes(numero_cliente,nombre,apellido,barrio,telefono,domicilio_full),tipos_trabajo(nombre)&order=created_at.asc&limit=1000').then(function(d){
       d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay OTs pendientes de asignar. 🎉</div>'; return; }
       var cuadOpts='<option value="">— cuadrilla —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
-      var h='<div class="muted" style="margin-bottom:8px">'+d.length+' OT pendientes de asignar</div><table><thead><tr><th>N° OT</th><th>Tipo</th><th>Cliente</th><th>Barrio</th><th>Cuadrilla</th><th>Fecha</th><th></th></tr></thead><tbody>';
-      d.forEach(function(o){ var cli=o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)';
-        h+='<tr data-id="'+o.id+'" data-num="'+esc(o.numero)+'"><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(cli)+'</td><td>'+esc(o.clientes?o.clientes.barrio||'':'')+'</td>'
-          +'<td><select class="asig-cuad" style="width:auto">'+cuadOpts+'</select></td><td><input type="date" class="asig-fecha" style="width:auto"></td>'
-          +'<td><button class="btn btn-ok asig-go" style="padding:7px 12px">Asignar</button></td></tr>'; });
-      h+='</tbody></table>'; cont.innerHTML=h;
-      cont.addEventListener('click',function(e){ var b=e.target.closest('.asig-go'); if(!b) return; var tr=b.closest('tr'); var id=tr.getAttribute('data-id'), cuad=tr.querySelector('.asig-cuad').value, fecha=tr.querySelector('.asig-fecha').value;
+      var cols=[
+        {k:'numero',t:'N° OT',sort:function(o){return Number(o.numero)||o.numero;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
+        {k:'tipo',t:'Tipo',sort:function(o){return o.tipo;},r:function(o){return esc(o.tipo);}},
+        {k:'cliente',t:'Cliente',sort:function(o){return o.clientes?((o.clientes.apellido||'')+(o.clientes.nombre||'')):'';},r:function(o){return o.clientes?('N°'+esc(o.clientes.numero_cliente)+' · '+esc((o.clientes.nombre||'')+' '+(o.clientes.apellido||''))):'(obra de red)';}},
+        {k:'barrio',t:'Barrio',sort:function(o){return o.clientes?(o.clientes.barrio||''):'';},r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
+        {k:'trabajo',t:'Trabajo',sort:function(o){return o.tipos_trabajo?o.tipos_trabajo.nombre:'';},r:function(o){return esc(o.tipos_trabajo?o.tipos_trabajo.nombre:'—');}},
+        {k:'prioridad',t:'Prioridad',def:false,sort:function(o){return o.prioridad;},r:function(o){return esc(o.prioridad||'');}},
+        {k:'creada',t:'Creada',def:false,sort:function(o){return o.created_at||'';},r:function(o){return esc(fmtFecha(o.created_at));}},
+        {k:'cuad',t:'Cuadrilla',sort:null,fixed:true,r:function(o){return '<select class="asig-cuad" data-id="'+o.id+'" style="width:auto">'+cuadOpts+'</select>';}},
+        {k:'fecha',t:'Fecha',sort:null,fixed:true,r:function(o){return '<input type="date" class="asig-fecha" data-id="'+o.id+'" style="width:auto">';}},
+        {k:'accion',t:'',sort:null,fixed:true,r:function(o){return '<button class="btn btn-ok asig-go" data-id="'+o.id+'" data-num="'+esc(o.numero)+'" style="padding:7px 12px">Asignar</button>';}}
+      ];
+      cont.innerHTML='<div class="muted" style="margin-bottom:8px">'+d.length+' OT pendientes de asignar · tocá una cabecera para ordenar (por <b>Barrio</b> te las agrupa por zona)</div><div id="asig-grid"></div>';
+      var grid=document.getElementById('asig-grid');
+      gridRender(grid,cols,d,{key:'asig'});
+      grid.addEventListener('click',function(e){ var b=e.target.closest('.asig-go'); if(!b) return; var id=b.getAttribute('data-id');
+        var sel=grid.querySelector('.asig-cuad[data-id="'+id+'"]'), fe=grid.querySelector('.asig-fecha[data-id="'+id+'"]');
+        var cuad=sel?sel.value:'', fecha=fe?fe.value:'';
         if(!cuad){ toast('Elegí una cuadrilla.'); return; }
         b.disabled=true; b.textContent='…'; var upd={ cuadrilla_id:Number(cuad), estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha) upd.fecha_agendada=fecha;
-        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ toast('OT N° '+tr.getAttribute('data-num')+' asignada ✓'); tr.parentNode.removeChild(tr); var tb=cont.querySelector('tbody'); if(tb&&!tb.children.length){ cont.innerHTML='<div class="center">No quedan OTs pendientes de asignar. 🎉</div>'; } })
-        .catch(function(){ b.disabled=false; b.textContent='Asignar'; toast('No se pudo asignar.'); }); });
+        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ toast('OT N° '+b.getAttribute('data-num')+' asignada ✓'); var tr=b.closest('tr'); if(tr)tr.parentNode.removeChild(tr); })
+        .catch(function(){ b.disabled=false; b.textContent='Asignar'; toast('No se pudo asignar.'); });
+      });
     });
   }
 
@@ -1525,13 +1586,19 @@
   }
 
   // ── IMPRESIÓN DE OT ── (hoja vertical A4, blanco y negro para impresora láser — mínimo tóner)
-  function imprimirOT(id){
-    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(numero_cliente,nombre,apellido,doc_numero,telefono,email,domicilio_full,barrio,tecnologia,caja_nap,puerto,precinto,tv_online,planes(nombre)),motivos_ot(nombre),tipos_trabajo(id,nombre)&limit=1').then(function(d0){
-      var o=(d0||[])[0]; if(!o){ toast('No se encontró la OT.'); return; }
+  var _OT_PRINT_CSS='*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000;font-size:10px;padding:8px;line-height:1.2}'
+    +'.logo{font-size:18px;font-weight:bold;letter-spacing:1px}.sec{font-size:10px;font-weight:bold;border-bottom:1px solid #000;padding-bottom:1px;margin:6px 0 3px}'
+    +'.tg{border:1px solid #000;padding:1px 6px;font-size:9px;font-weight:bold}td{font-size:10px;padding:0;vertical-align:top}'
+    +'.ot-page{padding:8px}.ot-page+.ot-page{page-break-before:always}'
+    +'@media print{body{padding:0}@page{size:A4 portrait;margin:7mm}}';
+  // Arma el cuerpo imprimible de UNA orden (sin <html>/<body>) → reusable para imprimir 1 o varias
+  function _otPrintBody(id){
+    return sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(numero_cliente,nombre,apellido,doc_numero,telefono,email,domicilio_full,barrio,tecnologia,caja_nap,puerto,precinto,tv_online,pack_futbol,planes(nombre)),motivos_ot(nombre),tipos_trabajo(id,nombre)&limit=1').then(function(d0){
+      var o=(d0||[])[0]; if(!o) throw new Error('OT no encontrada');
       var cli=o.clientes||{};
       var ttId=o.tipo_trabajo_id;
       if(!ttId){ var trc0=(cli.tecnologia||''); var cod=/ftth/i.test(trc0)?'FTTH':(/(inalamb|wireless|wifi)/i.test(trc0)?'WIRELESS':null); if(cod){ var f0=REF.tiposTrab.filter(function(t){return t.codigo===cod;})[0]; if(f0) ttId=f0.id; } }
-      Promise.all([
+      return Promise.all([
         ttId?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=catalogo_materiales(nombre,activo)&order=orden'):Promise.resolve(null),
         ttId?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=mano_obra_catalogo(nombre,activo)&order=orden'):Promise.resolve(null),
         sbGet('ot_datos_servicio?ot_id=eq.'+id+'&select=clave,valor'),
@@ -1557,24 +1624,25 @@
       function half(a){ var h=Math.ceil(a.length/2); return [a.slice(0,h),a.slice(h)]; }
       var mc=half(kitMat), oc=half(kitMo), fecha=new Date().toLocaleDateString('es-AR');
       function col(a){ return a.map(function(m){return box(esc(m.nombre));}).join(''); }
-      var css='*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000;font-size:10px;padding:8px;line-height:1.2}'
-        +'.logo{font-size:18px;font-weight:bold;letter-spacing:1px}.sec{font-size:10px;font-weight:bold;border-bottom:1px solid #000;padding-bottom:1px;margin:6px 0 3px}'
-        +'.tg{border:1px solid #000;padding:1px 6px;font-size:9px;font-weight:bold}td{font-size:10px;padding:0;vertical-align:top}'
-        +'@media print{body{padding:0}@page{size:A4 portrait;margin:7mm}}';
-      var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>OT '+esc(o.numero)+'</title><style>'+css+'</style></head><body>'
+      var tvReq=!!cli.tv_online, futReq=!!cli.pack_futbol;
+      var servChip=(tvReq||futReq)
+        ? '<span style="border:1.5px solid #000;background:#000;color:#fff;padding:1px 6px;font-size:9px;font-weight:bold">'+(tvReq?'📺 TV':'')+(tvReq&&futReq?' + ':'')+(futReq?'⚽ FÚTBOL':'')+'</span>'
+        : '<span style="font-size:9px">Sin TV / Sin Fútbol</span>';
+      var body='<div class="ot-page">'
         +'<div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:5px">'
           +'<div><div class="logo">nexa</div><div style="font-size:9px">Nexa SAS · Posadas, Misiones</div></div>'
           +'<div style="text-align:right"><div style="font-size:13px;font-weight:bold">ORDEN DE TRABAJO</div><div style="font-size:10px">N° <b style="font-family:monospace;font-size:13px">'+esc(o.numero)+'</b> · '+fecha+'</div><div style="margin-top:2px"><span class="tg">'+esc(tipoLabel)+'</span> &nbsp; <span class="tg">'+esc(tecLabel)+'</span></div></div></div>'
         +'<table style="width:100%;margin-bottom:4px"><tr><td style="width:72px">Cliente</td><td style="font-weight:bold">'+esc(cli.nombre||'')+' '+esc(cli.apellido||'')+'</td><td style="width:72px">N° cliente</td><td style="font-weight:bold">'+esc(cli.numero_cliente||'')+'</td></tr>'
           +'<tr><td>DNI</td><td>'+esc(cli.doc_numero||'')+'</td><td>Plan</td><td style="font-weight:bold">'+esc(cli.planes?cli.planes.nombre:'')+'</td></tr>'
           +'<tr><td>Domicilio</td><td colspan="3">'+esc(cli.domicilio_full||'')+(cli.barrio?(' ('+esc(cli.barrio)+')'):'')+'</td></tr>'
-          +'<tr><td>Teléfono</td><td>'+esc(cli.telefono||'')+'</td><td>Conexión actual</td><td><b>Caja:</b> '+esc(cli.caja_nap||'—')+' · <b>Puerto:</b> '+esc(cli.puerto||'—')+' · <b>Precinto:</b> '+esc(cli.precinto||'—')+'</td></tr>'
+          +'<tr><td>Teléfono</td><td>'+esc(cli.telefono||'')+'</td><td>Servicios</td><td>'+servChip+'</td></tr>'
+          +'<tr><td>Conexión</td><td colspan="3"><b>Caja:</b> '+esc(cli.caja_nap||'—')+' · <b>Puerto:</b> '+esc(cli.puerto||'—')+' · <b>Precinto:</b> '+esc(cli.precinto||'—')+'</td></tr>'
           +'<tr><td>Cuadrilla</td><td colspan="3">________________   Hora: __:__ a __:__</td></tr></table>'
         +'<div style="border:1px solid #000;padding:3px 8px;margin-bottom:4px"><b>Descripción:</b> '+esc(o.descripcion||tipoLabel)+'</div>'
         +'<div class="sec">Materiales</div><div style="display:flex;gap:8px"><div style="flex:1">'+col(mc[0])+'</div><div style="flex:1">'+col(mc[1])+'</div></div>'
         +'<div class="sec">Mano de obra (realizada en domicilio)</div><div style="display:flex;gap:8px"><div style="flex:1">'+col(oc[0])+'</div><div style="flex:1">'+col(oc[1])+'</div></div>'
-        +'<div class="sec">▼ Datos para el técnico (los carga administración)</div>'
-          +datos2([['Correo',esc(datos.correo||cli.email||'')],['SSID (WiFi)',esc(datos.ssid||'')],['Contraseña WiFi',esc(datos.pass_wifi||'')],['Usuario TV',esc(datos.usuario_tv||'')],['Contraseña TV',esc(datos.pass_tv||'')]])
+        +'<div class="sec">▼ Datos para el técnico (los carga administración)'+(tvReq?' — ⚠️ ESTE CLIENTE LLEVA TV: completá Usuario/Contraseña TV':'')+'</div>'
+          +datos2([['Correo',esc(datos.correo||cli.email||'')],['SSID (WiFi)',esc(datos.ssid||'')],['Contraseña WiFi',esc(datos.pass_wifi||'')],['Usuario TV',esc(datos.usuario_tv||'')],['Contraseña TV',esc(datos.pass_tv||'')],['Pack Fútbol',futReq?'SÍ':'no']])
         +'<div class="sec">▲ A completar por el técnico (el admin lo carga en ISPcube)</div>'
           +datos2([['Precinto Telecrafter',''],['Caja (NAP)',''],['Puerto de fibra',''],['Access Point',''],['MAC del módem',''],['Serial / Modelo','']])
         +'<div class="sec">Observaciones</div><div style="border:1px solid #000;height:38px;margin-bottom:10px"></div>'
@@ -1582,11 +1650,68 @@
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Firma del Cliente</div>'
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Firma del Técnico</div>'
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Fecha</div></div>'
-        +'</body></html>';
-      var win=window.open('','_blank'); if(!win){ toast('Permití las ventanas emergentes para imprimir.'); return; }
-      win.document.write(html); win.document.close(); setTimeout(function(){ try{ win.focus(); win.print(); }catch(e){} },400);
-      }).catch(function(){ toast('No se pudo armar la impresión.'); });
-    }).catch(function(){ toast('No se pudo armar la impresión.'); });
+        +'</div>';
+      return body;
+      });
+    });
+  }
+  function _otPrintOpen(title, bodies){
+    var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(title)+'</title><style>'+_OT_PRINT_CSS+'</style></head><body>'+bodies.join('')+'</body></html>';
+    var win=window.open('','_blank'); if(!win){ toast('Permití las ventanas emergentes para imprimir.'); return; }
+    win.document.write(html); win.document.close(); setTimeout(function(){ try{ win.focus(); win.print(); }catch(e){} },400);
+  }
+  // ¿La OT lleva TV y todavía NO tiene cuenta (usuario_tv) cargada?
+  function _otTvPendiente(id){
+    return Promise.all([
+      sbGet('ordenes_trabajo?id=eq.'+id+'&select=id,numero,cliente_id,clientes(id,tv_online)&limit=1'),
+      sbGet('ot_datos_servicio?ot_id=eq.'+id+'&clave=eq.usuario_tv&select=valor&limit=1')
+    ]).then(function(r){ var o=(r[0]||[])[0]||{id:id}; var tv=o.clientes&&o.clientes.tv_online; var has=((r[1]||[])[0]||{}).valor; return {pendiente:!!(tv&&!has),o:o}; });
+  }
+  // Modal para elegir una cuenta TV antes de imprimir (lo dispara la impresión si está pendiente)
+  function _tvAsignarModal(o, onAssigned, onSkip){
+    sbGet('cuentas_tv?estado=eq.DISPONIBLE&select=id,usuario,contrasena,pack_futbol&order=usuario&limit=500').then(function(disp){
+      disp=Array.isArray(disp)?disp:[];
+      var sel=disp.length?'<select id="tvp-sel" style="width:100%">'+disp.map(function(t){return '<option value="'+t.id+'">'+esc(t.usuario||('cuenta '+t.id))+(t.pack_futbol?' ⚽':'')+'</option>';}).join('')+'</select>':'<div style="color:#b45309;font-size:13px">No hay cuentas TV DISPONIBLES en el pool. Cargá una en «Cuentas TV».</div>';
+      modal('<h2>📺 Cuenta TV — OT N° '+esc(o.numero)+'</h2><p class="muted">Este cliente lleva TV. Elegí la cuenta para que el usuario y la contraseña salgan impresos en la orden.</p>'+sel
+        +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+(disp.length?'<button class="btn btn-ok" id="tvp-ok">Asignar e imprimir</button>':'')+'<button class="btn btn-2" id="tvp-skip">Imprimir sin cuenta</button><button class="btn btn-x" id="tvp-cancel">Cancelar</button></div>');
+      document.getElementById('tvp-cancel').addEventListener('click',cerrarModal);
+      document.getElementById('tvp-skip').addEventListener('click',function(){ cerrarModal(); if(onSkip)onSkip(); });
+      var ok=document.getElementById('tvp-ok'); if(ok) ok.addEventListener('click',function(){
+        var id=document.getElementById('tvp-sel').value, cta=disp.filter(function(t){return String(t.id)===String(id);})[0]; if(!cta) return;
+        var btn=this; btn.disabled=true; btn.textContent='Asignando…';
+        var cliId=o.cliente_id||(o.clientes&&o.clientes.id)||null;
+        Promise.all([ sbPatch('cuentas_tv?id=eq.'+cta.id,{ estado:'EN_USO', cliente_id:cliId }),
+          fetch(SB_URL+'/rest/v1/ot_datos_servicio?ot_id=eq.'+o.id+'&clave=in.(usuario_tv,pass_tv)',{method:'DELETE',headers:H}).then(function(){ return sbPost('ot_datos_servicio',[{ot_id:o.id,clave:'usuario_tv',valor:cta.usuario||'',origen:'ADMIN'},{ot_id:o.id,clave:'pass_tv',valor:cta.contrasena||'',origen:'ADMIN'}]); })
+        ]).then(function(){ cerrarModal(); toast('Cuenta TV asignada ✓'); if(onAssigned)onAssigned(); }).catch(function(){ btn.disabled=false; btn.textContent='Asignar e imprimir'; toast('No se pudo asignar.'); });
+      });
+    });
+  }
+  function _doImprimirOT(id){ _otPrintBody(id).then(function(body){ _otPrintOpen('OT', [body]); }).catch(function(){ toast('No se pudo armar la impresión.'); }); }
+  function imprimirOT(id){
+    _otTvPendiente(id).then(function(st){
+      if(st.pendiente){ cerrarModal(); _tvAsignarModal(st.o, function(){ _doImprimirOT(id); }, function(){ _doImprimirOT(id); }); }
+      else _doImprimirOT(id);
+    }).catch(function(){ _doImprimirOT(id); });
+  }
+  function _doImprimirOTs(ids){
+    toast('Armando impresión de '+ids.length+' OT…');
+    Promise.all(ids.map(function(id){ return _otPrintBody(id).catch(function(){ return '<div class="ot-page"><b>No se pudo cargar la OT '+esc(id)+'</b></div>'; }); }))
+      .then(function(bodies){ _otPrintOpen(ids.length+' órdenes', bodies); })
+      .catch(function(){ toast('No se pudo armar la impresión.'); });
+  }
+  // Imprime varias OTs en un solo documento (una por página); avisa si alguna lleva TV sin cuenta
+  function imprimirOTs(ids){
+    if(!ids||!ids.length){ toast('No hay órdenes seleccionadas.'); return; }
+    Promise.all(ids.map(_otTvPendiente)).then(function(sts){
+      var pend=sts.filter(function(s){return s.pendiente;});
+      if(pend.length){
+        modal('<h2>📺 '+pend.length+' OT con TV sin cuenta</h2><p class="muted">Estas órdenes llevan TV y todavía no tienen cuenta asignada. Lo ideal es asignarles la cuenta entrando a cada OT (queda vinculada al cliente). Si imprimís igual, saldrán con el aviso para que el técnico/admin las complete a mano.</p>'
+          +'<div class="muted" style="font-size:13px;margin:8px 0">'+pend.map(function(s){return 'N° '+esc(s.o.numero);}).join(' · ')+'</div>'
+          +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-pri" id="bp-go">🖨️ Imprimir igual ('+ids.length+')</button><button class="btn btn-2" id="bp-cancel">Cancelar</button></div>');
+        document.getElementById('bp-cancel').addEventListener('click',cerrarModal);
+        document.getElementById('bp-go').addEventListener('click',function(){ cerrarModal(); _doImprimirOTs(ids); });
+      } else _doImprimirOTs(ids);
+    }).catch(function(){ _doImprimirOTs(ids); });
   }
 
   // ── USUARIOS ── (solo superadmin: ABM de accesos; los técnicos usan su usuario en la PWA)
