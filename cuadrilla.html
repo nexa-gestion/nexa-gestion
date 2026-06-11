@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.7</title>
+<title>Nexa · Técnico — v0.8</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.7';
+  var VER='v0.8';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -199,29 +199,32 @@
       sbPatch('ordenes_trabajo?id=eq.'+o.id,body).then(function(){ o.estado='EN_CURSO'; toast('Tarea iniciada ▶'); vDetalle(o); });
     });
   }
+  function _cieArr(x){ return Array.isArray(x)?x:[]; }
+  function _ttPorTec(tipos,tec){ if(!tec) return null; var cod=/ftth/i.test(tec)?'FTTH':(/(inalamb|wireless|wifi)/i.test(tec)?'WIRELESS':null); if(!cod) return null; var t=_cieArr(tipos).filter(function(x){return x.codigo===cod;})[0]; return t?t.id:null; }
   function abrirCierre(o){
     app.innerHTML=topBar('Cerrar OT N° '+o.numero,o.tipo)+'<div class="wrap"><div class="center"><div class="spin"></div></div></div>';
-    sbGet('ordenes_trabajo?id=eq.'+o.id+'&select=id,numero,tipo,tipo_trabajo_id,clientes(id,tecnologia,nombre,apellido)&limit=1').then(function(d){
-      var ot=(d&&d[0])||o, ttId=ot.tipo_trabajo_id, tec=ot.clientes?ot.clientes.tecnologia:'';
-      function go(){
-        var qMat= ttId? 'tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=orden,catalogo_materiales(id,nombre,serial_tipo,unidad)&order=orden.asc' : null;
-        var qMo = ttId? 'tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=orden,mano_obra_catalogo(id,nombre)&order=orden.asc' : null;
-        Promise.all([
-          qMat?sbGet(qMat):Promise.resolve([]), qMo?sbGet(qMo):Promise.resolve([]),
-          sbGet('stock_seriales?estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+CUAD.id+'&select=id,serial,material_id'),
-          sbGet('motivos_ot?select=id,nombre&order=nombre'),
-          sbGet('ot_datos_servicio?ot_id=eq.'+ot.id+'&origen=eq.ADMIN&select=clave,valor')
-        ]).then(function(r){
-          var arr=function(x){ return Array.isArray(x)?x:[]; };
-          var kitMat=arr(r[0]).filter(function(x){return x.catalogo_materiales;}).map(function(x){return x.catalogo_materiales;});
-          var kitMo=arr(r[1]).filter(function(x){return x.mano_obra_catalogo;}).map(function(x){return x.mano_obra_catalogo;});
-          CIE={ o:ot, accion:'REALIZADA', kitMat:kitMat, kitMo:kitMo, seriales:arr(r[2]), motivos:arr(r[3]), datosAdmin:arr(r[4]), mats:{}, mos:{}, fotos:[] };
-          renderCierre();
-        });
-      }
-      if(!ttId && tec){ var cod=/ftth/i.test(tec)?'FTTH':(/(inalamb|wireless|wifi)/i.test(tec)?'WIRELESS':null);
-        if(cod){ sbGet('tipos_trabajo?codigo=eq.'+cod+'&select=id&limit=1').then(function(t){ if(t&&t[0])ttId=t[0].id; go(); }); return; } }
-      go();
+    Promise.all([
+      sbGet('ordenes_trabajo?id=eq.'+o.id+'&select=id,numero,tipo,tipo_trabajo_id,clientes(id,tecnologia,nombre,apellido)&limit=1'),
+      sbGet('tipos_trabajo?activo=eq.true&select=id,nombre,codigo&order=orden'),
+      sbGet('stock_seriales?estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+CUAD.id+'&select=id,serial,material_id'),
+      sbGet('motivos_ot?select=id,nombre&order=nombre'),
+      sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&origen=eq.ADMIN&select=clave,valor')
+    ]).then(function(r){
+      var ot=(r[0]&&r[0][0])||o, tipos=_cieArr(r[1]), tec=ot.clientes?ot.clientes.tecnologia:'';
+      CIE={ o:ot, accion:'REALIZADA', tipos:tipos, ttId:(ot.tipo_trabajo_id||_ttPorTec(tipos,tec)||null), kitMat:[], kitMo:[], seriales:_cieArr(r[2]), motivos:_cieArr(r[3]), datosAdmin:_cieArr(r[4]), mats:{}, mos:{}, fotos:[] };
+      cieCargarKit();
+    });
+  }
+  // Trae materiales + mano de obra del tipo de trabajo elegido y re-renderiza (el técnico elige primero, después aparece el kit)
+  function cieCargarKit(){
+    if(!CIE.ttId){ CIE.kitMat=[]; CIE.kitMo=[]; renderCierre(); return; }
+    Promise.all([
+      sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+CIE.ttId+'&select=orden,catalogo_materiales(id,nombre,serial_tipo,unidad)&order=orden.asc'),
+      sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+CIE.ttId+'&select=orden,mano_obra_catalogo(id,nombre)&order=orden.asc')
+    ]).then(function(r){
+      CIE.kitMat=_cieArr(r[0]).filter(function(x){return x.catalogo_materiales;}).map(function(x){return x.catalogo_materiales;});
+      CIE.kitMo=_cieArr(r[1]).filter(function(x){return x.mano_obra_catalogo;}).map(function(x){return x.mano_obra_catalogo;});
+      renderCierre();
     });
   }
   function cieMat(matId){ if(!CIE.mats[matId]) CIE.mats[matId]={cant:0,sel:[]}; return CIE.mats[matId]; }
@@ -233,9 +236,10 @@
       +'<button class="btn '+(CIE.accion==='REALIZADA'?'btn-ok':'btn-2')+'" id="ac-si">✅ Realizada</button>'
       +'<button class="btn '+(CIE.accion==='NO_REALIZADA'?'btn-2':'btn-2')+'" id="ac-no" style="'+(CIE.accion==='NO_REALIZADA'?'background:var(--rojo);color:#fff;border-color:var(--rojo)':'')+'">✕ No realizada</button></div></div>';
     if(CIE.accion==='REALIZADA'){
+      h+='<div class="card"><div class="label">¿Qué tipo de trabajo? <span style="font-weight:400;color:var(--gris)">(trae los materiales y la mano de obra)</span></div><select id="cie-tt" style="width:100%">'+'<option value="">— elegí —</option>'+CIE.tipos.map(function(t){return '<option value="'+t.id+'"'+(CIE.ttId==t.id?' selected':'')+'>'+esc(t.nombre)+'</option>';}).join('')+'</select></div>';
       if(CIE.datosAdmin.length){ h+='<div class="card"><div class="label">Datos para configurar (cargados por admin)</div>'+CIE.datosAdmin.map(function(x){return fila(x.clave,x.valor||'—');}).join('')+'</div>'; }
       h+='<div class="card"><div class="label">Materiales usados</div>';
-      if(!CIE.kitMat.length) h+='<div class="muted">Sin kit de materiales para este tipo de trabajo.</div>';
+      if(!CIE.kitMat.length) h+='<div class="muted">'+(CIE.ttId?'Este tipo de trabajo no tiene materiales cargados.':'Elegí el tipo de trabajo arriba para ver los materiales.')+'</div>';
       CIE.kitMat.forEach(function(m){ var st=cieMat(m.id), ser=(m.serial_tipo==='INDIVIDUAL'||m.serial_tipo==='CORRELATIVO');
         h+='<div style="border-bottom:1px solid var(--bord);padding:9px 0"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;font-weight:600">'+esc(m.nombre)+(ser?' <span class="badge-tt">serial</span>':'')+'</div>'
           +'<button class="btn mat-menos" data-m="'+m.id+'" style="width:38px;padding:7px">−</button><div style="width:34px;text-align:center;font-weight:800">'+st.cant+'</div><button class="btn mat-mas" data-m="'+m.id+'" style="width:38px;padding:7px">+</button></div>';
@@ -269,6 +273,7 @@
     var asi=document.getElementById('ac-si'), ano=document.getElementById('ac-no');
     if(asi) asi.addEventListener('click',function(){ CIE.accion='REALIZADA'; renderCierre(); });
     if(ano) ano.addEventListener('click',function(){ CIE.accion='NO_REALIZADA'; renderCierre(); });
+    var ctt=document.getElementById('cie-tt'); if(ctt) ctt.addEventListener('change',function(){ CIE.ttId=ctt.value?Number(ctt.value):null; CIE.mats={}; CIE.mos={}; cieCargarKit(); });
     each('.mat-mas',function(b){ b.onclick=function(){ cieMat(b.getAttribute('data-m')).cant++; renderCierre(); }; });
     each('.mat-menos',function(b){ b.onclick=function(){ var s=cieMat(b.getAttribute('data-m')); if(s.cant>0)s.cant--; if(s.sel.length>s.cant)s.sel=s.sel.slice(0,s.cant); renderCierre(); }; });
     each('.mo-mas',function(b){ b.onclick=function(){ var k=b.getAttribute('data-m'); CIE.mos[k]=(CIE.mos[k]||0)+1; renderCierre(); }; });
@@ -305,6 +310,7 @@
     getGPS().then(function(g){
       var datos={}; each('.cie-dato',function(inp){ var v=inp.value.trim(); if(v) datos[inp.getAttribute('data-k')]=v; });
       var jobs=[], upd={ estado:(CIE.accion==='REALIZADA'?'CERRADA_TECNICO':'NO_REALIZADA'), fin_tec_at:new Date().toISOString(), observaciones_tec:obs||null };
+      if(CIE.ttId) upd.tipo_trabajo_id=CIE.ttId;   // guarda el tipo de trabajo que eligió el técnico
       if(g){ upd.lat_fin=g.lat; upd.lng_fin=g.lng; }
       if(CIE.accion==='NO_REALIZADA') upd.motivo_cancelacion=CIE._motivo;
       jobs.push(sbPatch('ordenes_trabajo?id=eq.'+o.id,upd));
