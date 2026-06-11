@@ -172,7 +172,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.55';
+  var VER='v0.56';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -1219,7 +1219,7 @@
     '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">',
     '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>',
     '<style>html,body{margin:0;height:100%;font-family:system-ui,Segoe UI,Roboto,sans-serif}#map{position:absolute;inset:0}',
-    '#leg{position:absolute;top:10px;left:10px;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:10px 12px;font-size:13px;max-height:85vh;overflow:auto;min-width:180px}',
+    '#leg{position:absolute;top:10px;right:10px;left:auto;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:10px 12px;font-size:13px;max-height:85vh;overflow:auto;min-width:180px}',
     '#leg h4{margin:0 0 8px;font-size:13px}#leg label{display:flex;align-items:center;gap:7px;margin:4px 0;cursor:pointer}#leg .dot{width:12px;height:12px;border-radius:50%;display:inline-block;flex-shrink:0}',
     '#leg .km{color:#64748b;margin-left:auto;font-size:11px}.numlbl{font-weight:700;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.5)}</style></head>',
     '<body><div id="leg"><h4>🚦 Cuadrillas</h4><div id="legrows"></div></div><div id="map"></div>',
