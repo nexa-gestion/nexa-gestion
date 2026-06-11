@@ -162,7 +162,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.47';
+  var VER='v0.48';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -936,8 +936,8 @@
     var prioFecha=document.getElementById('ag-priofecha').checked, out=document.getElementById('ag-out'); out.innerHTML='<div class="center"><div class="spin"></div></div>';
     sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,created_at,clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,lat,lng,geo_origen)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[]; var byCli={};
-      d.forEach(function(o){ var c=o.clientes; if(!c)return; var v=byCli[c.id]||(byCli[c.id]={cliId:c.id,nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(),num:c.numero_cliente,dir:c.domicilio_full||'',barrio:c.barrio||'',tel:c.telefono||'',caja_nap:c.caja_nap,lat:c.lat,lng:c.lng,geo_src:(c.lat!=null?(c.geo_origen==='nap'?'nap':'gps'):null),tipos:{},edad:0,peso:0});
-        v.tipos[o.tipo]=(v.tipos[o.tipo]||0)+1; var dias=Math.floor((Date.now()-new Date(o.created_at))/86400000); if(dias>v.edad)v.edad=dias; });
+      d.forEach(function(o){ var c=o.clientes; if(!c)return; var v=byCli[c.id]||(byCli[c.id]={cliId:c.id,nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(),num:c.numero_cliente,dir:c.domicilio_full||'',barrio:c.barrio||'',tel:c.telefono||'',caja_nap:c.caja_nap,lat:c.lat,lng:c.lng,geo_src:(c.lat!=null?(c.geo_origen==='nap'?'nap':'gps'):null),tipos:{},edad:0,peso:0,otIds:[]});
+        v.tipos[o.tipo]=(v.tipos[o.tipo]||0)+1; v.otIds.push(o.id); var dias=Math.floor((Date.now()-new Date(o.created_at))/86400000); if(dias>v.edad)v.edad=dias; });
       var visitas=Object.keys(byCli).map(function(k){ var v=byCli[k],pmax=0; Object.keys(v.tipos).forEach(function(t){ var p=pesos[t]!=null?pesos[t]:1; if(p>pmax)pmax=p; }); v.peso=pmax||1; return v; });
       if(!visitas.length){ out.innerHTML='<div class="center">No hay OTs pendientes sin asignar. 🎉</div>'; return; }
       out.innerHTML='<div class="center"><div class="spin"></div><div class="muted" id="ag-prog" style="margin-top:8px">Ubicando clientes (GPS · NAP · barrio · OpenStreetMap)…</div></div>';
@@ -946,7 +946,8 @@
         if(!ubic.length){ out.innerHTML='<div class="center">No se pudo ubicar ninguna OT pendiente.'+(sinUbic.length?(' ('+sinUbic.length+' sin ubicar)'):'')+'</div>'; return; }
         var plan=_agCluster(ubic,cuads,prioFecha);
         plan.cuads.forEach(function(c){ c.color=AG_COLORES[plan.cuads.indexOf(c)%AG_COLORES.length]; _agRoute(c,depot); });
-        agRender(out,plan,sinUbic,depot);
+        out.innerHTML='<div class="center"><div class="spin"></div><div class="muted" style="margin-top:8px">Calculando recorrido por calle (OSRM)…</div></div>';
+        Promise.all(plan.cuads.map(function(c){ return _agOsrmRoute(c,depot); })).then(function(){ agRender(out,plan,sinUbic,depot); });
       });
     });
   }
@@ -972,13 +973,24 @@
     function km(r){ var t=_agHav(depot,r[0]); for(var i=0;i<r.length-1;i++)t+=_agHav(r[i],r[i+1]); return t+_agHav(r[r.length-1],depot); }
     var improved=true,guard=0;
     while(improved&&guard<60){ improved=false; guard++; for(var i=0;i<route.length-1;i++){ for(var j=i+1;j<route.length;j++){ var nr=route.slice(0,i).concat(route.slice(i,j+1).reverse(),route.slice(j+1)); if(km(nr)<km(route)-0.0001){ route=nr; improved=true; } } } }
-    c.stops=route; c.km=km(route);
+    c.stops=route; c.km=km(route); c.kmRecta=c.km;
+  }
+  // Recorrido REAL por calle (OSRM): geometría que sigue las calles + km reales · circuito cerrado (vuelve al depósito)
+  function _agOsrmRoute(c,depot){
+    if(!c.stops.length){ c.geometry=null; return Promise.resolve(); }
+    var coords=[[depot.lng,depot.lat]].concat(c.stops.map(function(s){return [s.lng,s.lat];})).concat([[depot.lng,depot.lat]]);
+    var url='https://router.project-osrm.org/route/v1/driving/'+coords.map(function(p){return p[0]+','+p[1];}).join(';')+'?overview=full&geometries=geojson';
+    var ctrl=('AbortController' in window)?new AbortController():null, t=ctrl?setTimeout(function(){ctrl.abort();},20000):null;
+    return fetch(url,ctrl?{signal:ctrl.signal}:{}).then(function(r){return r.json();}).then(function(j){
+      if(t)clearTimeout(t);
+      if(j&&j.routes&&j.routes[0]){ c.geometry=j.routes[0].geometry.coordinates.map(function(p){return [p[1],p[0]];}); c.km=j.routes[0].distance/1000; c.viaCalle=true; }
+    }).catch(function(){ if(t)clearTimeout(t); /* fallback: queda la recta */ });
   }
   function _agChip(t,n){ return '<span style="display:inline-block;background:#eef2ff;color:#3730a3;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:3px">'+esc(t)+(n>1?(' ×'+n):'')+'</span>'; }
   function _agGeoBadge(src){ var m={gps:['📍 GPS','#16a34a'],nap:['📡 NAP','#2563eb'],barrio:['🏘️ barrio aprox.','#d97706'],osm:['🗺️ mapa aprox.','#d97706']}; var x=m[src]||m.gps; return ' <span style="font-size:10px;font-weight:700;color:'+x[1]+'">'+x[0]+'</span>'; }
   function agRender(out,plan,sinUbic,depot){
-    var kmTot=Math.round(plan.cuads.reduce(function(a,c){return a+(c.km||0);},0)), vis=plan.cuads.reduce(function(a,c){return a+c.stops.length;},0);
-    var h='<div class="toolbar"><button class="btn btn-pri" id="ag-mapa">🗺️ Ver recorrido en el mapa</button><span class="muted">'+vis+' visitas asignadas · '+kmTot+' km total</span></div>';
+    var kmTot=Math.round(plan.cuads.reduce(function(a,c){return a+(c.km||0);},0)), vis=plan.cuads.reduce(function(a,c){return a+c.stops.length;},0), viaCalle=plan.cuads.some(function(c){return c.viaCalle;});
+    var h='<div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center"><button class="btn btn-pri" id="ag-mapa">🗺️ Ver recorrido en el mapa</button><label class="l" style="margin:0">Fecha</label><input type="date" id="ag-fecha" style="width:auto"><button class="btn btn-ok" id="ag-asignar">✅ Asignar plan a las cuadrillas</button><span class="muted">'+vis+' visitas · '+kmTot+' km '+(viaCalle?'🚗 por calle':'(línea recta)')+'</span></div>';
     plan.cuads.forEach(function(c){ var col=c.color;
       h+='<div style="border:1px solid var(--bord);border-left:5px solid '+col+';border-radius:12px;margin-bottom:12px;overflow:hidden"><div style="background:'+col+'14;padding:10px 14px;font-weight:700">'+esc(c.nombre)+' <span class="muted" style="font-weight:400">· '+c.stops.length+' visitas · cupo '+(Math.round(c.usado*100)/100)+'/'+c.cupo+' · '+Math.round(c.km||0)+' km</span></div><div>';
       if(!c.stops.length) h+='<div class="muted" style="padding:8px 14px">Sin visitas.</div>';
@@ -989,6 +1001,20 @@
     if(sinUbic.length) h+='<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:10px 14px"><b style="color:#92400e">📍 Sin ubicar ('+sinUbic.length+')</b> <span class="muted">— sin GPS, coordinar aparte.</span><div class="muted" style="font-size:12px;margin-top:4px">'+sinUbic.map(function(v){return 'N°'+v.num+' '+esc(v.nombre);}).join(' · ')+'</div></div>';
     out.innerHTML=h;
     document.getElementById('ag-mapa').addEventListener('click',function(){ ensureLeaflet(function(){ agVerMapa(plan,depot); }); });
+    var ab=document.getElementById('ag-asignar'); if(ab) ab.addEventListener('click',function(){ agAsignarPlan(plan,this,out); });
+  }
+  // Confirmar el plan: asigna las OTs de cada visita a su cuadrilla (estado ASIGNADA + fecha agendada)
+  function agAsignarPlan(plan,btn,out){
+    if(btn.getAttribute('data-ok')!=='1'){ btn.setAttribute('data-ok','1'); btn.textContent='¿Seguro? Tocá de nuevo para asignar'; return; }
+    var fecha=(document.getElementById('ag-fecha')||{}).value||null;
+    var jobs=[],otsCount=0;
+    plan.cuads.forEach(function(c){ c.stops.forEach(function(v){ if(!v.otIds||!v.otIds.length)return; otsCount+=v.otIds.length;
+      var upd={ cuadrilla_id:c.id, estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha)upd.fecha_agendada=fecha;
+      jobs.push(sbPatch('ordenes_trabajo?id=in.('+v.otIds.join(',')+')',upd)); }); });
+    if(!jobs.length){ toast('No hay OTs para asignar.'); return; }
+    btn.disabled=true; btn.textContent='Asignando…';
+    Promise.all(jobs).then(function(){ toast('✅ Plan asignado · '+otsCount+' OT a '+plan.cuads.filter(function(c){return c.stops.length;}).length+' cuadrillas'); out.innerHTML='<div class="center" style="padding:30px"><div style="font-size:40px">✅</div><b>Plan asignado.</b><div class="muted" style="margin-top:6px">'+otsCount+' OT pasaron a ASIGNADA con su cuadrilla'+(fecha?(' para el '+fmtFecha(fecha)):'')+'. Ya aparecen en cada cuadrilla y en la PWA del técnico.</div></div>'; })
+      .catch(function(){ btn.disabled=false; btn.textContent='✅ Asignar plan a las cuadrillas'; toast('Hubo un error asignando. Reintentá.'); });
   }
   function agVerMapa(plan,depot){
     var ov=document.createElement('div'); ov.id='ag-mapov'; ov.style.cssText='position:fixed;inset:0;z-index:4000;background:#fff'; ov.innerHTML='<div style="position:absolute;top:10px;right:10px;z-index:4100"><button class="btn btn-x" id="ag-mapx">✕ Cerrar</button></div><div id="ag-map" style="width:100%;height:100%"></div>'; document.body.appendChild(ov);
@@ -998,7 +1024,7 @@
     var all=[[depot.lat,depot.lng]]; L.marker([depot.lat,depot.lng]).addTo(m).bindPopup('🚚 Depósito');
     plan.cuads.forEach(function(c){ var col=c.color, pts=[[depot.lat,depot.lng]];
       c.stops.forEach(function(v,i){ pts.push([v.lat,v.lng]); all.push([v.lat,v.lng]); L.circleMarker([v.lat,v.lng],{radius:12,color:'#fff',weight:2,fillColor:col,fillOpacity:1}).addTo(m).bindTooltip(String(i+1),{permanent:true,direction:'center',className:'ag-numlbl'}).bindPopup('<b>N°'+v.num+' '+esc(v.nombre)+'</b><br>'+esc(v.dir)+'<br><b>'+esc(c.nombre)+'</b>'); });
-      pts.push([depot.lat,depot.lng]); if(c.stops.length) L.polyline(pts,{color:col,weight:3,opacity:.7}).addTo(m);
+      pts.push([depot.lat,depot.lng]); if(c.stops.length) L.polyline(c.geometry||pts,{color:col,weight:4,opacity:.75}).addTo(m);
     });
     if(all.length>1) m.fitBounds(all,{padding:[40,40]});
   }
