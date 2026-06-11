@@ -173,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.61';
+  var VER='v0.63';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -1044,30 +1044,37 @@
     });
   }
   // ── CIERRE MANUAL desde el panel (cuando la cuadrilla no pudo cerrar por la PWA) — finaliza directo ──
+  function _ttPorTec(tec){ if(!tec) return null; var cod=/ftth/i.test(tec)?'FTTH':(/(inalamb|wireless|wifi)/i.test(tec)?'WIRELESS':null); if(!cod) return null; var t=(REF.tiposTrab||[]).filter(function(x){return x.codigo===cod;})[0]; return t?t.id:null; }
   function cierreManualOT(o){
-    var ttId=o.tipo_trabajo_id;
+    var CM={ o:o, accion:'REALIZADA', ttId:(o.tipo_trabajo_id||_ttPorTec(o.clientes&&o.clientes.tecnologia)||null), kitMat:[], kitMo:[], seriales:[], motivos:[] };
+    modal('<h2>✍️ Cierre manual — OT N° '+esc(o.numero)+'</h2><p class="muted">Cierre cargado por administración (la cuadrilla no pudo desde el celular). <b>Finaliza la orden</b> y descuenta el stock.</p><div id="cm-body"><div class="center" style="padding:20px"><div class="spin"></div></div></div>','wide');
+    sbGet('motivos_ot?select=id,nombre&order=nombre').then(function(m){ CM.motivos=Array.isArray(m)?m:[]; _cmCargarKit(CM); });
+  }
+  // carga el kit (materiales + mano de obra + seriales de la cuadrilla) según el tipo de trabajo elegido, y re-renderiza
+  function _cmCargarKit(CM){
+    var ttId=CM.ttId;
     Promise.all([
       ttId?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=orden,catalogo_materiales(id,nombre,serial_tipo,unidad)&order=orden.asc'):Promise.resolve([]),
       ttId?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=orden,mano_obra_catalogo(id,nombre)&order=orden.asc'):Promise.resolve([]),
-      o.cuadrilla_id?sbGet('stock_seriales?estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+o.cuadrilla_id+'&select=id,serial,material_id'):Promise.resolve([]),
-      sbGet('motivos_ot?select=id,nombre&order=nombre')
+      CM.o.cuadrilla_id?sbGet('stock_seriales?estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+CM.o.cuadrilla_id+'&select=id,serial,material_id'):Promise.resolve([])
     ]).then(function(r){
       var arr=function(x){return Array.isArray(x)?x:[];};
-      var CM={ o:o, accion:'REALIZADA',
-        kitMat:arr(r[0]).map(function(x){return x.catalogo_materiales;}).filter(Boolean),
-        kitMo:arr(r[1]).map(function(x){return x.mano_obra_catalogo;}).filter(Boolean),
-        seriales:arr(r[2]), motivos:arr(r[3]) };
+      CM.kitMat=arr(r[0]).map(function(x){return x.catalogo_materiales;}).filter(Boolean);
+      CM.kitMo=arr(r[1]).map(function(x){return x.mano_obra_catalogo;}).filter(Boolean);
+      CM.seriales=arr(r[2]);
       _cmRender(CM);
     });
   }
   function _cmEsSerial(m){ return m.serial_tipo==='INDIVIDUAL'||m.serial_tipo==='CORRELATIVO'; }
   function _cmRender(CM){
-    var o=CM.o;
-    var h='<h2>✍️ Cierre manual — OT N° '+esc(o.numero)+'</h2><p class="muted">Cierre cargado por administración (la cuadrilla no pudo desde el celular). <b>Finaliza la orden</b> y descuenta el stock.</p>'
-      +'<div style="display:flex;gap:8px;margin:6px 0 4px"><button type="button" class="btn '+(CM.accion==='REALIZADA'?'btn-ok':'btn-2')+'" id="cm-si">✅ Realizada</button><button type="button" class="btn '+(CM.accion==='NO_REALIZADA'?'btn-x':'btn-2')+'" id="cm-no">✕ No realizada</button></div>';
+    var o=CM.o, body=document.getElementById('cm-body'); if(!body) return;
+    var tiposOpts=(REF.tiposTrab||[]).map(function(t){return '<option value="'+t.id+'"'+(CM.ttId==t.id?' selected':'')+'>'+esc(t.nombre)+'</option>';}).join('');
+    var h='<div style="display:flex;gap:8px;margin:0 0 4px"><button type="button" class="btn '+(CM.accion==='REALIZADA'?'btn-ok':'btn-2')+'" id="cm-si">✅ Realizada</button><button type="button" class="btn '+(CM.accion==='NO_REALIZADA'?'btn-x':'btn-2')+'" id="cm-no">✕ No realizada</button></div>';
     if(CM.accion==='REALIZADA'){
+      h+='<label class="l">Tipo de trabajo <span class="muted" style="text-transform:none;font-weight:400">(define el kit de materiales)</span></label><select id="cm-tt"><option value="">— elegí —</option>'+tiposOpts+'</select>';
       h+='<label class="l">Materiales usados</label>';
-      if(!CM.kitMat.length) h+='<div class="muted" style="font-size:13px">Sin kit de materiales (asigná el tipo de trabajo en el detalle para verlo). Podés cargar igual datos y finalizar.</div>';
+      if(!CM.ttId) h+='<div class="muted" style="font-size:13px">Elegí el tipo de trabajo arriba para ver el kit. Igual podés cargar datos y finalizar.</div>';
+      else if(!CM.kitMat.length) h+='<div class="muted" style="font-size:13px">Este tipo de trabajo no tiene materiales cargados.</div>';
       CM.kitMat.forEach(function(m){
         if(_cmEsSerial(m)){ var disp=CM.seriales.filter(function(s){return s.material_id==m.id;});
           h+='<div style="border-bottom:1px solid #f1f5f9;padding:8px 0"><div style="font-weight:600">'+esc(m.nombre)+' <span class="muted" style="font-size:11px">(serial)</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">'
@@ -1089,10 +1096,11 @@
     }
     h+='<div id="cm-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="cm-ok">✔️ Cerrar y finalizar</button><button class="btn btn-2" id="cm-x">Cancelar</button></div>';
-    modal(h,'wide');
+    body.innerHTML=h;
     document.getElementById('cm-x').addEventListener('click',cerrarModal);
     document.getElementById('cm-si').addEventListener('click',function(){ CM.accion='REALIZADA'; _cmRender(CM); });
     document.getElementById('cm-no').addEventListener('click',function(){ CM.accion='NO_REALIZADA'; _cmRender(CM); });
+    var tt=document.getElementById('cm-tt'); if(tt) tt.addEventListener('change',function(){ CM.ttId=tt.value?Number(tt.value):null; if(CM.ttId){ _cmCargarKit(CM); } else { CM.kitMat=[]; CM.kitMo=[]; CM.seriales=[]; _cmRender(CM); } });
     document.getElementById('cm-ok').addEventListener('click',function(){ _cmConfirmar(CM); });
   }
   function _cmConfirmar(CM){
@@ -1115,7 +1123,7 @@
     var mos=[]; Array.prototype.forEach.call(document.querySelectorAll('.cm-mo'),function(inp){ var c=parseInt(inp.value,10)||0; if(c>0) mos.push({ot_id:o.id,mano_obra_id:Number(inp.getAttribute('data-mo')),nombre:inp.getAttribute('data-nom'),cantidad:c}); });
     var datos={}; Array.prototype.forEach.call(document.querySelectorAll('.cm-dato'),function(inp){ var v=inp.value.trim(); if(v) datos[inp.getAttribute('data-k')]=v; });
     btn.disabled=true; btn.textContent='Cerrando…';
-    var jobs=[ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', fin_tec_at:nowISO, observaciones_tec:obs||null, validado_admin_at:nowISO, validado_por:USER.id }) ];
+    var jobs=[ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', fin_tec_at:nowISO, observaciones_tec:obs||null, validado_admin_at:nowISO, validado_por:USER.id, tipo_trabajo_id:(CM.ttId||o.tipo_trabajo_id||null) }) ];
     if(mats.length) jobs.push(sbPost('ot_materiales',mats));
     if(mos.length) jobs.push(sbPost('ot_mano_obra',mos));
     Object.keys(datos).forEach(function(k){ jobs.push(fetch(SB_URL+'/rest/v1/ot_datos_servicio?on_conflict=ot_id,clave',{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({ot_id:o.id,clave:k,valor:datos[k],origen:'ADMIN'})})); });
@@ -1154,7 +1162,7 @@
   }
   function cargarCerrarOT(){
     var cont=document.getElementById('cerr-cont'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO)&select=id,numero,tipo,estado,tipo_trabajo_id,cliente_id,fecha_agendada,asignada_at,cuadrilla_id,clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,caja_nap,telefono,precinto,puerto),cuadrillas(nombre)&order=fecha_agendada.asc&limit=2000').then(function(d){
+    sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO)&select=id,numero,tipo,estado,tipo_trabajo_id,cliente_id,fecha_agendada,asignada_at,cuadrilla_id,clientes(id,numero_cliente,codigo_ispcube,tecnologia,nombre,apellido,domicilio_full,barrio,caja_nap,telefono,precinto,puerto),cuadrillas(nombre)&order=asignada_at.desc&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       var q=cerrState.q.toLowerCase();
       d=d.filter(function(o){
@@ -1166,15 +1174,16 @@
       });
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes asignadas'+((cerrState.cuad||cerrState.desde||cerrState.q)?' con esos filtros':'')+'. 🎉</div>'; return; }
       var grupos={};
-      d.forEach(function(o){ var k=(o.cliente_id||('red'+o.id))+'|'+(o.cuadrilla_id||0); var g=grupos[k]||(grupos[k]={cli:o.clientes,cuadrilla_id:o.cuadrilla_id,cuadNom:o.cuadrillas?o.cuadrillas.nombre:'—',fecha:o.fecha_agendada,ots:[]}); g.ots.push(o); if(o.fecha_agendada&&(!g.fecha||o.fecha_agendada<g.fecha))g.fecha=o.fecha_agendada; });
+      d.forEach(function(o){ var k=(o.cliente_id||('red'+o.id))+'|'+(o.cuadrilla_id||0); var g=grupos[k]||(grupos[k]={cli:o.clientes,cuadrilla_id:o.cuadrilla_id,cuadNom:o.cuadrillas?o.cuadrillas.nombre:'—',fecha:o.fecha_agendada,asignada:o.asignada_at,ots:[]}); g.ots.push(o); if(o.fecha_agendada&&(!g.fecha||o.fecha_agendada<g.fecha))g.fecha=o.fecha_agendada; if(o.asignada_at&&(!g.asignada||o.asignada_at>g.asignada))g.asignada=o.asignada_at; });
       var arr=Object.keys(grupos).map(function(k){return grupos[k];});
       var h='<div class="muted" style="margin-bottom:8px">'+arr.length+' grupo(s) · '+d.length+' OT asignadas</div>';
-      h+='<table><thead><tr><th>Agendada</th><th>Cuadrilla</th><th>Cliente</th><th>OTs</th><th>Acciones</th></tr></thead><tbody>';
+      h+='<table><thead><tr><th>Asignada</th><th>Agendada</th><th>Cuadrilla</th><th>Cliente</th><th>OTs</th><th>Acciones</th></tr></thead><tbody>';
       arr.forEach(function(g,i){ var c=g.cli||{};
-        var cliTxt=c.numero_cliente?('<b>N°'+esc(c.numero_cliente)+'</b> '+esc((c.nombre||'')+' '+(c.apellido||''))):'(obra de red)';
+        var ref=c.codigo_ispcube?('<b>ISP '+esc(c.codigo_ispcube)+'</b>'):(c.numero_cliente?('<b>N° '+esc(c.numero_cliente)+'</b> <span class="muted" style="font-size:11px">(sin ISPcube)</span>'):'');
+        var cliTxt=c.numero_cliente?(ref+'<br>'+esc((c.nombre||'')+' '+(c.apellido||''))+(c.codigo_ispcube?(' <span class="muted" style="font-size:11px">· Nexa '+esc(c.numero_cliente)+'</span>'):'')):'(obra de red)';
         var dom='<div class="muted" style="font-size:12px">'+esc(_domLimpio(c.domicilio_full)||'')+(c.barrio?(' · '+esc(c.barrio)):'')+(c.caja_nap?(' · caja '+esc(c.caja_nap)):'')+'</div>';
         var badges=g.ots.map(function(o){return '<span style="display:inline-block;background:#dcfce7;color:#166534;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;margin:1px">'+esc(o.tipo)+'</span>';}).join(' ')+(g.ots.length>1?(' <span class="muted" style="font-size:11px">'+g.ots.length+' OTs</span>'):'');
-        h+='<tr><td>'+esc(fmtFecha(g.fecha))+'</td><td>'+esc(g.cuadNom)+'</td><td>'+cliTxt+dom+'</td><td>'+badges+'</td>'
+        h+='<tr><td class="muted" style="font-size:12px;white-space:nowrap">'+esc(fmtFechaHora(g.asignada))+'</td><td>'+esc(fmtFecha(g.fecha))+'</td><td>'+esc(g.cuadNom)+'</td><td>'+cliTxt+dom+'</td><td>'+badges+'</td>'
           +'<td><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn btn-2 cerr-volver" data-i="'+i+'">↩️ Volver a pendiente</button><button class="btn btn-pri cerr-reasig" data-i="'+i+'">🔄 Reasignar</button><button class="btn btn-ok cerr-cerrar" data-i="'+i+'">✔️ Cerrar'+(g.ots.length>1?(' ('+g.ots.length+')'):'')+'</button></div></td></tr>';
       });
       h+='</tbody></table>'; cont.innerHTML=h;
@@ -1183,7 +1192,7 @@
       Array.prototype.forEach.call(cont.querySelectorAll('.cerr-cerrar'),function(b){ b.addEventListener('click',function(){ var g=arr[+b.getAttribute('data-i')]; cerrarGrupoUI(g); }); });
     }).catch(function(){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudieron cargar las órdenes asignadas.</div>'; });
   }
-  function _cerrOTobj(g,o){ return { id:o.id, numero:o.numero, tipo:o.tipo, tipo_trabajo_id:o.tipo_trabajo_id, cuadrilla_id:o.cuadrilla_id, cliente_id:o.cliente_id, estado:o.estado, clientes:g.cli }; }
+  function _cerrOTobj(g,o){ return { id:o.id, numero:o.numero, tipo:o.tipo, tipo_trabajo_id:o.tipo_trabajo_id, cuadrilla_id:o.cuadrilla_id, cliente_id:o.cliente_id, estado:o.estado, clientes:g.cli }; }   // g.cli trae tecnologia/precinto/caja/puerto para precargar el cierre
   function cerrarGrupoUI(g){
     if(g.ots.length===1){ cierreManualOT(_cerrOTobj(g,g.ots[0])); return; }
     var h='<h2>Cerrar OTs · '+(g.cli?('N°'+esc(g.cli.numero_cliente)+' '+esc(g.cli.nombre||'')):'grupo')+'</h2><p class="muted">Este cliente tiene varias órdenes. Cerralas una por una.</p>';
