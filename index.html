@@ -156,7 +156,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.41';
+  var VER='v0.42';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -1244,7 +1244,7 @@
           +'<td>'+(m.activo?'<span class="pill p-activo">activo</span>':'<span class="pill p-baja">deshabilitado</span>')+'</td></tr>';
       });
       h+='</tbody></table>'; cont.innerHTML=h;
-      document.getElementById('mat-nuevo').addEventListener('click',function(){ formMaterial(null); });
+      var matNuevoBtn=cont.querySelector('#mat-nuevo'); if(matNuevoBtn) matNuevoBtn.addEventListener('click',function(){ formMaterial(null); });
       Array.prototype.forEach.call(cont.querySelectorAll('td[data-edit]'),function(td){ td.addEventListener('click',function(){ formMaterial(d.filter(function(x){return x.id==td.getAttribute('data-edit');})[0]); }); });
       Array.prototype.forEach.call(cont.querySelectorAll('.mat-mv'),function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); moverMaterial(d, b.getAttribute('data-id'), Number(b.getAttribute('data-dir'))); }); });
     });

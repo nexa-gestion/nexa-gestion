@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.5</title>
+<title>Nexa · Técnico — v0.6</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.5';
+  var VER='v0.6';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -204,7 +204,7 @@
     sbGet('ordenes_trabajo?id=eq.'+o.id+'&select=id,numero,tipo,tipo_trabajo_id,clientes(id,tecnologia,nombre,apellido)&limit=1').then(function(d){
       var ot=(d&&d[0])||o, ttId=ot.tipo_trabajo_id, tec=ot.clientes?ot.clientes.tecnologia:'';
       function go(){
-        var qMat= ttId? 'tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=orden,activo,catalogo_materiales(id,nombre,serial_tipo,unidad)&order=orden.asc' : null;
+        var qMat= ttId? 'tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=orden,catalogo_materiales(id,nombre,serial_tipo,unidad)&order=orden.asc' : null;
         var qMo = ttId? 'tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=orden,mano_obra_catalogo(id,nombre)&order=orden.asc' : null;
         Promise.all([
           qMat?sbGet(qMat):Promise.resolve([]), qMo?sbGet(qMo):Promise.resolve([]),
@@ -212,9 +212,10 @@
           sbGet('motivos_ot?select=id,nombre&order=nombre'),
           sbGet('ot_datos_servicio?ot_id=eq.'+ot.id+'&origen=eq.ADMIN&select=clave,valor')
         ]).then(function(r){
-          var kitMat=(r[0]||[]).filter(function(x){return x.activo!==false&&x.catalogo_materiales;}).map(function(x){return x.catalogo_materiales;});
-          var kitMo=(r[1]||[]).filter(function(x){return x.mano_obra_catalogo;}).map(function(x){return x.mano_obra_catalogo;});
-          CIE={ o:ot, accion:'REALIZADA', kitMat:kitMat, kitMo:kitMo, seriales:(r[2]||[]), motivos:(r[3]||[]), datosAdmin:(r[4]||[]), mats:{}, mos:{}, fotos:[] };
+          var arr=function(x){ return Array.isArray(x)?x:[]; };
+          var kitMat=arr(r[0]).filter(function(x){return x.catalogo_materiales;}).map(function(x){return x.catalogo_materiales;});
+          var kitMo=arr(r[1]).filter(function(x){return x.mano_obra_catalogo;}).map(function(x){return x.mano_obra_catalogo;});
+          CIE={ o:ot, accion:'REALIZADA', kitMat:kitMat, kitMo:kitMo, seriales:arr(r[2]), motivos:arr(r[3]), datosAdmin:arr(r[4]), mats:{}, mos:{}, fotos:[] };
           renderCierre();
         });
       }
@@ -308,7 +309,7 @@
       if(CIE.accion==='NO_REALIZADA') upd.motivo_cancelacion=CIE._motivo;
       jobs.push(sbPatch('ordenes_trabajo?id=eq.'+o.id,upd));
       if(CIE.accion==='REALIZADA'){
-        var mats=[]; CIE.kitMat.forEach(function(m){ var s=CIE.mats[m.id]; if(s&&s.cant>0){ if(s.sel.length) s.sel.forEach(function(ser){ mats.push({ot_id:o.id,material_id:m.id,cantidad:1,serial:ser}); }); else mats.push({ot_id:o.id,material_id:m.id,cantidad:s.cant}); } });
+        var mats=[]; CIE.kitMat.forEach(function(m){ var s=CIE.mats[m.id]; if(s&&s.cant>0){ if(s.sel.length) s.sel.forEach(function(ser){ mats.push({ot_id:o.id,material_id:m.id,cantidad:1,serial:ser}); }); else mats.push({ot_id:o.id,material_id:m.id,cantidad:s.cant,serial:null}); } });
         if(mats.length) jobs.push(sbPost('ot_materiales',mats));
         var mos=[]; CIE.kitMo.forEach(function(m){ var c=CIE.mos[m.id]; if(c>0) mos.push({ot_id:o.id,mano_obra_id:m.id,nombre:m.nombre,cantidad:c}); });
         if(mos.length) jobs.push(sbPost('ot_mano_obra',mos));
