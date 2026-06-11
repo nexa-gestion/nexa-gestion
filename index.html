@@ -172,7 +172,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.59';
+  var VER='v0.60';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -869,9 +869,11 @@
       +'<input type="date" id="ot-sel-fecha" style="width:auto" title="Fecha agendada (opcional)">'
       +'<button class="btn btn-ok" id="ot-sel-asig">✅ Asignar ('+n+')</button>'
       +'<button class="btn btn-pri" id="ot-sel-print">🖨️ Imprimir ('+n+')</button>'
+      +'<button class="btn btn-2" id="ot-sel-devolver">↩️ Devolver al pool ('+n+')</button>'
       +'<button class="btn btn-2" id="ot-sel-clear">Limpiar</button>';
     document.getElementById('ot-sel-clear').addEventListener('click',function(){ otState.sel={}; renderOT(); });
     document.getElementById('ot-sel-print').addEventListener('click',function(){ var ids=Object.keys(otState.sel).filter(function(k){return otState.sel[k];}); imprimirOTs(ids); });
+    document.getElementById('ot-sel-devolver').addEventListener('click',function(){ var ids=Object.keys(otState.sel).filter(function(k){return otState.sel[k];}); devolverOTpoolUI(ids,{numero:ids.length+' órdenes'}); });
     document.getElementById('ot-sel-asig').addEventListener('click',function(){
       var ids=Object.keys(otState.sel).filter(function(k){return otState.sel[k];});
       var cuad=document.getElementById('ot-sel-cuad').value, fecha=document.getElementById('ot-sel-fecha').value;
@@ -879,7 +881,7 @@
       var btn=this; if(btn.getAttribute('data-ok')!=='1'){ btn.setAttribute('data-ok','1'); btn.textContent='¿Asignar '+ids.length+'? Tocá de nuevo'; return; }
       btn.disabled=true; btn.textContent='Asignando…';
       var upd={ cuadrilla_id:Number(cuad), estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha) upd.fecha_agendada=fecha;
-      sbPatch('ordenes_trabajo?id=in.('+ids.join(',')+')',upd).then(function(){ var cn=(REF.cuadrillas.filter(function(c){return c.id==cuad;})[0]||{}).nombre||''; toast('✅ '+ids.length+' OT asignadas a '+cn); otState.sel={}; cargarOT(); })
+      sbPatch('ordenes_trabajo?id=in.('+ids.join(',')+')',upd).then(function(){ var cn=(REF.cuadrillas.filter(function(c){return c.id==cuad;})[0]||{}).nombre||''; logOTmuchas(ids,'ASIGNADA',{ a:'ASIGNADA', cuadId:Number(cuad), detalle:'Asignada a '+cn+(fecha?(' para el '+fmtFecha(fecha)):'') }); toast('✅ '+ids.length+' OT asignadas a '+cn); otState.sel={}; cargarOT(); })
         .catch(function(){ btn.disabled=false; btn.textContent='✅ Asignar ('+ids.length+')'; toast('No se pudo asignar.'); });
     });
   }
@@ -924,6 +926,11 @@
         .catch(function(){ document.getElementById('ot-err').textContent='No se pudo crear.'; btn.disabled=false; btn.textContent='Crear OT'; });
     });
   }
+  // ── Bitácora de la OT: registra qué pasó (asignar/devolver/reasignar/cerrar/validar), quién y cuándo ──
+  function _cuadNombre(id){ if(!id) return null; var c=REF.cuadrillas.filter(function(x){return x.id==id;})[0]; return c?c.nombre:('Cuad '+id); }
+  function logOT(otId, evento, o){ o=o||{}; return sbPost('ot_historial',{ ot_id:otId, evento:evento, estado_anterior:o.de||null, estado_nuevo:o.a||null, cuadrilla_id:o.cuadId||null, cuadrilla_nombre:o.cuadNom||(o.cuadId?_cuadNombre(o.cuadId):null), detalle:o.detalle||null, usuario_id:(USER&&USER.id)||null, usuario_nombre:(USER&&USER.nombre)||null }).catch(function(){}); }
+  function logOTmuchas(ids, evento, o){ (ids||[]).forEach(function(id){ logOT(id, evento, o); }); }
+  var _EVENTO_LBL={ CREADA:['🆕','Creada'], ASIGNADA:['👷','Asignada'], DEVUELTA_POOL:['↩️','Devuelta al pool'], REASIGNADA:['🔄','Reasignada'], CIERRE_MANUAL:['✍️','Cierre manual (admin)'], CERRADA_TECNICO:['📥','Cerrada por técnico'], NO_REALIZADA:['✕','No realizada'], VALIDADA:['✅','Validada'], CAMBIO_ESTADO:['🔁','Cambio de estado'] };
   function detalleOT(id){
     sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,domicilio_full,barrio,lat,lng,caja_nap,puerto,precinto,tv_online,pack_futbol),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
       var o=d[0]; if(!o)return;
@@ -931,6 +938,10 @@
       function frHtml(k,vh){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+vh+'</span></div>'; }
       var _tv=o.clientes&&o.clientes.tv_online, _fut=o.clientes&&o.clientes.pack_futbol;
       var servHtml=(_tv||_fut)?('<b style="color:#0f172a">'+(_tv?'📺 TV':'')+(_tv&&_fut?' · ':'')+(_fut?'⚽ Pack Fútbol':'')+'</b>'):'<span class="muted">Sin TV / Sin Fútbol</span>';
+      var obsTecHtml = o.observaciones_tec ? '<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:9px 12px;margin-top:10px"><b style="color:var(--azul)">🗒️ Observaciones del técnico:</b> '+esc(o.observaciones_tec)+(o.motivo_cancelacion?(' <span style="color:var(--rojo)">· No realizada: '+esc(o.motivo_cancelacion)+'</span>'):'')+'</div>' : '';
+      var accBtns='';
+      if(['PENDIENTE','ASIGNADA','EN_CURSO'].indexOf(o.estado)>=0) accBtns+='<button class="btn btn-ok" id="ot-cerrarman">✍️ Cerrar manual</button>';
+      if(o.cuadrilla_id && o.estado!=='FINALIZADA') accBtns+='<button class="btn btn-2" id="ot-reasignar">🔄 Reasignar</button><button class="btn btn-2" id="ot-devolver">↩️ Devolver al pool</button>';
       var cuadOpts='<option value="">— sin asignar —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(o.cuadrilla_id==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
       var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)';
       var nums=o.clientes?('N° Nexa '+o.clientes.numero_cliente+(o.clientes.codigo_ispcube?(' · Cód. ISPcube '+o.clientes.codigo_ispcube):' · sin cargar en ISPcube')):'';
@@ -939,17 +950,22 @@
         +'<div class="fichagrid">'+fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+(o.clientes?fr('DNI',(o.clientes.tipo_doc||'DNI')+' '+(o.clientes.doc_numero||'—')):'')+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(oTel||'—')+' '+waLink(oTel,cli,o.tipo,oDom)+'</span></div>'+fr('Domicilio',oDom)+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(o.clientes.lat,o.clientes.lng)+'</span></div>':'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
-        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))+'</div>'
+        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))+'</div>'+obsTecHtml
         +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Este cliente lleva TV</div><div class="muted" style="font-size:12px">Asignale una cuenta de TV (usuario y contraseña) para que se imprima en la orden y el técnico la habilite.</div><div id="ot-tv-cont" style="margin-top:8px"></div></div>':'')
         +'<label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select>'
         +'<div class="row"><div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
         +'<label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select>'
         +'<label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select>'
-        +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button><button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>', 'wide');
+        +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button>'+accBtns+'<button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>'
+        +'<div id="ot-hist" style="margin-top:14px"></div>', 'wide');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
       document.getElementById('ot-print').addEventListener('click',function(){ imprimirOT(id); });
       if(_tv) cargarTvOT(o);
       if(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'||o.estado==='NO_REALIZADA') cargarCierreOT(o);
+      cargarHistorialOT(id);
+      var _cm=document.getElementById('ot-cerrarman'); if(_cm) _cm.addEventListener('click',function(){ cierreManualOT(o); });
+      var _dv=document.getElementById('ot-devolver'); if(_dv) _dv.addEventListener('click',function(){ devolverOTpoolUI([o.id], o); });
+      var _ra=document.getElementById('ot-reasignar'); if(_ra) _ra.addEventListener('click',function(){ reasignarOT(o); });
       document.getElementById('ot-save').addEventListener('click',function(){
         var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
         var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null) };
@@ -958,7 +974,14 @@
         if(o.estado==='CERRADA_TECNICO' && est!=='FINALIZADA' && est!=='CERRADA_TECNICO'){
           sbPatch('stock_seriales?ot_id=eq.'+id+'&estado=eq.COMPROMETIDO',{ estado:'EN_CUADRILLA', ot_id:null });
         }
-        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ cerrarModal(); toast('OT actualizada ✓'); refrescarOT(); });
+        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){
+          if(est!==o.estado || (cuad?Number(cuad):null)!==(o.cuadrilla_id||null)){
+            var nc=cuad?Number(cuad):null;
+            var evt = (est==='ASIGNADA'&&nc&&nc!==o.cuadrilla_id) ? 'ASIGNADA' : 'CAMBIO_ESTADO';
+            logOT(id, evt, { de:o.estado, a:est, cuadId:nc, detalle:(nc&&nc!==o.cuadrilla_id?('Asignada a '+_cuadNombre(nc)):'') });
+          }
+          cerrarModal(); toast('OT actualizada ✓'); refrescarOT();
+        });
       });
       document.getElementById('ot-del').addEventListener('click',function(){
         if(!confirm('¿Eliminar la OT N° '+o.numero+'? Esta acción no se puede deshacer.')) return;
@@ -968,6 +991,144 @@
         }).catch(function(){ toast('No se pudo eliminar.'); });
       });
     });
+  }
+  // ── Historial / bitácora de la OT ──
+  function cargarHistorialOT(otId){
+    var cont=document.getElementById('ot-hist'); if(!cont) return;
+    cont.innerHTML='<div class="muted" style="font-size:12px">Cargando historial…</div>';
+    sbGet('ot_historial?ot_id=eq.'+otId+'&select=*&order=created_at.desc&limit=100').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var h='<div style="border-top:2px solid #e2e8f0;padding-top:10px"><h3 style="margin:0 0 6px;color:var(--azul)">📜 Historial de la orden</h3>';
+      if(!d.length){ cont.innerHTML=h+'<div class="muted" style="font-size:13px">Sin movimientos registrados todavía.</div></div>'; return; }
+      d.forEach(function(e){ var lbl=_EVENTO_LBL[e.evento]||['•',e.evento];
+        h+='<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px"><div style="width:22px;flex:none">'+lbl[0]+'</div><div style="flex:1"><b>'+esc(lbl[1])+'</b>'+(e.cuadrilla_nombre?(' · '+esc(e.cuadrilla_nombre)):'')+((e.estado_nuevo&&e.estado_anterior)?(' <span class="muted">('+esc(e.estado_anterior)+'→'+esc(e.estado_nuevo)+')</span>'):'')+(e.detalle?('<div class="muted">'+esc(e.detalle)+'</div>'):'')+'</div><div class="muted" style="white-space:nowrap;font-size:12px;text-align:right">'+esc(fmtFechaHora(e.created_at))+(e.usuario_nombre?('<br>'+esc(e.usuario_nombre)):'')+'</div></div>';
+      });
+      cont.innerHTML=h+'</div>';
+    }).catch(function(){ cont.innerHTML=''; });   // si todavía no existe la tabla ot_historial, no muestra nada
+  }
+  // ── Devolver al pool (individual o masivo) ──
+  function devolverOTpoolUI(ids, o){
+    var n=ids.length;
+    modal('<h2>↩️ Devolver '+(n>1?(n+' OT'):('OT N° '+esc(o.numero)))+' al pool</h2><p class="muted">Vuelven a PENDIENTE y se les saca la cuadrilla. Los seriales comprometidos (si los hubiera) vuelven a la cuadrilla. Queda registrado en el historial.</p>'
+      +'<label class="l">Motivo</label><input id="dvp-mot" placeholder="ej: la cuadrilla no fue a trabajar">'
+      +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="dvp-ok">↩️ Devolver al pool</button><button class="btn btn-2" id="dvp-no">Cancelar</button></div>');
+    document.getElementById('dvp-no').addEventListener('click',cerrarModal);
+    document.getElementById('dvp-ok').addEventListener('click',function(){
+      var mot=document.getElementById('dvp-mot').value.trim()||null, btn=this; btn.disabled=true; btn.textContent='Devolviendo…';
+      devolverOTpool(ids, mot).then(function(){ cerrarModal(); toast('✅ '+n+' OT al pool de pendientes'); otState.sel={}; refrescarOT(); })
+        .catch(function(){ btn.disabled=false; btn.textContent='↩️ Devolver al pool'; toast('No se pudo devolver.'); });
+    });
+  }
+  function devolverOTpool(ids, motivo){
+    var inq='in.('+ids.join(',')+')';
+    return sbPatch('stock_seriales?ot_id='+inq+'&estado=eq.COMPROMETIDO',{ estado:'EN_CUADRILLA', ot_id:null }).catch(function(){})
+      .then(function(){ return sbPatch('ordenes_trabajo?id='+inq,{ estado:'PENDIENTE', cuadrilla_id:null, asignada_at:null, fecha_agendada:null }); })
+      .then(function(){ logOTmuchas(ids,'DEVUELTA_POOL',{ a:'PENDIENTE', detalle:motivo||'Devuelta al pool' }); });
+  }
+  // ── Reasignar a otra cuadrilla ──
+  function reasignarOT(o){
+    var cuadOpts=REF.cuadrillas.filter(function(c){return c.id!=o.cuadrilla_id;}).map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
+    modal('<h2>🔄 Reasignar OT N° '+esc(o.numero)+'</h2><p class="muted">De <b>'+esc(_cuadNombre(o.cuadrilla_id)||'—')+'</b> a otra cuadrilla. Queda en el historial.</p>'
+      +'<label class="l">Nueva cuadrilla</label><select id="rea-cuad"><option value="">— elegí —</option>'+cuadOpts+'</select>'
+      +'<label class="l">Fecha agendada (opcional)</label><input type="date" id="rea-fecha">'
+      +'<label class="l">Motivo (opcional)</label><input id="rea-mot" placeholder="ej: redistribución de carga">'
+      +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="rea-ok">🔄 Reasignar</button><button class="btn btn-2" id="rea-no">Cancelar</button></div>');
+    document.getElementById('rea-no').addEventListener('click',cerrarModal);
+    document.getElementById('rea-ok').addEventListener('click',function(){
+      var nc=document.getElementById('rea-cuad').value; if(!nc){ toast('Elegí una cuadrilla.'); return; }
+      var fecha=document.getElementById('rea-fecha').value, mot=document.getElementById('rea-mot').value.trim(), btn=this; btn.disabled=true; btn.textContent='Reasignando…';
+      var upd={ cuadrilla_id:Number(nc), estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha)upd.fecha_agendada=fecha;
+      sbPatch('ordenes_trabajo?id=eq.'+o.id,upd).then(function(){ logOT(o.id,'REASIGNADA',{ de:o.estado, a:'ASIGNADA', cuadId:Number(nc), detalle:'De '+(_cuadNombre(o.cuadrilla_id)||'—')+' a '+_cuadNombre(Number(nc))+(mot?(' · '+mot):'') }); cerrarModal(); toast('OT reasignada ✓'); refrescarOT(); })
+        .catch(function(){ btn.disabled=false; btn.textContent='🔄 Reasignar'; toast('No se pudo reasignar.'); });
+    });
+  }
+  // ── CIERRE MANUAL desde el panel (cuando la cuadrilla no pudo cerrar por la PWA) — finaliza directo ──
+  function cierreManualOT(o){
+    var ttId=o.tipo_trabajo_id;
+    Promise.all([
+      ttId?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=orden,catalogo_materiales(id,nombre,serial_tipo,unidad)&order=orden.asc'):Promise.resolve([]),
+      ttId?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=orden,mano_obra_catalogo(id,nombre)&order=orden.asc'):Promise.resolve([]),
+      o.cuadrilla_id?sbGet('stock_seriales?estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+o.cuadrilla_id+'&select=id,serial,material_id'):Promise.resolve([]),
+      sbGet('motivos_ot?select=id,nombre&order=nombre')
+    ]).then(function(r){
+      var arr=function(x){return Array.isArray(x)?x:[];};
+      var CM={ o:o, accion:'REALIZADA',
+        kitMat:arr(r[0]).map(function(x){return x.catalogo_materiales;}).filter(Boolean),
+        kitMo:arr(r[1]).map(function(x){return x.mano_obra_catalogo;}).filter(Boolean),
+        seriales:arr(r[2]), motivos:arr(r[3]) };
+      _cmRender(CM);
+    });
+  }
+  function _cmEsSerial(m){ return m.serial_tipo==='INDIVIDUAL'||m.serial_tipo==='CORRELATIVO'; }
+  function _cmRender(CM){
+    var o=CM.o;
+    var h='<h2>✍️ Cierre manual — OT N° '+esc(o.numero)+'</h2><p class="muted">Cierre cargado por administración (la cuadrilla no pudo desde el celular). <b>Finaliza la orden</b> y descuenta el stock.</p>'
+      +'<div style="display:flex;gap:8px;margin:6px 0 4px"><button type="button" class="btn '+(CM.accion==='REALIZADA'?'btn-ok':'btn-2')+'" id="cm-si">✅ Realizada</button><button type="button" class="btn '+(CM.accion==='NO_REALIZADA'?'btn-x':'btn-2')+'" id="cm-no">✕ No realizada</button></div>';
+    if(CM.accion==='REALIZADA'){
+      h+='<label class="l">Materiales usados</label>';
+      if(!CM.kitMat.length) h+='<div class="muted" style="font-size:13px">Sin kit de materiales (asigná el tipo de trabajo en el detalle para verlo). Podés cargar igual datos y finalizar.</div>';
+      CM.kitMat.forEach(function(m){
+        if(_cmEsSerial(m)){ var disp=CM.seriales.filter(function(s){return s.material_id==m.id;});
+          h+='<div style="border-bottom:1px solid #f1f5f9;padding:8px 0"><div style="font-weight:600">'+esc(m.nombre)+' <span class="muted" style="font-size:11px">(serial)</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">'
+            +(disp.length?disp.map(function(s){return '<label style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--bord);border-radius:8px;padding:5px 9px;font-size:13px;cursor:pointer"><input type="checkbox" class="cm-ser" data-mat="'+m.id+'" value="'+esc(s.serial)+'"> '+esc(s.serial)+'</label>';}).join(''):'<span class="muted" style="font-size:12px">La cuadrilla no tiene seriales de este material.</span>')
+            +'</div><input class="cm-sermanual" data-mat="'+m.id+'" placeholder="Otros seriales (separados por coma)" style="margin-top:6px;font-size:13px"></div>';
+        } else {
+          h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid #f1f5f9;padding:8px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+(m.unidad?(' <span class="muted" style="font-size:11px">('+esc(m.unidad)+')</span>'):'')+'</div><input type="number" min="0" step="1" class="cm-mat" data-mat="'+m.id+'" value="0" style="width:80px"></div>';
+        }
+      });
+      h+='<label class="l">Mano de obra</label>';
+      if(!CM.kitMo.length) h+='<div class="muted" style="font-size:13px">Sin mano de obra para este tipo de trabajo.</div>';
+      CM.kitMo.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid #f1f5f9;padding:8px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><input type="number" min="0" step="1" class="cm-mo" data-mo="'+m.id+'" data-nom="'+esc(m.nombre)+'" value="0" style="width:80px"></div>'; });
+      h+='<label class="l">Datos de la conexión (para ISPcube)</label><div class="fsgrid">'
+        +['precinto|Precinto','caja_nap|Caja (NAP)','puerto|Puerto de fibra','access_point|Access Point','mac|MAC','serial|Serial / Modelo'].map(function(p){var kv=p.split('|');return '<div><label class="l">'+kv[1]+'</label><input class="cm-dato" data-k="'+kv[0]+'" value="'+esc((o.clientes&&{precinto:o.clientes.precinto,caja_nap:o.clientes.caja_nap,puerto:o.clientes.puerto}[kv[0]])||'')+'"></div>';}).join('')+'</div>'
+        +'<label class="l">Observaciones</label><textarea id="cm-obs" placeholder="Cómo se cerró, quién informó, etc."></textarea>';
+    } else {
+      h+='<label class="l">Motivo</label><select id="cm-motivo"><option value="">— elegí —</option>'+CM.motivos.map(function(m){return '<option>'+esc(m.nombre)+'</option>';}).join('')+'</select>'
+        +'<label class="l">Observación</label><textarea id="cm-obs"></textarea>';
+    }
+    h+='<div id="cm-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="cm-ok">✔️ Cerrar y finalizar</button><button class="btn btn-2" id="cm-x">Cancelar</button></div>';
+    modal(h,'wide');
+    document.getElementById('cm-x').addEventListener('click',cerrarModal);
+    document.getElementById('cm-si').addEventListener('click',function(){ CM.accion='REALIZADA'; _cmRender(CM); });
+    document.getElementById('cm-no').addEventListener('click',function(){ CM.accion='NO_REALIZADA'; _cmRender(CM); });
+    document.getElementById('cm-ok').addEventListener('click',function(){ _cmConfirmar(CM); });
+  }
+  function _cmConfirmar(CM){
+    var o=CM.o, err=document.getElementById('cm-err'), btn=document.getElementById('cm-ok');
+    var obsEl=document.getElementById('cm-obs'), obs=obsEl?obsEl.value.trim():'';
+    var nowISO=new Date().toISOString();
+    if(CM.accion==='NO_REALIZADA'){
+      var mot=(document.getElementById('cm-motivo')||{}).value||''; if(!mot){ err.textContent='Elegí un motivo.'; return; }
+      btn.disabled=true; btn.textContent='Guardando…';
+      sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'NO_REALIZADA', fin_tec_at:nowISO, observaciones_tec:obs||null, motivo_cancelacion:mot, validado_admin_at:nowISO, validado_por:USER.id })
+        .then(function(){ logOT(o.id,'NO_REALIZADA',{ de:o.estado, a:'NO_REALIZADA', cuadId:o.cuadrilla_id, detalle:'Cierre manual (admin) · '+mot+(obs?(' · '+obs):'') }); cerrarModal(); toast('OT marcada NO realizada ✓'); refrescarOT(); })
+        .catch(function(){ btn.disabled=false; btn.textContent='✔️ Cerrar y finalizar'; err.textContent='No se pudo guardar.'; });
+      return;
+    }
+    // REALIZADA → arma materiales (no-serial por cantidad, serial por cada serial elegido)
+    var mats=[];
+    Array.prototype.forEach.call(document.querySelectorAll('.cm-mat'),function(inp){ var c=parseInt(inp.value,10)||0; if(c>0) mats.push({ot_id:o.id,material_id:Number(inp.getAttribute('data-mat')),cantidad:c,serial:null}); });
+    Array.prototype.forEach.call(document.querySelectorAll('.cm-ser:checked'),function(ch){ mats.push({ot_id:o.id,material_id:Number(ch.getAttribute('data-mat')),cantidad:1,serial:ch.value}); });
+    Array.prototype.forEach.call(document.querySelectorAll('.cm-sermanual'),function(inp){ var mat=Number(inp.getAttribute('data-mat')); String(inp.value||'').split(',').forEach(function(s){ s=s.trim(); if(s) mats.push({ot_id:o.id,material_id:mat,cantidad:1,serial:s}); }); });
+    var mos=[]; Array.prototype.forEach.call(document.querySelectorAll('.cm-mo'),function(inp){ var c=parseInt(inp.value,10)||0; if(c>0) mos.push({ot_id:o.id,mano_obra_id:Number(inp.getAttribute('data-mo')),nombre:inp.getAttribute('data-nom'),cantidad:c}); });
+    var datos={}; Array.prototype.forEach.call(document.querySelectorAll('.cm-dato'),function(inp){ var v=inp.value.trim(); if(v) datos[inp.getAttribute('data-k')]=v; });
+    btn.disabled=true; btn.textContent='Cerrando…';
+    var jobs=[ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', fin_tec_at:nowISO, observaciones_tec:obs||null, validado_admin_at:nowISO, validado_por:USER.id }) ];
+    if(mats.length) jobs.push(sbPost('ot_materiales',mats));
+    if(mos.length) jobs.push(sbPost('ot_mano_obra',mos));
+    Object.keys(datos).forEach(function(k){ jobs.push(fetch(SB_URL+'/rest/v1/ot_datos_servicio?on_conflict=ot_id,clave',{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({ot_id:o.id,clave:k,valor:datos[k],origen:'ADMIN'})})); });
+    // Finaliza directo: descuenta stock no-serial y manda los seriales al cliente (INSTALADO)
+    var noSer=mats.filter(function(m){return !m.serial&&m.material_id;});
+    if(o.cuadrilla_id) noSer.forEach(function(m){
+      jobs.push(sbGet('stock_cuadrillas?cuadrilla_id=eq.'+o.cuadrilla_id+'&material_id=eq.'+m.material_id+'&select=id,cantidad').then(function(s){ if(s&&s[0]){ var nueva=Math.max(0,Number(s[0].cantidad)-Number(m.cantidad)); return sbPatch('stock_cuadrillas?id=eq.'+s[0].id,{cantidad:nueva,updated_at:nowISO}); } }));
+      jobs.push(sbPost('stock_movimientos',{material_id:m.material_id,tipo:'CONSUMO_OT',cantidad:m.cantidad,ot_id:o.id,cuadrilla_id:o.cuadrilla_id,usuario_id:USER.id,observaciones:'Cierre manual OT N° '+o.numero}));
+    });
+    mats.filter(function(m){return m.serial&&m.material_id;}).forEach(function(m){
+      jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(m.serial)+'&material_id=eq.'+m.material_id,{estado:'INSTALADO',cliente_id:(o.cliente_id||null),cuadrilla_id:null,ot_id:o.id}));
+    });
+    Promise.all(jobs).then(function(){ logOT(o.id,'CIERRE_MANUAL',{ de:o.estado, a:'FINALIZADA', cuadId:o.cuadrilla_id, detalle:'Cierre manual por administración. '+(mats.length?(mats.length+' material(es). '):'')+(obs||'') }); cerrarModal(); toast('OT N° '+o.numero+' cerrada y finalizada ✓'); refrescarOT(); })
+      .catch(function(){ btn.disabled=false; btn.textContent='✔️ Cerrar y finalizar'; err.textContent='Error al cerrar. Reintentá.'; });
   }
   // ── Cuenta TV de la OT: vincula una cuenta del pool (usuario+clave) y la deja lista para imprimir en la orden ──
   function cargarTvOT(o){
@@ -1054,7 +1215,7 @@
     conSer.forEach(function(m){
       jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(m.serial)+'&material_id=eq.'+m.material_id,{ estado:'INSTALADO', cliente_id:(o.cliente_id||null), cuadrilla_id:null, ot_id:o.id }));
     });
-    Promise.all(jobs).then(function(){ cerrarModal(); toast('OT N° '+o.numero+' validada y finalizada ✓'); refrescarOT(); }).catch(function(){ toast('Error al validar.'); if(vb){vb.disabled=false;vb.textContent='✅ Validar y finalizar';} });
+    Promise.all(jobs).then(function(){ logOT(o.id,'VALIDADA',{ de:o.estado, a:'FINALIZADA', cuadId:o.cuadrilla_id, detalle:'Cierre del técnico validado por administración' }); cerrarModal(); toast('OT N° '+o.numero+' validada y finalizada ✓'); refrescarOT(); }).catch(function(){ toast('Error al validar.'); if(vb){vb.disabled=false;vb.textContent='✅ Validar y finalizar';} });
   }
 
   // ===== AGENDA — planificación por cercanía (clustering capacitado + ruta NN+2-opt + mapa) =====
@@ -1296,7 +1457,7 @@
     var jobs=[],otsCount=0;
     plan.cuads.forEach(function(c){ c.stops.forEach(function(v){ if(!v.otIds||!v.otIds.length)return; otsCount+=v.otIds.length;
       var upd={ cuadrilla_id:c.id, estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha)upd.fecha_agendada=fecha;
-      jobs.push(sbPatch('ordenes_trabajo?id=in.('+v.otIds.join(',')+')',upd)); }); });
+      jobs.push(sbPatch('ordenes_trabajo?id=in.('+v.otIds.join(',')+')',upd).then(function(){ logOTmuchas(v.otIds,'ASIGNADA',{ a:'ASIGNADA', cuadId:c.id, cuadNom:c.nombre, detalle:'Asignada desde Agenda a '+c.nombre+(fecha?(' para el '+fmtFecha(fecha)):'') }); })); }); });
     if(!jobs.length){ toast('No hay OTs para asignar.'); return; }
     btn.disabled=true; btn.textContent='Asignando…';
     Promise.all(jobs).then(function(){ toast('✅ Plan asignado · '+otsCount+' OT a '+plan.cuads.filter(function(c){return c.stops.length;}).length+' cuadrillas'); out.innerHTML='<div class="center" style="padding:30px"><div style="font-size:40px">✅</div><b>Plan asignado.</b><div class="muted" style="margin-top:6px">'+otsCount+' OT pasaron a ASIGNADA con su cuadrilla'+(fecha?(' para el '+fmtFecha(fecha)):'')+'. Ya aparecen en cada cuadrilla y en la PWA del técnico.</div></div>'; })
@@ -1393,7 +1554,7 @@
         var cuad=sel?sel.value:'', fecha=fe?fe.value:'';
         if(!cuad){ toast('Elegí una cuadrilla.'); return; }
         b.disabled=true; b.textContent='…'; var upd={ cuadrilla_id:Number(cuad), estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha) upd.fecha_agendada=fecha;
-        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ toast('OT N° '+b.getAttribute('data-num')+' asignada ✓'); var tr=b.closest('tr'); if(tr)tr.parentNode.removeChild(tr); })
+        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ logOT(Number(id),'ASIGNADA',{ a:'ASIGNADA', cuadId:Number(cuad), detalle:'Asignada a '+(_cuadNombre(Number(cuad))||'')+(fecha?(' para el '+fmtFecha(fecha)):'') }); toast('OT N° '+b.getAttribute('data-num')+' asignada ✓'); var tr=b.closest('tr'); if(tr)tr.parentNode.removeChild(tr); })
         .catch(function(){ b.disabled=false; b.textContent='Asignar'; toast('No se pudo asignar.'); });
       });
     });
