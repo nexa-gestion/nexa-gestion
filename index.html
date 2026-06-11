@@ -162,7 +162,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.48';
+  var VER='v0.49';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -875,7 +875,8 @@
   function _agHav(a,b){ var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,la1=a.lat*Math.PI/180,la2=b.lat*Math.PI/180; var x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)*Math.sin(dLng/2); return 2*R*Math.asin(Math.sqrt(x)); }
   // ── Geolocalizador en cascada: GPS real → NAP (KMZ) → centroide de barrio → OpenStreetMap ──
   var _GEONAPS=null;
-  function _agNorm(s){ return String(s||'').trim().toUpperCase().replace(/\s+/g,''); }
+  function _agNorm(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }   // saca guiones/espacios → match robusto de cajas
+  function _agNapHit(caja,naps){ var ps=String(caja||'').split(/[|/,;]/); for(var i=0;i<ps.length;i++){ var k=_agNorm(ps[i]); if(k&&naps[k]) return naps[k]; } return null; }
   function _agLoadNaps(){ if(_GEONAPS) return Promise.resolve(_GEONAPS); return sbGet('geo_naps?select=codigo,lat,lng&activo=eq.true&limit=3000').then(function(d){ _GEONAPS={}; (Array.isArray(d)?d:[]).forEach(function(n){ if(n.lat&&n.lng) _GEONAPS[_agNorm(n.codigo)]={lat:n.lat,lng:n.lng}; }); return _GEONAPS; }); }
   function _agJit(lat,lng,seed){ var s=seed||0, ang=(s*97%360)*Math.PI/180, rad=0.00012+0.00028*((s*53%100)/100); return {lat:lat+rad*Math.cos(ang),lng:lng+rad*Math.sin(ang)}; }
   function _geoCache(){ try{ return JSON.parse(localStorage.getItem('nexa_geocache')||'{}'); }catch(e){ return {}; } }
@@ -885,7 +886,7 @@
       var pend=[];
       visitas.forEach(function(v){
         if(v.lat!=null&&v.lng!=null){ v.geo_src=v.geo_src||'gps'; return; }
-        var nk=_agNorm(v.caja_nap); if(nk&&naps[nk]){ var j=_agJit(naps[nk].lat,naps[nk].lng,v.num); v.lat=j.lat; v.lng=j.lng; v.geo_src='nap'; return; }
+        var nh=_agNapHit(v.caja_nap,naps); if(nh){ var j=_agJit(nh.lat,nh.lng,v.num); v.lat=j.lat; v.lng=j.lng; v.geo_src='nap'; return; }
         pend.push(v);
       });
       if(!pend.length) return visitas;
