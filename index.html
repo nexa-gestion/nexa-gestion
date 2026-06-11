@@ -173,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.63';
+  var VER='v0.64';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -806,8 +806,10 @@
     {k:'prioridad',t:'Prioridad',ord:function(o){return _PRIO_ORD[o.prioridad]!=null?_PRIO_ORD[o.prioridad]:1;},def:false,r:function(o){return esc(o.prioridad||'');}},
     {k:'agendada',t:'Agendada',ord:function(o){return o.fecha_agendada||'';},r:function(o){return esc(fmtFecha(o.fecha_agendada));}},
     {k:'creada',t:'Creada',ord:function(o){return o.created_at||'';},def:false,r:function(o){return esc(fmtFecha(o.created_at));}},
-    {k:'estado',t:'Estado',ord:function(o){return o.estado||'';},r:function(o){return pill(o.estado);}}
+    {k:'estado',t:'Estado',ord:function(o){return o.estado||'';},r:function(o){ var falta=(o.estado==='PENDIENTE'&&o.clientes&&!o.clientes.codigo_ispcube); return pill(o.estado)+(falta?' <span class="pill p-bloqueado" title="Falta cargar el cliente en ISPcube — no se puede asignar todavía">⚠️ falta ISP</span>':''); }}
   ];
+  // ¿La OT se puede asignar? (no, si el cliente todavía no está en ISPcube)
+  function _otAsignable(o){ return !(o && o.clientes && !o.clientes.codigo_ispcube); }
   var OT_COLS_DEF=['numero','tipo','cliente','cli_nexa','cli_isp','barrio','cuadrilla','agendada','estado'];
   function otCols(){ if(!otState.cols){ try{ otState.cols=JSON.parse(localStorage.getItem('ot_cols')||'null'); }catch(e){} if(!otState.cols||!otState.cols.length) otState.cols=OT_COLS_DEF.slice(); } return otState.cols; }
   function otColVis(k){ return otCols().indexOf(k)>=0; }
@@ -879,7 +881,12 @@
       var ids=Object.keys(otState.sel).filter(function(k){return otState.sel[k];});
       var cuad=document.getElementById('ot-sel-cuad').value, fecha=document.getElementById('ot-sel-fecha').value;
       if(!cuad){ toast('Elegí una cuadrilla.'); return; }
-      var btn=this; if(btn.getAttribute('data-ok')!=='1'){ btn.setAttribute('data-ok','1'); btn.textContent='¿Asignar '+ids.length+'? Tocá de nuevo'; return; }
+      // Bloqueo: no se pueden asignar OTs de clientes que todavía no están en ISPcube
+      var byId={}; (otState.rows||[]).forEach(function(r){ byId[r.id]=r; });
+      var bloq=ids.filter(function(id){ return !_otAsignable(byId[id]); });
+      ids=ids.filter(function(id){ return _otAsignable(byId[id]); });
+      if(bloq.length && !ids.length){ toast('⚠️ Esas OT son de clientes sin ISPcube — cargalos primero. No se asignó ninguna.'); this.removeAttribute('data-ok'); this.textContent='✅ Asignar ('+Object.keys(otState.sel).filter(function(k){return otState.sel[k];}).length+')'; return; }
+      var btn=this; if(btn.getAttribute('data-ok')!=='1'){ btn.setAttribute('data-ok','1'); btn.textContent='¿Asignar '+ids.length+'?'+(bloq.length?(' ('+bloq.length+' sin ISP no van)'):'')+' Tocá de nuevo'; return; }
       btn.disabled=true; btn.textContent='Asignando…';
       var upd={ cuadrilla_id:Number(cuad), estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha) upd.fecha_agendada=fecha;
       sbPatch('ordenes_trabajo?id=in.('+ids.join(',')+')',upd).then(function(){ var cn=(REF.cuadrillas.filter(function(c){return c.id==cuad;})[0]||{}).nombre||''; logOTmuchas(ids,'ASIGNADA',{ a:'ASIGNADA', cuadId:Number(cuad), detalle:'Asignada a '+cn+(fecha?(' para el '+fmtFecha(fecha)):'') }); toast('✅ '+ids.length+' OT asignadas a '+cn); otState.sel={}; cargarOT(); })
@@ -969,6 +976,8 @@
       var _ra=document.getElementById('ot-reasignar'); if(_ra) _ra.addEventListener('click',function(){ reasignarOT(o); });
       document.getElementById('ot-save').addEventListener('click',function(){
         var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
+        // Bloqueo: no se puede asignar cuadrilla si el cliente todavía no está en ISPcube
+        if(cuad && !_otAsignable(o)){ toast('⚠️ No se puede asignar: el cliente todavía no está cargado en ISPcube.'); return; }
         var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null) };
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
         // Rechazo: si sale de CERRADA_TECNICO sin finalizar, los seriales comprometidos vuelven a la cuadrilla
