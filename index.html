@@ -163,7 +163,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.50';
+  var VER='v0.51';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -873,6 +873,8 @@
   var AG_PESOS_DEF={INSTALACION:1,REPARACION:0.333,RECONEXION:0.5,DESCONEXION:0.333,RETIRO_EQUIPOS:0.5,CAMBIO_PLAN:0.5,CAMBIO_DOMICILIO:1,MANTENIMIENTO:0.5,OTRO:1};
   function agPesos(){ var p; try{ p=JSON.parse(localStorage.getItem('nexa_ag_pesos')||'null'); }catch(e){} return Object.assign({},AG_PESOS_DEF,p||{}); }
   function agDepot(){ var d; try{ d=JSON.parse(localStorage.getItem('nexa_ag_depot')||'null'); }catch(e){} return d&&d.lat?d:{lat:-27.399037,lng:-55.940061}; }  // Nexa: Monseñor de Andrea 6054
+  function agWifi(){ try{ return JSON.parse(localStorage.getItem('nexa_ag_wifi')||'[]')||[]; }catch(e){ return []; } }   // cuadrillas que hacen wireless
+  function _esWifi(tec){ return /wireless|inalamb|wifi/i.test(String(tec||'')); }
   function _agHav(a,b){ var R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,la1=a.lat*Math.PI/180,la2=b.lat*Math.PI/180; var x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)*Math.sin(dLng/2); return 2*R*Math.asin(Math.sqrt(x)); }
   // ── Geolocalizador en cascada: GPS real → NAP (KMZ) → centroide de barrio → OpenStreetMap ──
   var _GEONAPS=null;
@@ -921,8 +923,8 @@
       +'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-bottom:12px">🚚 <b>Salida y vuelta — Depósito Nexa</b> (Monseñor de Andrea 6054): <input id="ag-depot" value="'+esc(dep.lat+', '+dep.lng)+'" style="width:210px;display:inline-block" title="lat, lng del depósito"> <span class="muted">— las rutas salen y vuelven de acá</span></div>'
       +'<h3 style="margin:14px 0 6px">⚖️ Pesos por tipo <span class="muted" style="font-weight:400;font-size:12px">1 visita = peso del trabajo dominante · 3 reparaciones ≈ 1 instalación</span></h3>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap">'+tipos.map(function(t){return '<div style="flex:1;min-width:120px"><label class="l">'+t[1]+'</label><input class="ag-peso" data-k="'+t[0]+'" value="'+(pesos[t[0]]!=null?pesos[t[0]]:1)+'"></div>';}).join('')+'</div>'
-      +'<h3 style="margin:16px 0 6px">👷 Cuadrillas y cupo <span class="muted" style="font-weight:400;font-size:12px">cupo = instalaciones equivalentes · más cupo = zona con más pendientes</span></h3>'
-      +'<div style="display:flex;gap:10px;flex-wrap:wrap">'+REF.cuadrillas.map(function(c){return '<div style="flex:1;min-width:200px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--bord);border-radius:10px;padding:10px"><input type="checkbox" class="ag-cuad-on" data-id="'+c.id+'" checked><span style="flex:1;font-weight:600">'+esc(c.nombre)+'</span><input class="ag-cuad-cupo" data-id="'+c.id+'" value="6" style="width:60px"></div>';}).join('')+'</div>'
+      +'<h3 style="margin:16px 0 6px">👷 Cuadrillas y cupo <span class="muted" style="font-weight:400;font-size:12px">cupo = instalaciones equivalentes · tildá 📶 si la cuadrilla hace wireless (Itaembé Guazú)</span></h3>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap">'+(function(){var wf=agWifi();return REF.cuadrillas.map(function(c){return '<div style="flex:1;min-width:230px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--bord);border-radius:10px;padding:10px"><input type="checkbox" class="ag-cuad-on" data-id="'+c.id+'" checked><span style="flex:1;font-weight:600">'+esc(c.nombre)+'</span><label style="display:flex;align-items:center;gap:2px;font-size:13px" title="Hace wireless"><input type="checkbox" class="ag-cuad-wifi" data-id="'+c.id+'"'+(wf.indexOf(c.id)>=0?' checked':'')+'>📶</label><input class="ag-cuad-cupo" data-id="'+c.id+'" value="6" style="width:56px"></div>';}).join('');})()+'</div>'
       +'<label style="display:block;margin:14px 0;font-weight:600"><input type="checkbox" id="ag-priofecha"> 📅 Priorizar por fecha — primero las OTs más viejas</label>'
       +'<button class="btn btn-pri" id="ag-armar" style="padding:12px 22px">⚡ Armar grupos por cercanía</button>'
       +'<div id="ag-out" style="margin-top:16px"></div>';
@@ -933,12 +935,13 @@
     try{ localStorage.setItem('nexa_ag_pesos',JSON.stringify(pesos)); }catch(e){}
     var dv=(document.getElementById('ag-depot').value||'').split(','), depot={lat:parseFloat(dv[0]),lng:parseFloat(dv[1])};
     if(!(depot.lat&&depot.lng)) depot=agDepot(); else { try{ localStorage.setItem('nexa_ag_depot',JSON.stringify(depot)); }catch(e){} }
-    var cuads=[]; Array.prototype.forEach.call(document.querySelectorAll('.ag-cuad-on:checked'),function(ch){ var id=ch.getAttribute('data-id'), cupo=parseFloat((document.querySelector('.ag-cuad-cupo[data-id="'+id+'"]')||{}).value)||6, c=REF.cuadrillas.filter(function(x){return x.id==id;})[0]; cuads.push({id:Number(id),nombre:c?c.nombre:('Cuad '+id),cupo:cupo}); });
+    var wifiIds=[]; Array.prototype.forEach.call(document.querySelectorAll('.ag-cuad-wifi:checked'),function(ch){ wifiIds.push(Number(ch.getAttribute('data-id'))); }); try{ localStorage.setItem('nexa_ag_wifi',JSON.stringify(wifiIds)); }catch(e){}
+    var cuads=[]; Array.prototype.forEach.call(document.querySelectorAll('.ag-cuad-on:checked'),function(ch){ var id=ch.getAttribute('data-id'), cupo=parseFloat((document.querySelector('.ag-cuad-cupo[data-id="'+id+'"]')||{}).value)||6, c=REF.cuadrillas.filter(function(x){return x.id==id;})[0]; cuads.push({id:Number(id),nombre:c?c.nombre:('Cuad '+id),cupo:cupo,wireless:wifiIds.indexOf(Number(id))>=0}); });
     if(!cuads.length){ toast('Elegí al menos una cuadrilla.'); return; }
     var prioFecha=document.getElementById('ag-priofecha').checked, out=document.getElementById('ag-out'); out.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,created_at,clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,lat,lng,geo_origen)&limit=2000').then(function(d){
+    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,created_at,clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,tecnologia,lat,lng,geo_origen)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[]; var byCli={};
-      d.forEach(function(o){ var c=o.clientes; if(!c)return; var v=byCli[c.id]||(byCli[c.id]={cliId:c.id,nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(),num:c.numero_cliente,dir:c.domicilio_full||'',barrio:c.barrio||'',tel:c.telefono||'',caja_nap:c.caja_nap,lat:c.lat,lng:c.lng,geo_src:(c.lat!=null?(c.geo_origen==='nap'?'nap':'gps'):null),tipos:{},edad:0,peso:0,otIds:[]});
+      d.forEach(function(o){ var c=o.clientes; if(!c)return; var v=byCli[c.id]||(byCli[c.id]={cliId:c.id,nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(),num:c.numero_cliente,dir:c.domicilio_full||'',barrio:c.barrio||'',tel:c.telefono||'',caja_nap:c.caja_nap,wireless:_esWifi(c.tecnologia),lat:c.lat,lng:c.lng,geo_src:(c.lat!=null?(c.geo_origen==='nap'?'nap':'gps'):null),tipos:{},edad:0,peso:0,otIds:[]});
         v.tipos[o.tipo]=(v.tipos[o.tipo]||0)+1; v.otIds.push(o.id); var dias=Math.floor((Date.now()-new Date(o.created_at))/86400000); if(dias>v.edad)v.edad=dias; });
       var visitas=Object.keys(byCli).map(function(k){ var v=byCli[k],pmax=0; Object.keys(v.tipos).forEach(function(t){ var p=pesos[t]!=null?pesos[t]:1; if(p>pmax)pmax=p; }); v.peso=pmax||1; return v; });
       if(!visitas.length){ out.innerHTML='<div class="center">No hay OTs pendientes sin asignar. 🎉</div>'; return; }
@@ -960,11 +963,12 @@
     while(seeds.length<cuads.length){ var best=null,bd=-1; pts.forEach(function(v){ var dmin=Math.min.apply(null,seeds.map(function(s){return _agHav(v,s);})); if(dmin>bd){bd=dmin;best=v;} }); if(!best)break; seeds.push(best); }
     var cs=cuads.slice().sort(function(a,b){return b.cupo-a.cupo;}), sd=seeds.slice().sort(function(a,b){return b._dens-a._dens;});
     cs.forEach(function(c,i){ c.seed=sd[i]||sd[sd.length-1]; c.stops=[]; c.usado=0; });
+    function apto(v,c){ return (!v.wireless||c.wireless); }   // wireless solo a cuadrilla que hace wireless
     if(prioFecha){
-      var sinAsig=[]; visitas.slice().sort(function(a,b){return b.edad-a.edad;}).forEach(function(v){ var cand=cs.filter(function(c){return c.usado+v.peso<=c.cupo+0.001;}); if(!cand.length){sinAsig.push(v);return;} cand.sort(function(a,b){return _agHav(v,a.seed)-_agHav(v,b.seed);}); cand[0].stops.push(v); cand[0].usado+=v.peso; });
+      var sinAsig=[]; visitas.slice().sort(function(a,b){return b.edad-a.edad;}).forEach(function(v){ var cand=cs.filter(function(c){return apto(v,c)&&c.usado+v.peso<=c.cupo+0.001;}); if(!cand.length){sinAsig.push(v);return;} cand.sort(function(a,b){return _agHav(v,a.seed)-_agHav(v,b.seed);}); cand[0].stops.push(v); cand[0].usado+=v.peso; });
       return {cuads:cs,sinAsig:sinAsig};
     }
-    var pares=[]; visitas.forEach(function(v){ cs.forEach(function(c){ pares.push({v:v,c:c,d:_agHav(v,c.seed)}); }); }); pares.sort(function(a,b){return a.d-b.d;});
+    var pares=[]; visitas.forEach(function(v){ cs.forEach(function(c){ if(apto(v,c)) pares.push({v:v,c:c,d:_agHav(v,c.seed)}); }); }); pares.sort(function(a,b){return a.d-b.d;});
     var asign={}; pares.forEach(function(p){ if(asign[p.v.cliId])return; if(p.c.usado+p.v.peso<=p.c.cupo+0.001){ p.c.stops.push(p.v); p.c.usado+=p.v.peso; asign[p.v.cliId]=1; } });
     return {cuads:cs,sinAsig:visitas.filter(function(v){return !asign[v.cliId];})};
   }
@@ -996,10 +1000,10 @@
     plan.cuads.forEach(function(c){ var col=c.color;
       h+='<div style="border:1px solid var(--bord);border-left:5px solid '+col+';border-radius:12px;margin-bottom:12px;overflow:hidden"><div style="background:'+col+'14;padding:10px 14px;font-weight:700">'+esc(c.nombre)+' <span class="muted" style="font-weight:400">· '+c.stops.length+' visitas · cupo '+(Math.round(c.usado*100)/100)+'/'+c.cupo+' · '+Math.round(c.km||0)+' km</span></div><div>';
       if(!c.stops.length) h+='<div class="muted" style="padding:8px 14px">Sin visitas.</div>';
-      c.stops.forEach(function(v,i){ h+='<div style="display:flex;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid #f1f5f9"><div style="width:26px;height:26px;border-radius:50%;background:'+col+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">'+(i+1)+'</div><div style="flex:1"><b>N°'+esc(v.num)+' · '+esc(v.nombre)+'</b><div class="muted" style="font-size:12px">'+esc(v.dir)+(v.barrio?(' · '+esc(v.barrio)):'')+_agGeoBadge(v.geo_src)+'</div><div style="margin-top:2px">'+Object.keys(v.tipos).map(function(t){return _agChip(t,v.tipos[t]);}).join('')+(v.edad?(' <span class="muted" style="font-size:11px">'+v.edad+'d</span>'):'')+'</div></div>'+(v.tel?('<a class="btn btn-2" href="tel:'+esc(v.tel)+'" style="padding:6px 10px;text-decoration:none">📞</a>'):'')+'</div>'; });
+      c.stops.forEach(function(v,i){ h+='<div style="display:flex;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid #f1f5f9"><div style="width:26px;height:26px;border-radius:50%;background:'+col+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">'+(i+1)+'</div><div style="flex:1"><b>N°'+esc(v.num)+' · '+esc(v.nombre)+'</b><div class="muted" style="font-size:12px">'+esc(v.dir)+(v.barrio?(' · '+esc(v.barrio)):'')+_agGeoBadge(v.geo_src)+'</div><div style="margin-top:2px">'+(v.wireless?'<span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:3px">📶 WIRELESS</span>':'')+Object.keys(v.tipos).map(function(t){return _agChip(t,v.tipos[t]);}).join('')+(v.edad?(' <span class="muted" style="font-size:11px">'+v.edad+'d</span>'):'')+'</div></div>'+(v.tel?('<a class="btn btn-2" href="tel:'+esc(v.tel)+'" style="padding:6px 10px;text-decoration:none">📞</a>'):'')+'</div>'; });
       h+='</div></div>';
     });
-    if(plan.sinAsig.length) h+='<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:12px;padding:10px 14px;margin-bottom:10px"><b style="color:#b91c1c">⚠️ Sin asignar ('+plan.sinAsig.length+')</b> <span class="muted">— superan el cupo. Subí cupo o agregá cuadrillas.</span><div class="muted" style="font-size:12px;margin-top:4px">'+plan.sinAsig.map(function(v){return 'N°'+v.num+' '+esc(v.nombre);}).join(' · ')+'</div></div>';
+    if(plan.sinAsig.length){ var hayWifi=plan.sinAsig.some(function(v){return v.wireless;}); h+='<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:12px;padding:10px 14px;margin-bottom:10px"><b style="color:#b91c1c">⚠️ Sin asignar ('+plan.sinAsig.length+')</b> <span class="muted">— superan el cupo'+(hayWifi?', o son 📶 wireless y falta marcar una cuadrilla que haga wireless':'')+'.</span><div class="muted" style="font-size:12px;margin-top:4px">'+plan.sinAsig.map(function(v){return 'N°'+v.num+' '+esc(v.nombre)+(v.wireless?' 📶':'');}).join(' · ')+'</div></div>'; }
     if(sinUbic.length) h+='<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:10px 14px"><b style="color:#92400e">📍 Sin ubicar ('+sinUbic.length+')</b> <span class="muted">— sin GPS, coordinar aparte.</span><div class="muted" style="font-size:12px;margin-top:4px">'+sinUbic.map(function(v){return 'N°'+v.num+' '+esc(v.nombre);}).join(' · ')+'</div></div>';
     out.innerHTML=h;
     document.getElementById('ag-mapa').addEventListener('click',function(){ ensureLeaflet(function(){ agVerMapa(plan,depot); }); });
