@@ -130,6 +130,7 @@
       <div class="sec">Principal</div>
       <a data-v="dashboard" class="on">📊 Dashboard</a>
       <a data-v="ordenes">🛠️ Órdenes de trabajo</a>
+      <a data-v="asignar">📍 Asignar OTs</a>
       <a data-v="validacion">✅ Validación <span class="nbadge" id="nav-val-badge" style="display:none">0</span></a>
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
@@ -158,7 +159,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.43';
+  var VER='v0.44';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -264,7 +265,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(typeof cargarOT==='function'){ cargarOT(); } }
@@ -863,8 +864,40 @@
     Promise.all(jobs).then(function(){ cerrarModal(); toast('OT N° '+o.numero+' validada y finalizada ✓'); refrescarOT(); }).catch(function(){ toast('Error al validar.'); if(vb){vb.disabled=false;vb.textContent='✅ Validar y finalizar';} });
   }
 
+  // ===== ASIGNAR OTs (pendientes sin cuadrilla → asignar cuadrilla + fecha agendada) =====
+  function vAsignar(){
+    view.innerHTML='<h1>📍 Asignar OTs</h1><p class="sub">Órdenes pendientes sin cuadrilla. Elegí cuadrilla y fecha, y asignalas.</p><div id="asig-cont"></div>';
+    cargarAsignar();
+  }
+  function cargarAsignar(){
+    var cont=document.getElementById('asig-cont'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,prioridad,clientes(numero_cliente,nombre,apellido,barrio),tipos_trabajo(nombre)&order=created_at.asc&limit=500').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(!d.length){ cont.innerHTML='<div class="center">No hay OTs pendientes de asignar. 🎉</div>'; return; }
+      var cuadOpts='<option value="">— cuadrilla —</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
+      var h='<div class="muted" style="margin-bottom:8px">'+d.length+' OT pendientes de asignar</div><table><thead><tr><th>N° OT</th><th>Tipo</th><th>Cliente</th><th>Barrio</th><th>Cuadrilla</th><th>Fecha</th><th></th></tr></thead><tbody>';
+      d.forEach(function(o){ var cli=o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)';
+        h+='<tr data-id="'+o.id+'" data-num="'+esc(o.numero)+'"><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(cli)+'</td><td>'+esc(o.clientes?o.clientes.barrio||'':'')+'</td>'
+          +'<td><select class="asig-cuad" style="width:auto">'+cuadOpts+'</select></td><td><input type="date" class="asig-fecha" style="width:auto"></td>'
+          +'<td><button class="btn btn-ok asig-go" style="padding:7px 12px">Asignar</button></td></tr>'; });
+      h+='</tbody></table>'; cont.innerHTML=h;
+      cont.addEventListener('click',function(e){ var b=e.target.closest('.asig-go'); if(!b) return; var tr=b.closest('tr'); var id=tr.getAttribute('data-id'), cuad=tr.querySelector('.asig-cuad').value, fecha=tr.querySelector('.asig-fecha').value;
+        if(!cuad){ toast('Elegí una cuadrilla.'); return; }
+        b.disabled=true; b.textContent='…'; var upd={ cuadrilla_id:Number(cuad), estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha) upd.fecha_agendada=fecha;
+        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){ toast('OT N° '+tr.getAttribute('data-num')+' asignada ✓'); tr.parentNode.removeChild(tr); var tb=cont.querySelector('tbody'); if(tb&&!tb.children.length){ cont.innerHTML='<div class="center">No quedan OTs pendientes de asignar. 🎉</div>'; } })
+        .catch(function(){ b.disabled=false; b.textContent='Asignar'; toast('No se pudo asignar.'); }); });
+    });
+  }
+
   // ===== INFORMES (rendimiento operativo + consumo de materiales + mano de obra, entre fechas y por cuadrilla) =====
   var infState={ tab:'rendimiento', desde:null, hasta:null, cuad:'' };
+  var _infExp=null;   // {name, data:[[fila],...]} del reporte actual, para exportar a CSV
+  function _csvCell(v){ v=String(v==null?'':v); return /[",;\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; }
+  function _csvDownload(name, rows){
+    var csv='﻿'+rows.map(function(r){ return r.map(_csvCell).join(';'); }).join('\r\n');  // ; + BOM → abre directo en Excel
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}), url=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=url; a.download=name+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1500);
+  }
   function _hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
   function _mesInicioISO(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-01'; }
   function _infKpi(n,l,col){ return '<div style="flex:1;min-width:120px;background:#fff;border:1px solid var(--bord);border-left:4px solid '+col+';border-radius:12px;padding:12px 14px"><div style="font-size:24px;font-weight:800">'+n+'</div><div class="muted" style="font-size:12px">'+l+'</div></div>'; }
@@ -879,17 +912,20 @@
       +'<select id="inf-cuad" style="width:auto">'+cuadOpts+'</select>'
       +'<button class="btn btn-2" id="inf-mes">Este mes</button><button class="btn btn-2" id="inf-hoy">Hoy</button>'
       +'<button class="btn btn-pri" id="inf-go">Actualizar</button></div>'
-      +'<div class="toolbar" id="inf-tabs">'+['rendimiento|📊 Rendimiento','materiales|🔧 Consumo de materiales','manoobra|📋 Mano de obra'].map(function(t){var p=t.split('|');return '<button class="btn '+(infState.tab===p[0]?'btn-pri':'btn-2')+'" data-tab="'+p[0]+'">'+p[1]+'</button>';}).join('')+'</div>'
+      +'<div class="toolbar" style="justify-content:space-between;flex-wrap:wrap"><div id="inf-tabs" style="display:flex;gap:8px">'+['rendimiento|📊 Rendimiento','materiales|🔧 Consumo de materiales','manoobra|📋 Mano de obra'].map(function(t){var p=t.split('|');return '<button class="btn '+(infState.tab===p[0]?'btn-pri':'btn-2')+'" data-tab="'+p[0]+'">'+p[1]+'</button>';}).join('')+'</div>'
+      +'<div style="display:flex;gap:8px"><button class="btn btn-2" id="inf-csv">⬇️ Excel (CSV)</button><button class="btn btn-2" id="inf-print">🖨️ Imprimir / PDF</button></div></div>'
       +'<div id="inf-cont"></div>';
     function leer(){ infState.desde=document.getElementById('inf-desde').value; infState.hasta=document.getElementById('inf-hasta').value; infState.cuad=document.getElementById('inf-cuad').value; }
     document.getElementById('inf-go').addEventListener('click',function(){ leer(); infRender(); });
     document.getElementById('inf-hoy').addEventListener('click',function(){ infState.desde=_hoyISO(); infState.hasta=_hoyISO(); vInformes(); });
     document.getElementById('inf-mes').addEventListener('click',function(){ infState.desde=_mesInicioISO(); infState.hasta=_hoyISO(); vInformes(); });
+    document.getElementById('inf-csv').addEventListener('click',function(){ if(_infExp&&_infExp.data&&_infExp.data.length>1){ _csvDownload(_infExp.name,_infExp.data); } else { toast('No hay datos para exportar.'); } });
+    document.getElementById('inf-print').addEventListener('click',function(){ window.print(); });
     Array.prototype.forEach.call(document.querySelectorAll('#inf-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ leer(); infState.tab=b.getAttribute('data-tab'); vInformes(); }); });
     infRender();
   }
   function infRender(){
-    var cont=document.getElementById('inf-cont'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    var cont=document.getElementById('inf-cont'); if(!cont) return; _infExp=null; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
     if(infState.tab==='materiales') return infMateriales(cont);
     if(infState.tab==='manoobra') return infManoObra(cont);
     return infRendimiento(cont);
@@ -920,6 +956,7 @@
         {k:'dur',t:'Dur. prom.',sort:function(r){return r.durN?r.durSum/r.durN:0;},r:function(r){return r.durN?Math.round(r.durSum/r.durN)+' min':'—';}}
       ];
       gridRender(document.getElementById('inf-rend-t'),cols,rows,{key:'inf-rend',note:rows.length+' cuadrillas · '+_infPeriodo()});
+      _infExp={ name:'rendimiento_'+infState.desde+'_a_'+infState.hasta, data:[['Cuadrilla','Finalizadas','Pendientes','No realizadas','Total','% compl.','Dur. prom. (min)']].concat(rows.map(function(r){return [r.nombre,r.fin,r.pend,r.nr,r.total,(r.total?Math.round(r.fin/r.total*100):0)+'%',r.durN?Math.round(r.durSum/r.durN):''];})).concat([['TOTAL',tot.fin,tot.pend,tot.nr,tot.total,pct+'%',durProm]]) };
     });
   }
   function infMateriales(cont){
@@ -936,6 +973,7 @@
         {k:'ser',t:'Equipos c/ serial',sort:function(r){return r.seriales;},r:function(r){return r.seriales||'—';}}
       ];
       cont.innerHTML='<div id="inf-mat-t"></div>'; gridRender(document.getElementById('inf-mat-t'),cols,rows,{key:'inf-mat',note:rows.length+' materiales · OTs finalizadas · '+_infPeriodo()});
+      _infExp={ name:'materiales_'+infState.desde+'_a_'+infState.hasta, data:[['Material','Cantidad usada','Unidad','Equipos c/ serial']].concat(rows.map(function(r){return [r.nombre,(r.cant%1?r.cant.toFixed(2):r.cant),r.unidad||'',r.seriales||0];})) };
     });
   }
   function infManoObra(cont){
@@ -948,6 +986,7 @@
       if(!rows.length){ cont.innerHTML='<div class="center">No hay mano de obra en OTs finalizadas de ese período.</div>'; return; }
       var cols=[{k:'mo',t:'Mano de obra',sort:function(r){return r.nombre;},r:function(r){return '<b>'+esc(r.nombre)+'</b>';}},{k:'cant',t:'Cantidad',sort:function(r){return r.cant;},r:function(r){return '<b>'+(r.cant%1?r.cant.toFixed(2):r.cant)+'</b>';}}];
       cont.innerHTML='<div id="inf-mo-t"></div>'; gridRender(document.getElementById('inf-mo-t'),cols,rows,{key:'inf-mo',note:rows.length+' conceptos · '+_infPeriodo()});
+      _infExp={ name:'mano_obra_'+infState.desde+'_a_'+infState.hasta, data:[['Mano de obra','Cantidad']].concat(rows.map(function(r){return [r.nombre,(r.cant%1?r.cant.toFixed(2):r.cant)];})) };
     });
   }
 
@@ -1575,17 +1614,19 @@
   function cargarStockCuad(){
     var t=document.getElementById('dc-tabla'); if(!t) return; if(!depState.cuad){ t.innerHTML='<div class="center">Elegí una cuadrilla.</div>'; return; }
     t.innerHTML='<div class="center"><div class="spin"></div></div>';
-    Promise.all([ sbGet('catalogo_materiales?select=id,nombre,unidad,tecnologia,serial_tipo,orden&order=orden.asc'), sbGet('stock_cuadrillas?cuadrilla_id=eq.'+depState.cuad+'&select=material_id,cantidad'), _conteoSeriales('EN_CUADRILLA',depState.cuad) ]).then(function(r){
-      var mats=Array.isArray(r[0])?r[0]:[], sc=Array.isArray(r[1])?r[1]:[], serCnt=r[2]||{}, scmap={};
+    Promise.all([ sbGet('catalogo_materiales?select=id,nombre,unidad,tecnologia,serial_tipo,orden&order=orden.asc'), sbGet('stock_cuadrillas?cuadrilla_id=eq.'+depState.cuad+'&select=material_id,cantidad'), _conteoSeriales('EN_CUADRILLA',depState.cuad), _conteoSeriales('COMPROMETIDO',depState.cuad) ]).then(function(r){
+      var mats=Array.isArray(r[0])?r[0]:[], sc=Array.isArray(r[1])?r[1]:[], serCnt=r[2]||{}, compCnt=r[3]||{}, scmap={};
       sc.forEach(function(s){ scmap[s.material_id]=Number(s.cantidad)||0; });
-      var rows=mats.map(function(m){ var c=(m.serial_tipo&&m.serial_tipo!=='NINGUNO')?(serCnt[m.id]||0):(scmap[m.id]||0); return {m:m,c:c}; }).filter(function(x){return x.c>0;});
+      var rows=mats.map(function(m){ var c=(m.serial_tipo&&m.serial_tipo!=='NINGUNO')?(serCnt[m.id]||0):(scmap[m.id]||0); return {m:m,c:c,comp:(compCnt[m.id]||0)}; }).filter(function(x){return x.c>0||x.comp>0;});
       if(!rows.length){ t.innerHTML='<div class="center">Esta cuadrilla todavía no tiene stock cargado.</div>'; return; }
-      t.innerHTML='<div id="dc-grid"></div>'; var grid=document.getElementById('dc-grid');
+      var totComp=rows.reduce(function(a,x){return a+x.comp;},0);
+      t.innerHTML=(totComp?'<div class="muted" style="margin-bottom:8px">🔒 '+totComp+' equipo(s) <b>comprometido(s)</b> — usados en cierres pendientes de validar (se descuentan al validar).</div>':'')+'<div id="dc-grid"></div>'; var grid=document.getElementById('dc-grid');
       var cols=[
         {k:'material',t:'Material',sort:function(x){return x.m.nombre||'';},r:function(x){return '<b>'+esc(x.m.nombre)+'</b>';}},
         {k:'tec',t:'Tecnología',sort:function(x){return x.m.tecnologia||'';},r:function(x){return tecPill(x.m.tecnologia);}},
         {k:'serial',t:'Serial',sort:function(x){return x.m.serial_tipo||'';},r:function(x){return stipPill(x.m.serial_tipo);}},
-        {k:'cant',t:'Cantidad',sort:function(x){return x.c;},r:function(x){return '<b>'+x.c+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span>';}},
+        {k:'cant',t:'Disponible',sort:function(x){return x.c;},r:function(x){return '<b>'+x.c+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span>';}},
+        {k:'comp',t:'Comprometido',sort:function(x){return x.comp;},r:function(x){return x.comp?'<span class="pill p-bloqueado">🔒 '+x.comp+'</span>':'<span class="muted">—</span>';}},
         {k:'acc',t:'',sort:null,r:function(x){return '<span style="white-space:nowrap"><button class="btn btn-2 sc-dev" data-mid="'+x.m.id+'" data-n="'+esc(x.m.nombre)+'" data-st="'+x.m.serial_tipo+'" data-c="'+x.c+'">↩️ Devolver</button>'+(x.m.serial_tipo==='NINGUNO'?(' <button class="btn btn-2 sc-aj" data-mid="'+x.m.id+'" data-n="'+esc(x.m.nombre)+'" data-c="'+x.c+'">⚖️ Ajustar</button>'):'')+'</span>';}}
       ];
       gridRender(grid,cols,rows,{key:'depcuad'});
