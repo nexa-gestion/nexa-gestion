@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.6</title>
+<title>Nexa · Técnico — v0.7</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.6';
+  var VER='v0.7';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -315,8 +315,9 @@
         if(mos.length) jobs.push(sbPost('ot_mano_obra',mos));
         Object.keys(datos).forEach(function(k){ jobs.push(fetch(SB_URL+'/rest/v1/ot_datos_servicio?on_conflict=ot_id,clave',{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({ot_id:o.id,clave:k,valor:datos[k],origen:'TECNICO'})})); });
         CIE.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'CIERRE'})); });
-        var cliId=o.clientes?o.clientes.id:null;
-        CIE.kitMat.forEach(function(m){ var s=CIE.mats[m.id]; if(s&&s.sel.length) s.sel.forEach(function(ser){ jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(ser)+'&material_id=eq.'+m.id,{estado:'INSTALADO',cliente_id:cliId,ot_id:o.id})); }); });
+        // Seriales usados quedan COMPROMETIDOS (reservados) hasta que el admin valida.
+        // Salen del stock disponible de la cuadrilla pero NO pasan al cliente todavía.
+        CIE.kitMat.forEach(function(m){ var s=CIE.mats[m.id]; if(s&&s.sel.length) s.sel.forEach(function(ser){ jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(ser)+'&material_id=eq.'+m.id,{estado:'COMPROMETIDO',ot_id:o.id})); }); });
       } else {
         CIE.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'NO_REALIZADA'})); });
       }
