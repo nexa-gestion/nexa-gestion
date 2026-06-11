@@ -165,18 +165,42 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.52';
+  var VER='v0.53';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
+  function _syncHumano(ms){ var s=Math.abs(ms)/1000; if(s<60)return Math.round(s)+' s'; if(s<3600)return Math.round(s/60)+' min'; if(s<86400)return Math.round(s/3600)+' h'; return Math.round(s/86400)+' días'; }
+  function _syncProxima(){ var now=new Date(), horas=[6,18]; for(var d=0;d<2;d++){ for(var i=0;i<horas.length;i++){ var t=new Date(now); t.setDate(now.getDate()+d); t.setHours(horas[i],0,0,0); if(t>now) return t; } } return null; }
+  function cargarSyncInfo(){
+    var el=document.getElementById('cl-syncinfo'); if(!el) return;
+    var nx=_syncProxima(), prox=nx?('próxima automática en '+_syncHumano(nx-new Date())+' (corre 06:00 y 18:00)'):'';
+    sbGet('sync_log?select=started_at,finished_at,estado,actualizados,nuevos,eliminados&order=started_at.desc&limit=1').then(function(d){
+      var r=Array.isArray(d)&&d[0], ult='';
+      if(r&&r.estado==='corriendo'){ ult='🔄 actualizando ahora… · '; }
+      else if(r&&r.finished_at){ var camb=(r.actualizados||0)+(r.nuevos||0)+(r.eliminados||0); ult='última actualización hace '+_syncHumano(new Date()-new Date(r.finished_at))+' ('+camb+' cambios) · '; }
+      el.innerHTML='🕓 '+ult+prox;
+    }).catch(function(){ el.innerHTML='🕓 '+prox; });
+  }
   function pedirSyncISP(btn){
     if(!SYNC_PROXY){ toast('Falta configurar el proxy de sync (SYNC_PROXY).'); return; }
-    if(btn){ btn.disabled=true; btn.textContent='Actualizando…'; }
+    var t0=new Date(Date.now()-15000).toISOString(), info=document.getElementById('cl-syncinfo');
+    if(btn){ btn.disabled=true; btn.textContent='Iniciando…'; }
     fetch(SYNC_PROXY+'?key='+encodeURIComponent(SYNC_KEY),{method:'POST'})
       .then(function(r){ return r.json().catch(function(){return {ok:r.ok};}); })
-      .then(function(j){ if(j&&j.ok){ toast('🔄 Actualización iniciada · tarda ~1 min y se reflejan los cambios'); } else { toast('No se pudo iniciar la actualización'+(j&&j.error?': '+String(j.error).slice(0,60):'')); } })
-      .catch(function(){ toast('No se pudo conectar con el proxy de sync'); })
-      .then(function(){ if(btn){ btn.disabled=false; btn.textContent='🔄 Actualizar de ISPcube'; } });
+      .then(function(j){
+        if(!(j&&j.ok)){ toast('No se pudo iniciar la actualización'+(j&&j.error?': '+String(j.error).slice(0,60):'')); if(btn){btn.disabled=false;btn.textContent='🔄 Actualizar de ISPcube';} return; }
+        toast('🔄 Actualización iniciada · tarda ~1 min');
+        var start=Date.now(), tries=0, done=false;
+        (function bar(){ if(done)return; var pct=Math.min(95,Math.round((Date.now()-start)/750)); if(info)info.innerHTML='🔄 Actualizando ISPcube… <span style="display:inline-block;vertical-align:middle;width:160px;height:8px;background:#e2e8f0;border-radius:5px;margin:0 6px"><span style="display:block;height:8px;border-radius:5px;background:#2563eb;width:'+pct+'%"></span></span>'+pct+'%'; setTimeout(bar,800); })();
+        (function poll(){ if(done)return; tries++;
+          sbGet('sync_log?select=finished_at,actualizados,nuevos,eliminados&started_at=gte.'+encodeURIComponent(t0)+'&estado=eq.ok&order=started_at.desc&limit=1').then(function(d){
+            var r=Array.isArray(d)&&d[0];
+            if(r&&r.finished_at){ done=true; var camb=(r.actualizados||0)+(r.nuevos||0)+(r.eliminados||0); toast('✅ ISPcube actualizado · '+camb+' cambios'); if(btn){btn.disabled=false;btn.textContent='🔄 Actualizar de ISPcube';} _clStats=null; cargarStatsCl(); cargarClientes(); cargarSyncInfo(); return; }
+            if(tries<40) setTimeout(poll,5000); else { done=true; if(btn){btn.disabled=false;btn.textContent='🔄 Actualizar de ISPcube';} cargarSyncInfo(); toast('La actualización está tardando; se reflejará en un rato.'); }
+          }).catch(function(){ if(tries<40) setTimeout(poll,5000); });
+        })();
+      })
+      .catch(function(){ toast('No se pudo conectar con el proxy de sync'); if(btn){btn.disabled=false;btn.textContent='🔄 Actualizar de ISPcube';} });
   }
 
   // ── REST helpers ──
@@ -408,7 +432,7 @@
     function render(c){ cont.innerHTML=dkpi(c[0],'Clientes','total','blue','')+dkpi(c[1],'Activos','','green','cl|estado=activo')+dkpi(c[2],'Bloqueados','','red','cl|estado=bloqueado')+dkpi(c[3],'Baja','','gray','cl|estado=baja')+dkpi(c[4],'Desconectados','','amber','cl|estado=desconectado');
       Array.prototype.forEach.call(cont.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); }); }
     if(_clStats){ render(_clStats); return; }
-    Promise.all([ sbCountEst('clientes?select=id'), sbCount('clientes?estado=eq.activo&select=id'), sbCount('clientes?estado=eq.bloqueado&select=id'), sbCount('clientes?estado=eq.baja&select=id'), sbCount('clientes?estado=eq.desconectado&select=id') ]).then(function(c){ _clStats=c; render(c); });
+    Promise.all([ sbCount('clientes?estado=neq.eliminado&select=id'), sbCount('clientes?estado=eq.activo&select=id'), sbCount('clientes?estado=eq.bloqueado&select=id'), sbCount('clientes?estado=eq.baja&select=id'), sbCount('clientes?estado=eq.desconectado&select=id') ]).then(function(c){ _clStats=c; render(c); });
   }
   function vClientes(){
     view.innerHTML =
@@ -416,18 +440,18 @@
       +'<div id="cl-stats" class="dkpis" style="margin-bottom:14px"></div>'
       +'<div class="toolbar">'
       +'<input id="cl-q" placeholder="Buscar nombre, DNI, N° cliente o N° ISPcube…" value="'+esc(clState.q)+'" style="min-width:260px">'
-      +'<select id="cl-estado"><option value="">Todos los estados</option>'+opt(['activo','bloqueado','baja','suspendido','moroso','prospecto'],clState.estado)+'</select>'
+      +'<select id="cl-estado"><option value="">Todos los estados</option>'+opt(['activo','bloqueado','baja','suspendido','moroso','prospecto','eliminado'],clState.estado)+'</select>'
       +'<select id="cl-empresa"><option value="">Todas las empresas</option>'+opt(REF.empresas.map(function(e){return e.nombre;}),clState.empresa)+'</select>'
       +'<select id="cl-barrio"><option value="">Todos los barrios</option>'+opt(REF.barrios.map(function(b){return b.nombre;}),clState.barrio)+'</select>'
       +'<button class="btn btn-pri" id="cl-buscar">Buscar</button>'
       +'<button class="btn '+(clState.pend?'btn-x':'btn-2')+'" id="cl-pend" title="Solo clientes que faltan cargar en ISPcube">⚠️ Falta en ISPcube'+(clState.pend?' ✓':'')+'</button>'
       +'<button class="btn btn-2" id="cl-sync" title="Traer estado/deuda/caja/puerto/precinto de ISPcube ahora">🔄 Actualizar de ISPcube</button>'
-      +'</div><div id="cl-tabla"></div>';
+      +'</div><div id="cl-syncinfo" class="muted" style="font-size:12px;margin:-4px 0 10px;min-height:16px"></div><div id="cl-tabla"></div>';
     document.getElementById('cl-buscar').addEventListener('click',function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); });
     document.getElementById('cl-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leerFiltrosCl(); clState.page=0; cargarClientes(); } });
     document.getElementById('cl-pend').addEventListener('click',function(){ leerFiltrosCl(); clState.pend=!clState.pend; clState.page=0; vClientes(); });
     document.getElementById('cl-sync').addEventListener('click',function(){ pedirSyncISP(this); });
-    cargarStatsCl(); cargarClientes();
+    cargarStatsCl(); cargarClientes(); cargarSyncInfo();
   }
   function leerFiltrosCl(){
     clState.q=document.getElementById('cl-q').value.trim();
@@ -438,6 +462,7 @@
   function clQuery(){
     var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,domicilio_full,codigo_ispcube,caja_nap,puerto,precinto,planes(nombre)','order='+(clState.orderBy||'numero_cliente')+'.'+(clState.orderDir||'desc')];
     if(clState.estado) p.push('estado=eq.'+clState.estado);
+    else p.push('estado=neq.eliminado');   // por defecto, ocultar los eliminados de ISPcube (salvo que se filtre por ese estado)
     if(clState.empresa) p.push('empresa=eq.'+encodeURIComponent(clState.empresa));
     if(clState.barrio) p.push('barrio=eq.'+encodeURIComponent(clState.barrio));
     if(clState.pend) p.push('codigo_ispcube=is.null');
@@ -657,7 +682,7 @@
     }
     var aviso=s.ya_es_cliente?'<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px;margin-top:8px;font-size:13px">⚠️ El solicitante dice que YA es cliente'+(s.numero_cliente_existente?(' (N° '+esc(s.numero_cliente_existente)+')'):'')+'. Verificá antes de crear uno nuevo.</div>':'';
     var h='<h2>Solicitud de '+esc(s.nombre||'')+' '+esc(s.apellido||'')+'</h2>'
-      +'<p class="muted">'+esc(fmtFechaHora(s.created_at))+' · origen: '+esc(s.origen||'—')+(s.plan_texto?(' · pidió: '+esc(s.plan_texto)):'')+'</p>'+aviso
+      +'<p class="muted">'+esc(fmtFechaHora(s.created_at))+' · origen: '+esc(s.origen||'—')+(s.plan_texto?(' · pidió: '+esc(s.plan_texto)):'')+'</p>'+aviso+'<div id="fs-dnicheck"></div>'
       +'<div class="row"><div><label class="l">Nombre</label>'+inp('nombre',s.nombre)+'</div><div><label class="l">Apellido</label>'+inp('apellido',s.apellido)+'</div></div>'
       +'<div class="row"><div><label class="l">DNI</label>'+inp('doc_numero',s.doc_numero)+'</div><div><label class="l">Teléfono</label><div style="display:flex;gap:6px">'+inp('telefono',s.telefono)+(s.telefono?waLink(s.telefono,(s.nombre||'')+' '+(s.apellido||''),'INSTALACION',s.domicilio_full):'')+'</div></div></div>'
       +'<div class="row"><div><label class="l">Tel. alternativo</label>'+inp('telefono_alt',s.telefono_alt)+'</div><div><label class="l">Email</label>'+inp('email',s.email)+'</div></div>'
@@ -671,6 +696,12 @@
       +'<div id="fs-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-ok" id="fs-conv">✓ Convertir a cliente + OT</button><button class="btn btn-pri" id="fs-save">💾 Guardar cambios</button><button class="btn btn-x" id="fs-rej">✗ Rechazar</button><button class="btn btn-2" id="fs-close">Cerrar</button></div>';
     modal(h,'wide');
+    // Aviso si el DNI ya fue/es cliente (sobre todo si está 'eliminado' → revisar deuda en ISPcube antes de reinstalar)
+    if(s.doc_numero){ sbGet('clientes?doc_numero=eq.'+encodeURIComponent(s.doc_numero)+'&select=numero_cliente,nombre,apellido,estado,codigo_ispcube&limit=3').then(function(cl){
+      var box=document.getElementById('fs-dnicheck'); if(!box||!Array.isArray(cl)||!cl.length) return;
+      box.innerHTML=cl.map(function(c){ var elim=c.estado==='eliminado';
+        return '<div style="background:'+(elim?'#fef2f2;border:1px solid #fecaca':'#fff7ed;border:1px solid #fed7aa')+';border-radius:8px;padding:9px 11px;margin-top:8px;font-size:13px">'+(elim?'🗑️ <b>Este DNI ya fue cliente y está ELIMINADO de ISPcube</b> (N°'+esc(c.numero_cliente)+'). Revisá en ISPcube si quedó con <b>deuda</b> antes de reinstalar.':'⚠️ <b>Este DNI ya es cliente</b> N°'+esc(c.numero_cliente)+' '+esc((c.nombre||'')+' '+(c.apellido||''))+' ('+esc(c.estado)+'). Verificá antes de crear uno nuevo.')+'</div>'; }).join('');
+    }); }
     wireUbic();
     function leer(){
       function v(id){ var e=document.getElementById('fs-'+id); return e?(e.type==='checkbox'?e.checked:e.value.trim()):''; }
