@@ -173,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.69';
+  var VER='v0.70';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -429,8 +429,109 @@
         {k:'cuadrilla',t:'Cuadrilla',sort:function(o){return o.cuadrillas?o.cuadrillas.nombre:'';},r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
         {k:'cerrada',t:'Cerrada',sort:function(o){return o.fin_tec_at||'';},r:function(o){return esc(fmtFechaHora(o.fin_tec_at));}}
       ];
-      gridRender(document.getElementById('val-tabla'),cols,d,{key:'val',note:d.length+' OT a validar',onRow:function(o){ detalleOT(o.id); }});
+      gridRender(document.getElementById('val-tabla'),cols,d,{key:'val',note:d.length+' OT a validar',onRow:function(o){ valDetalle(o.id); }});
     });
+  }
+  // ── Validación INLINE (a todo el ancho, 3 columnas, denso — como FG, sin modal) ──
+  function _xb(cls,id){ return '<button class="'+cls+'" data-id="'+id+'" title="Quitar" style="width:22px;height:22px;flex:none;border:1.5px solid #fecaca;background:#fff;color:var(--rojo);border-radius:6px;cursor:pointer;padding:0;font-weight:700;line-height:1">✕</button>'; }
+  function valDetalle(otId){
+    loading();
+    sbGet('ordenes_trabajo?id=eq.'+otId+'&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,telefono,domicilio_full,barrio,caja_nap,puerto,precinto,tv_online,pack_futbol),cuadrillas(nombre),tipos_trabajo(nombre),motivos_ot(nombre)&limit=1').then(function(dd){
+      var o=(dd||[])[0]; if(!o){ vValidacion(); return; }
+      Promise.all([
+        sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=id,material_id,cantidad,serial,descripcion,catalogo_materiales(nombre,serial_tipo)'),
+        sbGet('ot_mano_obra?ot_id=eq.'+o.id+'&select=id,mano_obra_id,nombre,cantidad'),
+        sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&origen=eq.TECNICO&select=clave,valor'),
+        sbGet('ot_fotos?ot_id=eq.'+o.id+'&select=url'),
+        sbGet('catalogo_materiales?select=id,nombre,serial_tipo&activo=eq.true&order=orden.asc'),
+        sbGet('mano_obra_catalogo?select=id,nombre&activo=eq.true&order=orden.asc')
+      ]).then(function(r){
+        var mats=r[0]||[], mos=r[1]||[], datos=r[2]||[], fotos=r[3]||[], matCat=r[4]||[], moCat=r[5]||[], dm={}; datos.forEach(function(x){dm[x.clave]=x.valor;});
+        var c=o.clientes||{}, cli=(c.nombre||'')+' '+(c.apellido||''), reload=function(){ valDetalle(otId); };
+        var noIsp=(c.numero_cliente&&!c.codigo_ispcube);
+        var h='<div class="toolbar" style="margin-bottom:10px"><button class="btn btn-2" id="val-back">← Volver a validación</button><h1 style="margin:0;font-size:18px">Validar OT N° '+esc(o.numero)+'</h1></div>';
+        // header verde compacto
+        h+='<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:9px 14px;margin-bottom:10px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">'
+          +'<div><div style="font-weight:800;font-size:15px;color:#14532d">'+(c.codigo_ispcube?('ISP '+esc(c.codigo_ispcube)+' · '):'')+esc(cli||'(obra de red)')+(noIsp?' <span class="pill p-bloqueado" style="font-size:10px">⚠️ falta ISPcube</span>':'')+'</div>'
+          +'<div class="muted" style="font-size:12px">'+esc(o.tipo)+(o.tipos_trabajo?(' · '+esc(o.tipos_trabajo.nombre)):'')+' · '+esc(_domLimpio(c.domicilio_full)||'')+(c.barrio?(' · '+esc(c.barrio)):'')+'</div></div>'
+          +'<div style="text-align:right;font-size:12px"><div class="muted">Cuadrilla</div><b style="color:var(--azul)">🔧 '+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</b></div></div>';
+        // GPS inicio/fin
+        h+='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">'
+          +'<span>▶️ <b>Inicio:</b> '+(o.inicio_tec_at?(esc(fmtFechaHora(o.inicio_tec_at))+' '+ubicLink(o.lat_inicio,o.lng_inicio)):'<span class="muted">— no inició</span>')+'</span>'
+          +'<span>🏁 <b>Fin:</b> '+(o.fin_tec_at?(esc(fmtFechaHora(o.fin_tec_at))+' '+ubicLink(o.lat_fin,o.lng_fin)):'—')+'</span>'
+          +(fotos.length?('<span>📷 <b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">'+(i+1)+'</a>';}).join(' ')+'</span>'):'')+'</div>';
+        // 3 columnas
+        h+='<div style="display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:12px;align-items:start">';
+        // COL 1 — cierre + datos ISPcube
+        h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:11px"><div class="l" style="margin:0 0 6px">📋 Datos del cierre (ISPcube)</div>'
+          +'<label class="l">Observaciones del técnico</label><textarea id="vd-obs" style="min-height:46px">'+esc(o.observaciones_tec||'')+'</textarea>'
+          +(o.motivo_cancelacion?('<div style="margin:6px 0;color:var(--rojo);font-size:12px"><b>No realizada:</b> '+esc(o.motivo_cancelacion)+'</div>'):'');
+        var df=[['precinto','Precinto'],['caja_nap','Caja (NAP)'],['puerto','Puerto'],['access_point','Access Point'],['mac','MAC'],['serial','Serial/Modelo']];
+        h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 8px">'+df.map(function(p){return '<div><label class="l">'+p[1]+'</label><input id="vd-d-'+p[0]+'" value="'+esc(dm[p[0]]||'')+'"></div>';}).join('')+'</div>'
+          +'<button class="btn btn-pri" id="vd-save" style="margin-top:8px;width:100%">💾 Guardar cambios</button>'
+          +(o.cliente_id?'<button class="btn btn-2" id="vd-cli" style="margin-top:6px;width:100%">⬇️ Guardar caja/puerto/precinto en el cliente</button>':'')
+          +'</div>';
+        // COL 2 — materiales
+        h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:11px"><div style="display:flex;justify-content:space-between;align-items:center"><div class="l" style="margin:0">🔧 Materiales</div><button class="btn btn-2" id="vd-addmat" style="padding:3px 9px;font-size:12px">+ material</button></div>';
+        if(!mats.length) h+='<div class="muted" style="font-size:12px;padding:4px 0">—</div>';
+        mats.forEach(function(m){ var nom=m.catalogo_materiales?m.catalogo_materiales.nombre:(m.descripcion||'Material');
+          h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:12.5px">'+esc(nom)+(m.serial?('<br><span class="muted" style="font-size:10px;font-family:monospace">'+esc(m.serial)+'</span>'):'')+'</span>'
+            +(!m.serial?('<input type="number" min="0" class="vd-matc" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:50px;text-align:center;padding:3px">'):('<b style="font-size:12px;white-space:nowrap">×'+esc(m.cantidad)+'</b>'))
+            +_xb('vd-delmat',m.id+(m.serial?('|'+encodeURIComponent(m.serial)+'|'+m.material_id):''))+'</div>';
+        });
+        h+='<div id="vd-addmat-p" style="display:none;margin-top:6px;padding:7px;background:#eff6ff;border:1px dashed #93c5fd;border-radius:8px"><select id="vd-mat-sel" style="margin-bottom:5px"><option value="">— material —</option>'+matCat.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('')+'</select><div style="display:flex;gap:5px"><input id="vd-mat-qty" type="number" min="1" value="1" style="width:54px;text-align:center"><button class="btn btn-ok" id="vd-mat-ok" style="flex:1;padding:5px">Agregar</button></div></div></div>';
+        // COL 3 — mano de obra
+        h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:11px"><div style="display:flex;justify-content:space-between;align-items:center"><div class="l" style="margin:0">👷 Mano de obra</div><button class="btn btn-2" id="vd-addmo" style="padding:3px 9px;font-size:12px">+ M.O.</button></div>';
+        if(!mos.length) h+='<div class="muted" style="font-size:12px;padding:4px 0">—</div>';
+        mos.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:12.5px">'+esc(m.nombre)+'</span><input type="number" min="0" class="vd-moc" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:50px;text-align:center;padding:3px">'+_xb('vd-delmo',m.id)+'</div>'; });
+        h+='<div id="vd-addmo-p" style="display:none;margin-top:6px;padding:7px;background:#f0fdf4;border:1px dashed #86efac;border-radius:8px"><select id="vd-mo-sel" style="margin-bottom:5px"><option value="">— mano de obra —</option>'+moCat.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('')+'</select><div style="display:flex;gap:5px"><input id="vd-mo-qty" type="number" min="1" value="1" style="width:54px;text-align:center"><button class="btn btn-ok" id="vd-mo-ok" style="flex:1;padding:5px">Agregar</button></div></div></div>';
+        h+='</div>';
+        // barra de acciones
+        h+='<div class="toolbar" style="margin-top:12px;flex-wrap:wrap"><button class="btn btn-ok" id="vd-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>'
+          +'<button class="btn btn-2" id="vd-reasig">🔄 Reasignar</button><button class="btn btn-2" id="vd-devolver">↩️ Devolver al pool</button><button class="btn btn-ok" id="vd-print">🖨️ Imprimir OT</button></div>';
+        view.innerHTML=h;
+        document.getElementById('val-back').addEventListener('click',vValidacion);
+        // editar cantidades
+        Array.prototype.forEach.call(view.querySelectorAll('.vd-matc'),function(i){ i.addEventListener('change',function(){ var v=Math.max(0,parseInt(i.value,10)||0); i.value=v; sbPatch('ot_materiales?id=eq.'+i.getAttribute('data-id'),{cantidad:v}).then(function(){ toast('✓'); }); }); });
+        Array.prototype.forEach.call(view.querySelectorAll('.vd-moc'),function(i){ i.addEventListener('change',function(){ var v=Math.max(0,parseInt(i.value,10)||0); i.value=v; sbPatch('ot_mano_obra?id=eq.'+i.getAttribute('data-id'),{cantidad:v}).then(function(){ toast('✓'); }); }); });
+        // agregar
+        document.getElementById('vd-addmat').addEventListener('click',function(){ var p=document.getElementById('vd-addmat-p'); p.style.display=(p.style.display==='none'?'block':'none'); });
+        document.getElementById('vd-addmo').addEventListener('click',function(){ var p=document.getElementById('vd-addmo-p'); p.style.display=(p.style.display==='none'?'block':'none'); });
+        document.getElementById('vd-mat-ok').addEventListener('click',function(){ var mid=document.getElementById('vd-mat-sel').value, q=Math.max(1,parseInt(document.getElementById('vd-mat-qty').value,10)||1); if(!mid){toast('Elegí material.');return;} this.disabled=true; sbPost('ot_materiales',{ot_id:o.id,material_id:Number(mid),cantidad:q,serial:null}).then(function(){ toast('Material agregado ✓'); reload(); }); });
+        document.getElementById('vd-mo-ok').addEventListener('click',function(){ var sel=document.getElementById('vd-mo-sel'), sid=sel.value, q=Math.max(1,parseInt(document.getElementById('vd-mo-qty').value,10)||1); if(!sid){toast('Elegí mano de obra.');return;} this.disabled=true; sbPost('ot_mano_obra',{ot_id:o.id,mano_obra_id:Number(sid),nombre:sel.options[sel.selectedIndex].text,cantidad:q}).then(function(){ toast('M.O. agregada ✓'); reload(); }); });
+        // quitar
+        Array.prototype.forEach.call(view.querySelectorAll('.vd-delmat'),function(b){ b.addEventListener('click',function(){ var p=b.getAttribute('data-id').split('|'), id=p[0], ser=p[1]?decodeURIComponent(p[1]):null, mid=p[2]; if(!confirm('¿Quitar este material?'))return; var jobs=[fetch(SB_URL+'/rest/v1/ot_materiales?id=eq.'+id,{method:'DELETE',headers:H})]; if(ser&&mid) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(ser)+'&material_id=eq.'+mid+'&estado=eq.COMPROMETIDO',{estado:'EN_CUADRILLA',ot_id:null})); Promise.all(jobs).then(function(){ toast('Quitado ✓'); reload(); }); }); });
+        Array.prototype.forEach.call(view.querySelectorAll('.vd-delmo'),function(b){ b.addEventListener('click',function(){ if(!confirm('¿Quitar esta mano de obra?'))return; fetch(SB_URL+'/rest/v1/ot_mano_obra?id=eq.'+b.getAttribute('data-id'),{method:'DELETE',headers:H}).then(function(){ toast('Quitada ✓'); reload(); }); }); });
+        // guardar datos del cierre
+        document.getElementById('vd-save').addEventListener('click',function(){
+          var keys=['precinto','caja_nap','puerto','access_point','mac','serial'], jobs=[];
+          keys.forEach(function(k){ var el=document.getElementById('vd-d-'+k); var v=el.value.trim(); jobs.push(fetch(SB_URL+'/rest/v1/ot_datos_servicio?on_conflict=ot_id,clave',{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({ot_id:o.id,clave:k,valor:v||null,origen:'TECNICO'})})); });
+          jobs.push(sbPatch('ordenes_trabajo?id=eq.'+o.id,{observaciones_tec:document.getElementById('vd-obs').value.trim()||null}));
+          var b=this; b.disabled=true; b.textContent='Guardando…'; Promise.all(jobs).then(function(){ toast('Cambios guardados ✓'); reload(); }).catch(function(){ b.disabled=false; b.textContent='💾 Guardar cambios'; toast('No se pudo guardar.'); });
+        });
+        var vc=document.getElementById('vd-cli'); if(vc) vc.addEventListener('click',function(){ var upd={}; ['caja_nap','puerto','precinto'].forEach(function(k){ var el=document.getElementById('vd-d-'+k); if(el&&el.value.trim()) upd[k]=el.value.trim(); }); this.disabled=true; sbPatch('clientes?id=eq.'+o.cliente_id,upd).then(function(){ toast('Guardado en el cliente ✓'); }); });
+        // acciones
+        document.getElementById('vd-print').addEventListener('click',function(){ imprimirOT(o.id); });
+        document.getElementById('vd-reasig').addEventListener('click',function(){ reasignarOT(o); });
+        document.getElementById('vd-devolver').addEventListener('click',function(){ devolverOTpoolUI([o.id],o); });
+        document.getElementById('vd-validar').addEventListener('click',function(){
+          var b=this; if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Seguro? Tocá de nuevo para validar y descontar stock'; return; }
+          b.disabled=true; b.textContent='Validando…';
+          sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=material_id,cantidad,serial').then(function(fresh){ _validarYvolver(o, Array.isArray(fresh)?fresh:mats); });
+        });
+      });
+    });
+  }
+  // valida (descuenta stock + finaliza) y vuelve a la lista de validación
+  function _validarYvolver(o,mats){
+    var nowISO=new Date().toISOString(), jobs=[ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', validado_admin_at:nowISO, validado_por:USER.id }) ];
+    var noSer=(mats||[]).filter(function(m){return !m.serial&&m.material_id;});
+    if(o.cuadrilla_id) noSer.forEach(function(m){
+      jobs.push(sbGet('stock_cuadrillas?cuadrilla_id=eq.'+o.cuadrilla_id+'&material_id=eq.'+m.material_id+'&select=id,cantidad').then(function(s){ if(s&&s[0]){ var n=Math.max(0,Number(s[0].cantidad)-Number(m.cantidad)); return sbPatch('stock_cuadrillas?id=eq.'+s[0].id,{cantidad:n,updated_at:nowISO}); } }));
+      jobs.push(sbPost('stock_movimientos',{material_id:m.material_id,tipo:'CONSUMO_OT',cantidad:m.cantidad,ot_id:o.id,cuadrilla_id:o.cuadrilla_id,usuario_id:USER.id,observaciones:'Consumo OT N° '+o.numero}));
+    });
+    (mats||[]).filter(function(m){return m.serial&&m.material_id;}).forEach(function(m){ jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(m.serial)+'&material_id=eq.'+m.material_id,{estado:'INSTALADO',cliente_id:(o.cliente_id||null),cuadrilla_id:null,ot_id:o.id})); });
+    Promise.all(jobs).then(function(){ logOT(o.id,'VALIDADA',{de:o.estado,a:'FINALIZADA',cuadId:o.cuadrilla_id,detalle:'Validada en pantalla de validación'}); toast('OT N° '+o.numero+' validada y finalizada ✓'); vValidacion(); }).catch(function(){ toast('Error al validar.'); valDetalle(o.id); });
   }
 
   // ── CLIENTES ──
