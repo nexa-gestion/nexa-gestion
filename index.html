@@ -173,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.67';
+  var VER='v0.68';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -980,9 +980,10 @@
         if(cuad && !_otAsignable(o)){ toast('⚠️ No se puede asignar: el cliente todavía no está cargado en ISPcube.'); return; }
         var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null) };
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
-        // Rechazo: si sale de CERRADA_TECNICO sin finalizar, los seriales comprometidos vuelven a la cuadrilla
+        // Rechazo: si sale de CERRADA_TECNICO sin finalizar, los seriales comprometidos vuelven a la cuadrilla y se descarta el cierre (evita duplicar al re-cerrar)
         if(o.estado==='CERRADA_TECNICO' && est!=='FINALIZADA' && est!=='CERRADA_TECNICO'){
           sbPatch('stock_seriales?ot_id=eq.'+id+'&estado=eq.COMPROMETIDO',{ estado:'EN_CUADRILLA', ot_id:null });
+          Promise.all(_limpiarCierreJobs('eq.'+id)).catch(function(){});
         }
         sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){
           if(est!==o.estado || (cuad?Number(cuad):null)!==(o.cuadrilla_id||null)){
@@ -1029,10 +1030,18 @@
         .catch(function(){ btn.disabled=false; btn.textContent='↩️ Devolver al pool'; toast('No se pudo devolver.'); });
     });
   }
+  // Borra el cierre de las OTs (materiales/mano de obra/datos del técnico/fotos) para que un re-cierre arranque limpio (evita duplicados)
+  function _limpiarCierreJobs(inq){
+    return [ fetch(SB_URL+'/rest/v1/ot_materiales?ot_id='+inq,{method:'DELETE',headers:H}),
+      fetch(SB_URL+'/rest/v1/ot_mano_obra?ot_id='+inq,{method:'DELETE',headers:H}),
+      fetch(SB_URL+'/rest/v1/ot_datos_servicio?ot_id='+inq+'&origen=eq.TECNICO',{method:'DELETE',headers:H}),
+      fetch(SB_URL+'/rest/v1/ot_fotos?ot_id='+inq,{method:'DELETE',headers:H}) ];
+  }
   function devolverOTpool(ids, motivo){
     var inq='in.('+ids.join(',')+')';
     return sbPatch('stock_seriales?ot_id='+inq+'&estado=eq.COMPROMETIDO',{ estado:'EN_CUADRILLA', ot_id:null }).catch(function(){})
-      .then(function(){ return sbPatch('ordenes_trabajo?id='+inq,{ estado:'PENDIENTE', cuadrilla_id:null, asignada_at:null, fecha_agendada:null }); })
+      .then(function(){ return Promise.all(_limpiarCierreJobs(inq)).catch(function(){}); })   // descartar el cierre anterior
+      .then(function(){ return sbPatch('ordenes_trabajo?id='+inq,{ estado:'PENDIENTE', cuadrilla_id:null, asignada_at:null, fecha_agendada:null, fin_tec_at:null, lat_fin:null, lng_fin:null, inicio_tec_at:null, lat_inicio:null, lng_inicio:null, observaciones_tec:null, motivo_cancelacion:null }); })
       .then(function(){ logOTmuchas(ids,'DEVUELTA_POOL',{ a:'PENDIENTE', detalle:motivo||'Devuelta al pool' }); });
   }
   // ── Reasignar a otra cuadrilla ──
