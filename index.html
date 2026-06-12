@@ -154,6 +154,7 @@
       <a data-v="manoobra">🧰 Tipos de trabajo</a>
       <a data-v="cuentastv">📺 Cuentas TV</a>
       <a data-v="precios">💲 Precios</a>
+      <a data-v="actividad" id="nav-actividad" style="display:none">📋 Actividad</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
       <div class="sec">Stock</div>
       <a data-v="deposito">📦 Depósito / Stock</a>
@@ -173,7 +174,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.73';
+  var VER='v0.74';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -308,7 +309,7 @@
     document.getElementById('lg-btn').disabled=true;
     sbGet('usuarios?email=eq.'+encodeURIComponent(u)+'&activo=eq.true&select=*&limit=1').then(function(d){
       document.getElementById('lg-btn').disabled=false;
-      if(Array.isArray(d)&&d.length&&String(d[0].pin)===p){ USER=d[0]; try{ var _su=Object.assign({},USER); delete _su.pin; localStorage.setItem('nexa_sesion', JSON.stringify({u:_su,t:Date.now()})); }catch(e){} iniciar(); }
+      if(Array.isArray(d)&&d.length&&String(d[0].pin)===p){ USER=d[0]; window._loginFresh=true; try{ var _su=Object.assign({},USER); delete _su.pin; localStorage.setItem('nexa_sesion', JSON.stringify({u:_su,t:Date.now()})); }catch(e){} iniciar(); }
       else err.textContent='Usuario o PIN incorrecto.';
     }).catch(function(){ document.getElementById('lg-btn').disabled=false; err.textContent='Error de conexión.'; });
   }
@@ -319,6 +320,7 @@
     document.getElementById('side-user').innerHTML = '<div style="font-size:14px;font-weight:700;color:#0f172a">'+esc(USER.nombre)+'</div><div style="text-transform:capitalize">'+esc(USER.rol)+' · '+VER+'</div><button class="u-logout" id="logout">Cerrar sesión</button>';
     var _lo=document.getElementById('logout'); if(_lo) _lo.addEventListener('click',function(e){ e.preventDefault(); try{ localStorage.removeItem('nexa_sesion'); }catch(_){} location.reload(); });
     if(USER.rol==='superadmin'){ var nu=document.getElementById('nav-usuarios'); if(nu) nu.style.display=''; }
+    if(USER.rol==='superadmin'||USER.rol==='gerencial'){ var na=document.getElementById('nav-actividad'); if(na) na.style.display=''; }
     // precargar referencias
     Promise.all([
       sbGet('empresas?select=*&order=nombre'),
@@ -327,7 +329,7 @@
       sbGet('cuadrillas?select=*&activa=eq.true&order=nombre'),
       sbGet('motivos_ot?select=*&activo=eq.true&order=orden'),
       sbGet('tipos_trabajo?select=*&activo=eq.true&order=orden')
-    ]).then(function(r){ REF.empresas=r[0]||[]; REF.barrios=r[1]||[]; REF.planes=r[2]||[]; REF.cuadrillas=r[3]||[]; REF.motivos=r[4]||[]; REF.tiposTrab=r[5]||[]; ir('dashboard'); });
+    ]).then(function(r){ REF.empresas=r[0]||[]; REF.barrios=r[1]||[]; REF.planes=r[2]||[]; REF.cuadrillas=r[3]||[]; REF.motivos=r[4]||[]; REF.tiposTrab=r[5]||[]; if(window._loginFresh){ window._loginFresh=false; logAct('Inició sesión',{entidad:'SESION'}); } ir('dashboard'); });
   }
 
   // ── NAV ──
@@ -336,7 +338,7 @@
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
     a.classList.add('on'); ir(a.getAttribute('data-v'));
   });
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,informes:vInformes}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,actividad:vActividad,informes:vInformes}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -784,7 +786,7 @@
       var h='<h1>Solicitudes de alta</h1><p class="sub">Pedidos del formulario público y de la planilla. Tildá una o varias para convertir, o tocá una para revisar.</p>';
       if(!d.length){ view.innerHTML=h+'<div class="center">No hay solicitudes pendientes. 🎉</div>'; return; }
       var byId={}; d.forEach(function(s){ byId[s.id]=s; });
-      view.innerHTML=h+'<div class="toolbar" style="justify-content:flex-end;align-items:center;gap:10px"><span class="muted" id="sol-selinfo"></span><button class="btn btn-ok" id="sol-conv" style="display:none">✅ Convertir seleccionadas a cliente + OT</button></div><div id="sol-tabla"></div>';
+      view.innerHTML=h+'<div class="toolbar" style="justify-content:flex-end;align-items:center;gap:10px"><span class="muted" id="sol-selinfo"></span><button class="btn btn-x" id="sol-del" style="display:none">🗑️ Eliminar</button><button class="btn btn-ok" id="sol-conv" style="display:none">✅ Convertir seleccionadas a cliente + OT</button></div><div id="sol-tabla"></div>';
       var cols=[
         {k:'sel',t:'',sort:null,r:function(s){return '<input type="checkbox" class="sol-chk" data-id="'+s.id+'"'+(_solSel[s.id]?' checked':'')+'>';}},
         {k:'fecha',t:'Fecha',sort:function(s){return s.created_at||'';},r:function(s){return esc(fmtFecha(s.created_at));}},
@@ -800,8 +802,21 @@
       ];
       var cont=document.getElementById('sol-tabla');
       gridRender(cont,cols,d,{key:'sol2',onRow:function(s){ fichaSolicitud(s); }});
-      function refSel(){ var n=Object.keys(_solSel).filter(function(k){return _solSel[k];}).length; var b=document.getElementById('sol-conv'), inf=document.getElementById('sol-selinfo'); if(b)b.style.display=n?'':'none'; if(b&&n)b.textContent='✅ Convertir '+n+' a cliente + OT'; if(inf)inf.textContent=n?(n+' seleccionada(s)'):''; }
+      function refSel(){ var n=Object.keys(_solSel).filter(function(k){return _solSel[k];}).length; var b=document.getElementById('sol-conv'), bd=document.getElementById('sol-del'), inf=document.getElementById('sol-selinfo'); if(b)b.style.display=n?'':'none'; if(b&&n)b.textContent='✅ Convertir '+n+' a cliente + OT'; if(bd){ bd.style.display=n?'':'none'; bd.textContent='🗑️ Eliminar'+(n?(' '+n):''); bd.removeAttribute('data-ok'); } if(inf)inf.textContent=n?(n+' seleccionada(s)'):''; }
       cont.addEventListener('change',function(e){ var ch=e.target.closest('.sol-chk'); if(!ch)return; _solSel[ch.getAttribute('data-id')]=ch.checked; refSel(); });
+      document.getElementById('sol-del').addEventListener('click',function(){
+        var ids=Object.keys(_solSel).filter(function(k){return _solSel[k];}); if(!ids.length)return;
+        if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar '+ids.length+'? Tocá de nuevo'; return; }
+        var btn=this; btn.disabled=true; btn.textContent='Eliminando…'; var ok=0,fail=0;
+        (function nextDel(i){
+          if(i>=ids.length){ toast('🗑️ '+ok+' solicitud(es) eliminada(s)'+(fail?(' · '+fail+' fallaron'):'')); _solSel={}; vSolicitudes(); return; }
+          var s=byId[ids[i]]||{}, nom=((s.nombre||'')+' '+(s.apellido||'')).trim();
+          var det=nom+(s.doc_numero?(' · DNI '+s.doc_numero):'')+(s.telefono?(' · '+s.telefono):'')+(s.barrio?(' · '+s.barrio):'')+(s.planes?(' · '+s.planes.nombre):(s.plan_texto?(' · '+s.plan_texto):''))+(s.tv_online?' · TV':'')+(s.pack_futbol?' · Fútbol':'');
+          logAct('Eliminó solicitud de '+(nom||('N°'+ids[i])),{ entidad:'SOLICITUD', entidad_id:ids[i], detalle:det })
+            .then(function(){ return fetch(SB_URL+'/rest/v1/solicitudes_alta?id=eq.'+ids[i],{method:'DELETE',headers:H}); })
+            .then(function(){ ok++; }).catch(function(){ fail++; }).then(function(){ nextDel(i+1); });
+        })(0);
+      });
       document.getElementById('sol-conv').addEventListener('click',function(){
         var ids=Object.keys(_solSel).filter(function(k){return _solSel[k];}); if(!ids.length)return;
         if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Convertir '+ids.length+'? Tocá de nuevo'; return; }
@@ -1046,7 +1061,11 @@
   }
   // ── Bitácora de la OT: registra qué pasó (asignar/devolver/reasignar/cerrar/validar), quién y cuándo ──
   function _cuadNombre(id){ if(!id) return null; var c=REF.cuadrillas.filter(function(x){return x.id==id;})[0]; return c?c.nombre:('Cuad '+id); }
-  function logOT(otId, evento, o){ o=o||{}; return sbPost('ot_historial',{ ot_id:otId, evento:evento, estado_anterior:o.de||null, estado_nuevo:o.a||null, cuadrilla_id:o.cuadId||null, cuadrilla_nombre:o.cuadNom||(o.cuadId?_cuadNombre(o.cuadId):null), detalle:o.detalle||null, usuario_id:(USER&&USER.id)||null, usuario_nombre:(USER&&USER.nombre)||null }).catch(function(){}); }
+  // Log de actividad general (qué hace cada usuario/cuadrilla) — alimenta la pantalla "Actividad"
+  function logAct(accion, o){ o=o||{}; return sbPost('actividad_log',{ accion:accion, entidad:o.entidad||null, entidad_id:o.entidad_id||null, detalle:o.detalle||null, cuadrilla_id:o.cuadId||null, cuadrilla_nombre:o.cuadNom||(o.cuadId?_cuadNombre(o.cuadId):null), usuario_id:(USER&&USER.id)||null, usuario_nombre:(USER&&USER.nombre)||null, rol:(USER&&USER.rol)||null }).catch(function(){}); }
+  function logOT(otId, evento, o){ o=o||{}; var lbl=(_EVENTO_LBL[evento]||[null,evento])[1];
+    logAct(lbl+' OT N°'+otId, { entidad:'OT', entidad_id:otId, cuadId:o.cuadId, cuadNom:o.cuadNom, detalle:o.detalle });
+    return sbPost('ot_historial',{ ot_id:otId, evento:evento, estado_anterior:o.de||null, estado_nuevo:o.a||null, cuadrilla_id:o.cuadId||null, cuadrilla_nombre:o.cuadNom||(o.cuadId?_cuadNombre(o.cuadId):null), detalle:o.detalle||null, usuario_id:(USER&&USER.id)||null, usuario_nombre:(USER&&USER.nombre)||null }).catch(function(){}); }
   function logOTmuchas(ids, evento, o){ (ids||[]).forEach(function(id){ logOT(id, evento, o); }); }
   var _EVENTO_LBL={ CREADA:['🆕','Creada'], ASIGNADA:['👷','Asignada'], DEVUELTA_POOL:['↩️','Devuelta al pool'], REASIGNADA:['🔄','Reasignada'], CIERRE_MANUAL:['✍️','Cierre manual (admin)'], CERRADA_TECNICO:['📥','Cerrada por técnico'], NO_REALIZADA:['✕','No realizada'], VALIDADA:['✅','Validada'], CAMBIO_ESTADO:['🔁','Cambio de estado'] };
   function detalleOT(id){
@@ -2314,6 +2333,57 @@
     }).catch(function(){ _doImprimirOTs(ids); });
   }
 
+  // ── ACTIVIDAD ── (solo superadmin/gerencial: log interactivo de qué hace cada usuario y cuadrilla)
+  function _actISO(d){ var p=('0'); return d.getFullYear()+'-'+(p+(d.getMonth()+1)).slice(-2)+'-'+(p+d.getDate()).slice(-2); }
+  function vActividad(){
+    if(!USER||(USER.rol!=='superadmin'&&USER.rol!=='gerencial')){ view.innerHTML='<h1>Actividad</h1><div class="center">Solo disponible para superadmin o gerencial.</div>'; return; }
+    if(!window._actSt){ var hoy=new Date(), desde=new Date(); desde.setDate(desde.getDate()-7); window._actSt={ desde:_actISO(desde), hasta:_actISO(hoy), user:'', cuad:'', ent:'', q:'' }; }
+    var st=window._actSt;
+    var userOpts='<option value="">Todos los usuarios</option>'+(window._actUsuarios||[]).map(function(u){return '<option value="'+u.id+'"'+(st.user==u.id?' selected':'')+'>'+esc(u.nombre)+'</option>';}).join('');
+    var cuadOpts='<option value="">Todas las cuadrillas</option>'+REF.cuadrillas.map(function(c){return '<option value="'+c.id+'"'+(st.cuad==c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+    var ents=[['','Toda entidad'],['OT','OTs'],['SOLICITUD','Solicitudes'],['CUENTA_TV','Cuentas TV'],['STOCK','Stock'],['CLIENTE','Clientes'],['SESION','Sesiones']];
+    var entOpts=ents.map(function(e){return '<option value="'+e[0]+'"'+(st.ent===e[0]?' selected':'')+'>'+e[1]+'</option>';}).join('');
+    view.innerHTML='<h1>📋 Actividad</h1><p class="sub">Qué hizo cada usuario y cada cuadrilla. Filtrá por fecha, usuario, cuadrilla o tipo. Solo lo ven superadmin y gerencial.</p>'
+      +'<div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:flex-end">'
+      +'<div><label class="l">Desde</label><input type="date" id="act-desde" value="'+esc(st.desde)+'" style="width:150px"></div>'
+      +'<div><label class="l">Hasta</label><input type="date" id="act-hasta" value="'+esc(st.hasta)+'" style="width:150px"></div>'
+      +'<div><label class="l">Usuario</label><select id="act-user" style="width:180px">'+userOpts+'</select></div>'
+      +'<div><label class="l">Cuadrilla</label><select id="act-cuad" style="width:180px">'+cuadOpts+'</select></div>'
+      +'<div><label class="l">Tipo</label><select id="act-ent" style="width:150px">'+entOpts+'</select></div>'
+      +'<div style="flex:1;min-width:160px"><label class="l">Buscar texto</label><input id="act-q" placeholder="acción o detalle…" value="'+esc(st.q||'')+'"></div>'
+      +'<button class="btn btn-pri" id="act-apply">Aplicar</button>'
+      +'</div><div id="act-tabla"><div class="center">Cargando…</div></div>';
+    function leerFiltros(){ st.desde=document.getElementById('act-desde').value; st.hasta=document.getElementById('act-hasta').value; st.user=document.getElementById('act-user').value; st.cuad=document.getElementById('act-cuad').value; st.ent=document.getElementById('act-ent').value; st.q=document.getElementById('act-q').value.trim(); }
+    document.getElementById('act-apply').addEventListener('click',function(){ leerFiltros(); cargarActividad(); });
+    document.getElementById('act-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leerFiltros(); cargarActividad(); } });
+    // cargar usuarios para el filtro una sola vez
+    if(!window._actUsuarios){ sbGet('usuarios?select=id,nombre,rol&order=nombre').then(function(d){ window._actUsuarios=d||[]; var sel=document.getElementById('act-user'); if(sel){ sel.innerHTML='<option value="">Todos los usuarios</option>'+window._actUsuarios.map(function(u){return '<option value="'+u.id+'"'+(st.user==u.id?' selected':'')+'>'+esc(u.nombre)+'</option>';}).join(''); } }); }
+    cargarActividad();
+  }
+  function cargarActividad(){
+    var st=window._actSt, cont=document.getElementById('act-tabla'); if(!cont)return;
+    cont.innerHTML='<div class="center">Cargando…</div>';
+    var q='actividad_log?order=created_at.desc&limit=1000';
+    if(st.desde) q+='&created_at=gte.'+st.desde+'T00:00:00';
+    if(st.hasta) q+='&created_at=lte.'+st.hasta+'T23:59:59';
+    if(st.user)  q+='&usuario_id=eq.'+st.user;
+    if(st.cuad)  q+='&cuadrilla_id=eq.'+st.cuad;
+    if(st.ent)   q+='&entidad=eq.'+st.ent;
+    sbGet(q).then(function(d){
+      d=d||[];
+      if(st.q){ var qq=st.q.toLowerCase(); d=d.filter(function(r){ return ((r.accion||'')+' '+(r.detalle||'')+' '+(r.usuario_nombre||'')+' '+(r.cuadrilla_nombre||'')).toLowerCase().indexOf(qq)>=0; }); }
+      var _entIco={OT:'🛠️',SOLICITUD:'📥',CUENTA_TV:'📺',STOCK:'📦',CLIENTE:'👥',SESION:'🔑'};
+      var cols=[
+        {k:'fecha',t:'Fecha y hora',sort:function(r){return r.created_at||'';},r:function(r){return esc(fmtFechaHora(r.created_at));}},
+        {k:'usuario',t:'Usuario',sort:function(r){return r.usuario_nombre||'';},r:function(r){return esc(r.usuario_nombre||'—')+(r.rol?'<br><span class="muted" style="text-transform:capitalize">'+esc(r.rol)+'</span>':'');}},
+        {k:'accion',t:'Acción',sort:function(r){return r.accion||'';},r:function(r){return (_entIco[r.entidad]||'•')+' '+esc(r.accion||'');}},
+        {k:'cuadrilla',t:'Cuadrilla',sort:function(r){return r.cuadrilla_nombre||'';},r:function(r){return esc(r.cuadrilla_nombre||'—');}},
+        {k:'detalle',t:'Detalle',sort:null,r:function(r){return r.detalle?'<span class="muted" style="font-size:12px">'+esc(r.detalle)+'</span>':'—';}}
+      ];
+      gridRender(cont,cols,d,{key:'act',note:d.length+' movimiento(s)'+(d.length>=1000?' (mostrando los 1000 más recientes — afiná los filtros)':'')});
+    }).catch(function(){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar la actividad. ¿Corriste el SQL v20 (tabla actividad_log)?</div>'; });
+  }
+
   // ── USUARIOS ── (solo superadmin: ABM de accesos; los técnicos usan su usuario en la PWA)
   function vUsuarios(){
     if(!USER||USER.rol!=='superadmin'){ view.innerHTML='<h1>Usuarios</h1><div class="center">Solo disponible para superadmin.</div>'; return; }
@@ -2640,7 +2710,7 @@
     var btn=document.getElementById('ing-confirm'); btn.disabled=true; btn.textContent='Procesando…';
     var items=INGRESO_TEMP.slice(), idx=0;
     function step(){
-      if(idx>=items.length){ INGRESO_TEMP=[]; toast('Ingreso confirmado ✓'); depState.tab='deposito'; vDeposito(); return; }
+      if(idx>=items.length){ var _det=items.map(function(x){return ((x.cantidad||(x.seriales?x.seriales.length:1)))+'× '+(x.nombre||x.material_id);}).join(', '); logAct('Ingresó materiales a depósito',{ entidad:'STOCK', detalle:_det }); INGRESO_TEMP=[]; toast('Ingreso confirmado ✓'); depState.tab='deposito'; vDeposito(); return; }
       var it=items[idx++];
       var p=(it.serial_tipo==='NINGUNO')? _upsertDeposito(it.material_id,it.cantidad) : _insertSeriales(it.material_id,it.seriales);
       p.then(function(res){ return sbPost('stock_movimientos',{material_id:Number(it.material_id),tipo:'INGRESO',cantidad:(res&&res.ok!=null?res.ok:it.cantidad),usuario_id:USER.id,observaciones:(res&&res.dup?('('+res.dup+' duplicados omitidos)'):null)}); })
@@ -2780,7 +2850,7 @@
     var btn=document.getElementById('ent-confirm'); btn.disabled=true; btn.textContent='Entregando…';
     var items=ENTREGA_TEMP.slice(), idx=0;
     function step(){
-      if(idx>=items.length){ cerrarModal(); toast('✅ Entregado a la cuadrilla'); if(depState.tab==='cuadrillas') cargarStockCuad(); else depStock(); return; }
+      if(idx>=items.length){ var _det=items.map(function(x){return (x.cantidad||1)+'× '+(x.nombre||x.material_id);}).join(', '); logAct('Entregó materiales a cuadrilla',{ entidad:'STOCK', cuadId:cuad, detalle:_det }); cerrarModal(); toast('✅ Entregado a la cuadrilla'); if(depState.tab==='cuadrillas') cargarStockCuad(); else depStock(); return; }
       var it=items[idx++], p;
       if(it.serial_tipo==='NINGUNO'){
         p=_upsertDeposito(it.material_id,-it.cantidad)
