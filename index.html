@@ -201,7 +201,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.76';
+  var VER='v0.79';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -378,7 +378,7 @@
       else if(p[1]){ var kv=p[1].split('='); clState[kv[0]]=kv[1]; }
       navTo('clientes');
     } else if(v==='sol'){ navTo('solicitudes'); }
-    else if(v==='ot'){ otState.estado=p[1]||''; otState.tipo=p[2]||''; otState.page=0; navTo('ordenes'); }
+    else if(v==='ot'){ otState.estado=p[1]||''; otState.tipo=p[2]||''; otState.antig=p[3]||''; otState.page=0; navTo('ordenes'); }
     else if(v==='val'){ navTo('validacion'); }
     else if(v==='nav'){ navTo(p[1]); }
     else if(v==='nuevaOT'){ navTo('ordenes'); setTimeout(function(){ if(typeof nuevaOT==='function') nuevaOT(); },60); }
@@ -396,42 +396,38 @@
   function _inic(nom){ var ps=String(nom||'').split(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9]+/).filter(Boolean); if(!ps.length)return '?'; if(ps.length===1)return ps[0].substring(0,2).toUpperCase(); return (ps[0][0]+ps[1][0]).toUpperCase(); }
   var _CUADCOL=['#185FA5','#0F6E56','#854F0B','#3C3489','#A32D2D','#0d9488','#7c3aed','#be185d','#0e7490','#b45309'];
   function _pctCol(p){ return p>=70?'#16a34a':(p>=40?'#2563eb':'#d97706'); }
+  function _minTxt(min){ min=Math.round(min); if(min<60)return min+' min'; var h=Math.floor(min/60),m=min%60; return h+'h'+(m?(' '+m+'min'):''); }
   // Anillo de avance (donut SVG con stroke-dasharray, igual que FG)
-  function _ring(pct){ var R=50, C=Math.round(2*Math.PI*R), dash=Math.round(pct/100*C), col=_pctCol(pct);
+  function _ring(pct,lbl){ var R=50, C=Math.round(2*Math.PI*R), dash=Math.round(pct/100*C), col=_pctCol(pct);
     return '<svg viewBox="0 0 120 120" width="150" height="150"><circle cx="60" cy="60" r="'+R+'" fill="none" stroke="#eef2f7" stroke-width="11"/>'
       +'<circle cx="60" cy="60" r="'+R+'" fill="none" stroke="'+col+'" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+dash+' '+C+'" transform="rotate(-90 60 60)"/>'
       +'<text x="60" y="56" text-anchor="middle" font-size="26" font-weight="800" fill="#0f172a">'+pct+'%</text>'
-      +'<text x="60" y="77" text-anchor="middle" font-size="10" fill="#94a3b8">avance hoy</text></svg>'; }
+      +'<text x="60" y="77" text-anchor="middle" font-size="10" fill="#94a3b8">'+esc(lbl||'avance')+'</text></svg>'; }
+  // Helpers de fecha para el navegador día por día
+  function _isoOf(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function _addDias(iso,n){ var p=String(iso).split('-'),d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n); return _isoOf(d); }
+  function _fechaLinda(iso){ var p=String(iso).split('-'),d=new Date(+p[0],+p[1]-1,+p[2]),hoy=_hoyISO(); var rel=iso===hoy?'Hoy':(iso===_addDias(hoy,1)?'Mañana':(iso===_addDias(hoy,-1)?'Ayer':'')); var t=d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}); return (rel?rel+' · ':'')+t.charAt(0).toUpperCase()+t.slice(1); }
 
   function vDashboard(){
     loading();
-    var HOY=_hoyISO(), HOYini=HOY+'T00:00:00';
+    var HOY=_hoyISO();
     Promise.all([
       sbGet('ordenes_trabajo?estado=eq.PENDIENTE&select=tipo,created_at&limit=2000'),
       sbCount('solicitudes_alta?estado=eq.pendiente&select=id'),
       sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id'),
-      // carga activa de las cuadrillas (abiertas, cualquier fecha)
-      sbGet('ordenes_trabajo?cuadrilla_id=not.is.null&estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&select=id,estado,cuadrilla_id,validado_admin_at,cuadrillas(nombre)&limit=2000'),
-      // finalizadas HOY (el técnico cerró hoy) — incluye CERRADA_TECNICO y FINALIZADA con fin_tec_at de hoy
-      sbGet('ordenes_trabajo?cuadrilla_id=not.is.null&fin_tec_at=gte.'+HOYini+'&select=id,estado,cuadrilla_id,validado_admin_at,cuadrillas(nombre)&limit=2000'),
-      // coordinadas del día (agendadas para hoy)
-      sbGet('ordenes_trabajo?fecha_agendada=eq.'+HOY+'&select=id,numero,tipo,estado,cuadrilla_id,cuadrillas(nombre),clientes(nombre,apellido,barrio,domicilio_full)&limit=2000')
+      sbCount('ordenes_trabajo?estado=eq.EN_CURSO&select=id'),
+      sbCount('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id'),
+      sbCount('ordenes_trabajo?estado=in.(CERRADA_TECNICO,FINALIZADA)&fin_tec_at=gte.'+HOY+'T00:00:00&select=id'),
+      // OTs abiertas asignadas (para detectar huérfanas de cuadrilla desactivada y las sin fecha coordinada)
+      sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cuadrilla_id=not.is.null&select=id,numero,estado,fecha_agendada,cuadrilla_id&limit=3000')
     ]).then(function(c){
       var pend=Array.isArray(c[0])?c[0]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var solic=c[1]||0, faltaIsp=c[2]||0;
-      // ── universo operativo del día (carga activa + finalizadas hoy, deduplicado) ──
-      var uni={}; (c[3]||[]).forEach(function(o){ uni[o.id]=o; }); (c[4]||[]).forEach(function(o){ uni[o.id]=o; });
-      var U=Object.keys(uni).map(function(k){return uni[k];});
-      function clase(o){ if(o.estado==='FINALIZADA') return o.validado_admin_at?'val':'fval'; if(o.estado==='CERRADA_TECNICO') return 'fval'; if(o.estado==='EN_CURSO') return 'enc'; return 'sin'; }
-      var G={val:0,fval:0,enc:0,sin:0}; U.forEach(function(o){ G[clase(o)]++; });
-      var totalDia=U.length, finDia=G.val+G.fval, pctDia=totalDia?Math.round(finDia/totalDia*100):0;
-      var enCurso=G.enc, aValidar=G.fval, finHoy=(c[4]||[]).length, coord=(c[5]||[]);
-      // performance por cuadrilla
-      var perf={}; U.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,val:0,fval:0,enc:0,sin:0}); p.total++; var cl=clase(o); p[cl]++; if(cl==='val'||cl==='fval')p.fin++; });
-      var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return (b.total-a.total)||(b.fin-a.fin); });
-      window._perfData=perf; window._coordData=coord;
+      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0;
+      var openA=c[6]||[]; var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
+      var huer=openA.filter(function(o){ return !_act[o.cuadrilla_id]; });
+      var sinCoord=openA.filter(function(o){ return _act[o.cuadrilla_id] && !o.fecha_agendada; });
       var now=new Date(), nombre=(USER.nombre||'').split(' ')[0];
       var qa=[
         ['🛠️','Nueva OT','nuevaOT','#dbeafe'],['📋','Órdenes','nav|ordenes','#eef2f7'],['✅','Validar','val','#dcfce7'],
@@ -441,40 +437,20 @@
       ];
       var tipos=[['INSTALACION','🔧 Instalaciones'],['REPARACION','🛠️ Reparac./Servis'],['DESCONEXION','🔌 Desconexiones'],['RETIRO_EQUIPOS','📦 Retiros'],['RECONEXION','🔁 Reconexiones'],['OTRO','⚙️ Otros']];
       function pct(x){ return Math.round(x/(totalPend||1)*100)+'% del total'; }
-      // ── barra de completitud del día ──
-      var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar']];
-      var compBar=seg.filter(function(s){return s[1]>0;}).map(function(s){ return '<div style="width:'+(s[1]/(totalDia||1)*100)+'%;background:'+s[2]+'"></div>'; }).join('');
-      var compLeg=seg.map(function(s){ var p=Math.round(s[1]/(totalDia||1)*100); return '<div><span class="dot" style="background:'+s[2]+'"></span>'+s[3]+' <b style="color:#0f172a">'+s[1]+'</b> <span style="color:#94a3b8">('+p+'%)</span></div>'; }).join('');
-      // ── filas de performance ──
-      var perfHead='<div class="perf-head"><div></div><div>Cuadrilla</div><div style="text-align:center">Asignadas</div><div style="text-align:center">Finalizadas</div><div style="text-align:center">% Avance</div><div>Progreso</div></div>';
-      var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pc=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pc);
-        return '<div class="perf-row clk" data-cuad="'+p.id+'">'
-          +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
-          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+' hoy</div></div>'
-          +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">asignadas</div></div>'
-          +'<div><div class="perf-big" style="color:#16a34a">'+p.fin+'</div><div class="perf-cap">finalizadas</div></div>'
-          +'<div><div class="perf-big" style="color:'+pcc+'">'+pc+'%</div><div class="perf-cap">avance</div></div>'
-          +'<div><div style="height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pc+'%;background:'+pcc+';transition:width .4s"></div></div><div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right">'+p.fin+' / '+p.total+'</div></div>'
-          +'</div><div class="perf-det" id="perf-det-'+p.id+'" style="display:none"></div>';
-      }).join('') : '<div class="center" style="padding:18px;color:#94a3b8">No hay OTs activas en cuadrillas ahora mismo.</div>';
-      // ── coordinadas del día por cuadrilla ──
-      var coordCount=coord.length;
       view.innerHTML=
         '<div class="dhead"><div class="dhead-logo">NX</div><div style="flex:1"><div class="dhead-eyebrow">Nexa SAS · Inicio</div><div class="dhead-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dhead-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Posadas, Misiones</div></div><div class="dhead-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
         +'<div class="qbar">'+qa.map(function(q){ var bdg=(q[2]==='val'&&aValidar>0)?'<span class="qbadge">'+aValidar+'</span>':''; return '<div class="qbtn" data-act="'+esc(q[2])+'"><div class="qico" style="background:'+q[3]+'">'+q[0]+bdg+'</div><div class="qlbl">'+q[1]+'</div></div>'; }).join('')+'</div>'
-        // ===== OPERACIÓN DE HOY =====
-        +'<div class="dash-sec">⚡ Operación de hoy</div>'
-        +'<div class="ocard"><div class="ohero">'
-          +'<div class="ohero-ring">'+_ring(pctDia)+'</div>'
-          +'<div class="ohero-body"><div class="ohero-big">'+finDia+' <span style="font-size:18px;color:#94a3b8;font-weight:700">/ '+totalDia+' OTs finalizadas</span></div><div class="ohero-sub">Carga activa de las '+perfArr.length+' cuadrilla'+(perfArr.length===1?'':'s')+' con trabajo hoy</div>'
-            +'<div class="compbar">'+(compBar||'<div style="width:100%;background:#f1f5f9"></div>')+'</div><div class="compleg">'+compLeg+'</div>'
-          +'</div></div></div>'
+        // ===== ESTADO AHORA =====
+        +'<div class="dash-sec">⚡ Ahora mismo</div>'
         +'<div class="dkpis">'
           +dkpi(enCurso,'En curso','OTs en proceso','blue','ot|EN_CURSO')
           +dkpi(finHoy,'Finalizadas hoy','cerradas por el técnico hoy','green','')
           +dkpi(aValidar,'A validar','cierres del técnico','cyan','val')
-          +dkpi(coordCount,'Coordinadas hoy','visitas agendadas para hoy','amber','')
+          +dkpi(sinCoord.length,'Sin coordinar','asignadas sin fecha','amber','ot|ASIGNADA')
         +'</div>'
+        +(huer.length?'<div class="ocard" style="border-left:4px solid #dc2626;background:#fef2f2;cursor:pointer" id="huer-card">⚠️ <b>'+huer.length+' OT</b> sigue'+(huer.length===1?'':'n')+' asignada'+(huer.length===1?'':'s')+' a cuadrillas <b>desactivadas</b> ('+huer.map(function(o){return 'N° '+esc(o.numero);}).join(', ')+'). Reasignalas o devolvelas al pool. <span style="color:#2563eb">Ver órdenes →</span></div>':'')
+        // ===== OPERACIÓN POR DÍA (navegable) =====
+        +'<div id="dash-dia"></div>'
         // ===== GESTIÓN / BACKLOG =====
         +'<div class="dash-sec">📋 Gestión / Backlog</div>'
         +'<div class="dkpis">'
@@ -486,53 +462,81 @@
           +tipos.map(function(t){ return dkpi(porTipo[t[0]]||0,t[1],'','gray','ot|PENDIENTE|'+t[0]); }).join('')
         +'</div>'
         +'<div class="dash-sec">Antigüedad de pendientes</div><div class="dkpis">'
-          +dkpi(ag.a,'&lt; 24 hs',pct(ag.a),'green','')+dkpi(ag.b,'24 a 72 hs',pct(ag.b),'amber','')+dkpi(ag.d,'&gt; 72 hs ⚠️',pct(ag.d),'red','')
-        +'</div>'
-        // ===== COORDINADAS DEL DÍA =====
-        +'<div class="dash-sec">🗓️ Coordinadas del día <span class="dash-sec-r">'+coordCount+' visita'+(coordCount===1?'':'s')+' agendada'+(coordCount===1?'':'s')+' para hoy</span></div>'
-        +'<div class="ocard" id="coord-card"><div class="center" style="color:#94a3b8;cursor:pointer" id="coord-toggle">'+(coordCount?('Tocá para ver las '+coordCount+' coordinadas divididas por cuadrilla ▾'):'No hay visitas agendadas para hoy.')+'</div><div id="coord-body" style="display:none"></div></div>'
-        // ===== PERFORMANCE POR CUADRILLA =====
-        +'<div class="dash-sec">👷 Performance por cuadrilla <span class="dash-sec-r">Hoy</span></div>'
-        +'<div class="ocard">'+perfHead+perfRows+'</div>';
+          +dkpi(ag.a,'&lt; 24 hs',pct(ag.a),'green','ot|PENDIENTE||a')+dkpi(ag.b,'24 a 72 hs',pct(ag.b),'amber','ot|PENDIENTE||b')+dkpi(ag.d,'&gt; 72 hs ⚠️',pct(ag.d),'red','ot|PENDIENTE||d')
+        +'</div>';
       Array.prototype.forEach.call(view.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
       Array.prototype.forEach.call(view.querySelectorAll('.qbtn'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
-      Array.prototype.forEach.call(view.querySelectorAll('.perf-row.clk'),function(el){ el.addEventListener('click',function(){ _perfToggle(el.getAttribute('data-cuad')); }); });
-      var ct=document.getElementById('coord-toggle'); if(ct&&coordCount) ct.addEventListener('click',_coordToggle);
+      var hc=document.getElementById('huer-card'); if(hc) hc.addEventListener('click',function(){ goKpi('ot|ASIGNADA'); });
       var vb=document.getElementById('nav-val-badge'); if(vb){ if(aValidar>0){ vb.textContent=aValidar; vb.style.display=''; } else vb.style.display='none'; }
       if(_clockTimer) clearInterval(_clockTimer); _clockTimer=setInterval(_tick,1000);
+      _dashRenderDia(HOY);
     });
   }
-  // Drill-down de una cuadrilla: trae sus OTs activas del día y las lista
+  // ── Operación por día: navegador ◀ ▶ que muestra la carga coordinada de cada cuadrilla para el día elegido ──
+  function _dashRenderDia(dia){
+    window._dashDia=dia;
+    var cont=document.getElementById('dash-dia'); if(!cont) return;
+    var nav='<div class="dash-sec">📆 Operación por día <span class="dash-sec-r">según la fecha coordinada de cada OT</span></div>'
+      +'<div class="ocard"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:6px">'
+      +'<button class="btn btn-2" id="dia-prev">◀</button>'
+      +'<input type="date" id="dia-pick" value="'+esc(dia)+'" style="width:auto">'
+      +'<div style="font-weight:800;min-width:200px;text-align:center">'+esc(_fechaLinda(dia))+'</div>'
+      +'<button class="btn btn-2" id="dia-next">▶</button>'
+      +'<button class="btn btn-pri" id="dia-hoy">Hoy</button></div><div id="dia-body"><div class="center"><div class="spin"></div></div></div></div>';
+    cont.innerHTML=nav;
+    function wireNav(){
+      document.getElementById('dia-prev').addEventListener('click',function(){ _dashRenderDia(_addDias(dia,-1)); });
+      document.getElementById('dia-next').addEventListener('click',function(){ _dashRenderDia(_addDias(dia,1)); });
+      document.getElementById('dia-hoy').addEventListener('click',function(){ _dashRenderDia(_hoyISO()); });
+      document.getElementById('dia-pick').addEventListener('change',function(){ if(this.value) _dashRenderDia(this.value); });
+    }
+    wireNav();
+    sbGet('ordenes_trabajo?fecha_agendada=eq.'+dia+'&select=id,numero,tipo,estado,cuadrilla_id,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
+      var sinAsig=d.filter(function(o){ return !o.cuadrilla_id; });
+      var act=d.filter(function(o){ return o.cuadrilla_id && _act[o.cuadrilla_id]; });
+      function clase(o){ if(o.estado==='FINALIZADA') return o.validado_admin_at?'val':'fval'; if(o.estado==='CERRADA_TECNICO') return 'fval'; if(o.estado==='EN_CURSO') return 'enc'; return 'sin'; }
+      var G={val:0,fval:0,enc:0,sin:0}; act.forEach(function(o){ G[clase(o)]++; });
+      var total=act.length, fin=G.val+G.fval, pc=total?Math.round(fin/total*100):0;
+      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,durSum:0,durN:0}); p.total++; var cl=clase(o); if(cl==='val'||cl==='fval')p.fin++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
+      var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return (b.total-a.total)||(b.fin-a.fin); });
+      var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar']];
+      var compBar=seg.filter(function(s){return s[1]>0;}).map(function(s){ return '<div style="width:'+(s[1]/(total||1)*100)+'%;background:'+s[2]+'"></div>'; }).join('');
+      var compLeg=seg.map(function(s){ var p=Math.round(s[1]/(total||1)*100); return '<div><span class="dot" style="background:'+s[2]+'"></span>'+s[3]+' <b style="color:#0f172a">'+s[1]+'</b> <span style="color:#94a3b8">('+p+'%)</span></div>'; }).join('');
+      var perfHead='<div class="perf-head"><div></div><div>Cuadrilla</div><div style="text-align:center">Asignadas</div><div style="text-align:center">Finalizadas</div><div style="text-align:center">% Avance</div><div>Progreso</div></div>';
+      var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr);
+        return '<div class="perf-row clk" data-cuad="'+p.id+'">'
+          +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
+          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+'</div></div>'
+          +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">asignadas</div></div>'
+          +'<div><div class="perf-big" style="color:#16a34a">'+p.fin+'</div><div class="perf-cap">finalizadas</div></div>'
+          +'<div><div class="perf-big" style="color:'+pcc+'">'+pcr+'%</div><div class="perf-cap">avance</div></div>'
+          +'<div><div style="height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pcr+'%;background:'+pcc+';transition:width .4s"></div></div><div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right">'+p.fin+' / '+p.total+'</div></div>'
+          +'</div><div class="perf-det" id="perf-det-'+p.id+'" style="display:none"></div>';
+      }).join('') : '<div class="center" style="padding:18px;color:#94a3b8">No hay OTs coordinadas para este día.</div>';
+      var body=document.getElementById('dia-body'); if(!body) return;
+      body.innerHTML='<div class="ohero" style="margin-bottom:8px"><div class="ohero-ring">'+_ring(pc,'del día')+'</div>'
+        +'<div class="ohero-body"><div class="ohero-big">'+fin+' <span style="font-size:18px;color:#94a3b8;font-weight:700">/ '+total+' OTs finalizadas</span></div><div class="ohero-sub">'+perfArr.length+' cuadrilla'+(perfArr.length===1?'':'s')+' con trabajo · '+esc(_fechaLinda(dia))+'</div>'
+        +'<div class="compbar">'+(compBar||'<div style="width:100%;background:#f1f5f9"></div>')+'</div><div class="compleg">'+compLeg+'</div></div></div>'
+        +(sinAsig.length?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin:6px 0;font-size:12.5px">📌 <b>'+sinAsig.length+'</b> OT coordinada'+(sinAsig.length===1?'':'s')+' para este día <b>sin cuadrilla asignada</b> ('+sinAsig.map(function(o){return 'N° '+esc(o.numero);}).join(', ')+').</div>':'')
+        +'<div style="margin-top:10px">'+perfHead+perfRows+'</div>';
+      Array.prototype.forEach.call(body.querySelectorAll('.perf-row.clk'),function(el){ el.addEventListener('click',function(){ _perfToggle(el.getAttribute('data-cuad')); }); });
+    }).catch(function(){ var body=document.getElementById('dia-body'); if(body) body.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar el día.</div>'; });
+  }
+  // Drill-down de una cuadrilla: lista sus OTs coordinadas para el día elegido
   function _perfToggle(cuadId){
     var det=document.getElementById('perf-det-'+cuadId); if(!det) return;
     if(det.style.display!=='none'){ det.style.display='none'; return; }
     det.style.display=''; det.innerHTML='<div class="muted" style="font-size:12px">Cargando…</div>';
-    var HOYini=_hoyISO()+'T00:00:00';
-    Promise.all([
-      sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&select=id,numero,tipo,estado,clientes(nombre,apellido,barrio)&limit=500'),
-      sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&fin_tec_at=gte.'+HOYini+'&select=id,numero,tipo,estado,clientes(nombre,apellido,barrio)&limit=500')
-    ]).then(function(r){
-      var m={}; (r[0]||[]).forEach(function(o){m[o.id]=o;}); (r[1]||[]).forEach(function(o){m[o.id]=o;});
-      var arr=Object.keys(m).map(function(k){return m[k];});
+    var dia=window._dashDia||_hoyISO();
+    sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&fecha_agendada=eq.'+dia+'&select=id,numero,tipo,estado,clientes(nombre,apellido,barrio)&limit=500').then(function(arr){
+      arr=Array.isArray(arr)?arr:[];
       var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3};
       arr.sort(function(a,b){ return (ord[a.estado]==null?9:ord[a.estado])-(ord[b.estado]==null?9:ord[b.estado]); });
       if(!arr.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin OTs.</div>'; return; }
       det.innerHTML=arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; return '<div class="pd-row"><span><b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+'</span>'+pill(o.estado)+'</div>'; }).join('');
     }).catch(function(){ det.innerHTML='<div class="muted" style="font-size:12px;color:var(--rojo)">No se pudo cargar.</div>'; });
-  }
-  // Coordinadas del día divididas por cuadrilla
-  function _coordToggle(){
-    var body=document.getElementById('coord-body'), tog=document.getElementById('coord-toggle'); if(!body) return;
-    if(body.style.display!=='none'){ body.style.display='none'; if(tog)tog.innerHTML=tog.innerHTML.replace('▴','▾'); return; }
-    body.style.display=''; if(tog)tog.innerHTML=tog.innerHTML.replace('▾','▴');
-    var coord=window._coordData||[]; var grp={};
-    coord.forEach(function(o){ var nm=(o.cuadrillas&&o.cuadrillas.nombre)||'— Sin asignar —'; (grp[nm]||(grp[nm]=[])).push(o); });
-    var keys=Object.keys(grp).sort();
-    body.innerHTML=keys.map(function(nm){ var arr=grp[nm]; var sinAsig=(nm==='— Sin asignar —');
-      return '<div class="coord-grp"><div class="coord-grp-h">'+(sinAsig?'⚠️ ':'👷 ')+esc(nm)+' <span class="muted" style="font-weight:600">('+arr.length+')</span></div>'
-        +arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; return '<div class="coord-li"><span><b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+'</span>'+pill(o.estado)+'</div>'; }).join('')
-        +'</div>';
-    }).join('');
   }
   function kpi(n,t,cls,act){ return '<div class="kpi '+(cls||'')+(act?' kpi-link':'')+'"'+(act?' data-act="'+esc(act)+'"':'')+'><div class="n">'+n+'</div><div class="t">'+t+'</div></div>'; }
   function dkpi(n,label,sub,color,act){
@@ -1034,7 +1038,7 @@
   }
 
   // ── ORDENES ──
-  var otState={ estado:'', tipo:'', page:0, size:50, total:0, orderBy:'creada', orderDir:'desc', cols:null, sel:{}, rows:[], soloTv:false };
+  var otState={ estado:'', tipo:'', antig:'', page:0, size:50, total:0, orderBy:'creada', orderDir:'desc', cols:null, sel:{}, rows:[], soloTv:false };
   var _PRIO_ORD={BAJA:0,NORMAL:1,ALTA:2,URGENTE:3};
   // ord = orden del lado del cliente (sobre la lista ya traída) → permite ordenar por CUALQUIER columna, barrio incluido
   var OT_COLS=[
@@ -1065,12 +1069,13 @@
       +'<div class="toolbar">'
       +'<select id="ot-estado"><option value="">Todos los estados</option>'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],otState.estado)+'</select>'
       +'<select id="ot-filtro-tipo"><option value=""'+(otState.tipo?'':' selected')+'>Todos los tipos</option>'+opt(OT_TIPOS,otState.tipo)+'</select>'
+      +'<select id="ot-filtro-antig"><option value="">Cualquier antigüedad</option><option value="a"'+(otState.antig==='a'?' selected':'')+'>&lt; 24 hs</option><option value="b"'+(otState.antig==='b'?' selected':'')+'>24 a 72 hs</option><option value="d"'+(otState.antig==='d'?' selected':'')+'>&gt; 72 hs</option></select>'
       +'<button class="btn btn-pri" id="ot-filtrar">Filtrar</button>'
       +'<button class="btn '+(otState.soloTv?'btn-x':'btn-2')+'" id="ot-tv" title="Solo clientes que pidieron TV o Pack Fútbol">📺 Con TV/Fútbol'+(otState.soloTv?' ✓':'')+'</button>'
       +'<button class="btn btn-ok" id="ot-nueva" style="margin-left:auto">+ Nueva OT</button>'
       +'</div><div id="ot-tabla"></div>';
-    document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.page=0; cargarOT(); });
-    document.getElementById('ot-tv').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.soloTv=!otState.soloTv; otState.page=0; vOrdenes(); });
+    document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.page=0; cargarOT(); });
+    document.getElementById('ot-tv').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.soloTv=!otState.soloTv; otState.page=0; vOrdenes(); });
     document.getElementById('ot-nueva').addEventListener('click',function(){ nuevaOT(null); });
     cargarOT();
   }
@@ -1089,6 +1094,7 @@
     var cont=document.getElementById('ot-tabla'); if(!cont) return;
     var rows=(otState.rows||[]).slice();
     if(otState.soloTv) rows=rows.filter(function(o){ return o.clientes&&(o.clientes.tv_online||o.clientes.pack_futbol); });
+    if(otState.antig){ var _ahora=Date.now(); rows=rows.filter(function(o){ if(!o.created_at)return false; var hs=(_ahora-new Date(o.created_at).getTime())/3600000; return otState.antig==='a'?hs<24:(otState.antig==='b'?(hs>=24&&hs<72):hs>=72); }); }
     var col=OT_COLS.filter(function(c){return c.k===otState.orderBy;})[0]||OT_COLS.filter(function(c){return c.k==='creada';})[0];
     if(col&&col.ord){ var dir=otState.orderDir==='asc'?1:-1; rows.sort(function(a,b){ var va=col.ord(a),vb=col.ord(b); if(va<vb)return -dir; if(va>vb)return dir; return 0; }); }
     otState.total=rows.length;
@@ -1210,14 +1216,15 @@
         +'<div class="fichagrid">'+fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+(o.clientes?fr('DNI',(o.clientes.tipo_doc||'DNI')+' '+(o.clientes.doc_numero||'—')):'')+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(oTel||'—')+' '+waLink(oTel,cli,o.tipo,oDom)+'</span></div>'+fr('Domicilio',oDom)+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(o.clientes.lat,o.clientes.lng)+'</span></div>':'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
-        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))+'</div>'+obsTecHtml
+        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+'</div>'+obsTecHtml
         +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Cuenta de TV</div><div id="ot-tv-cont" style="margin-top:6px"></div></div>':'')
         +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;margin-top:4px">'
           +'<div><label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select></div>'
           +'<div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div>'
           +'<div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div>'
           +'<div><label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select></div>'
-          +'<div style="grid-column:span 2"><label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select></div>'
+          +'<div><label class="l">📅 Fecha coordinada</label><input type="date" id="ot-fecha-edit" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'"></div>'
+          +'<div><label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select></div>'
         +'</div>'
         +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button>'+accBtns+'<button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>'
         +'<div id="ot-hist" style="margin-top:14px"></div>', 'wide');
@@ -1233,7 +1240,7 @@
         var cuad=document.getElementById('ot-cuad').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
         // Bloqueo: no se puede asignar cuadrilla si el cliente todavía no está en ISPcube
         if(cuad && !_otAsignable(o)){ toast('⚠️ No se puede asignar: el cliente todavía no está cargado en ISPcube.'); return; }
-        var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null) };
+        var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null), fecha_agendada:document.getElementById('ot-fecha-edit').value||null };
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
         // Rechazo: si sale de CERRADA_TECNICO sin finalizar, los seriales comprometidos vuelven a la cuadrilla y se descarta el cierre (evita duplicar al re-cerrar)
         if(o.estado==='CERRADA_TECNICO' && est!=='FINALIZADA' && est!=='CERRADA_TECNICO'){

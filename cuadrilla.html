@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.10</title>
+<title>Nexa · Técnico — v0.11</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.10';
+  var VER='v0.11';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -75,6 +75,9 @@
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2400); }
   function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10), p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
+  function _hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function _addDias(iso,n){ var p=String(iso).split('-'),d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function _diaTitulo(iso){ if(!iso) return '📌 Sin fecha'; var hoy=_hoyISO(); if(iso===hoy) return '📆 Hoy'; if(iso===_addDias(hoy,1)) return '📆 Mañana'; var p=iso.split('-'),d=new Date(+p[0],+p[1]-1,+p[2]); var t=d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}); return '📆 '+t.charAt(0).toUpperCase()+t.slice(1); }
 
   // ── sesión ──
   function getSesion(){ try{ return JSON.parse(sessionStorage.getItem('nexa_tec')||'null'); }catch(e){ return null; } }
@@ -142,10 +145,12 @@
     if(listState.filtro==='curso') estadoQ='estado=eq.EN_CURSO';
     else if(listState.filtro==='cerradas') estadoQ='estado=in.(CERRADA_TECNICO,FINALIZADA)';
     else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO)';
-    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(nombre,apellido,domicilio_full,telefono,lat,lng,caja_nap),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&order=created_at.asc';
+    var agrupa=(listState.filtro==='activas');
+    var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
+    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(nombre,apellido,domicilio_full,telefono,lat,lng,caja_nap),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
-      cont.innerHTML=d.map(function(o){
+      function cardOT(o){
         var cli=o.clientes, nom=cli?((cli.nombre||'')+' '+(cli.apellido||'')).trim():'(obra de red, sin cliente)';
         var dir=cli&&cli.domicilio_full?esc(cli.domicilio_full):'';
         var irBtn = (cli&&(cli.lat!=null||cli.domicilio_full)) ? '<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(cli)+'">🚗 Ir</a>' : '';
@@ -156,7 +161,20 @@
           +(o.motivos_ot?' <span class="badge-tt">'+esc(o.motivos_ot.nombre)+'</span>':'')
           +(o.descripcion?'<div class="dir" style="margin-top:6px">'+esc(o.descripcion)+'</div>':'')
           +'<div class="acc">'+irBtn+'<button class="btn btn-pri btn-sm ot-abrir" data-id="'+o.id+'">Abrir</button></div></div>';
-      }).join('');
+      }
+      if(agrupa){
+        // agrupar por fecha coordinada: Hoy, Mañana, días siguientes, y Sin fecha al final
+        var grupos=[], idx={};
+        d.forEach(function(o){ var k=o.fecha_agendada?String(o.fecha_agendada).substring(0,10):'__nofecha'; if(idx[k]==null){ idx[k]=grupos.length; grupos.push({k:k,ots:[]}); } grupos[idx[k]].ots.push(o); });
+        grupos.sort(function(a,b){ if(a.k==='__nofecha')return 1; if(b.k==='__nofecha')return -1; return a.k<b.k?-1:(a.k>b.k?1:0); });
+        var hoy=_hoyISO();
+        cont.innerHTML=grupos.map(function(g){ var es=(g.k!=='__nofecha'&&g.k===hoy); var tit=_diaTitulo(g.k==='__nofecha'?null:g.k);
+          return '<div class="diah" style="font-weight:800;font-size:14px;color:'+(es?'#0f6e56':'#334155')+';margin:14px 2px 6px;display:flex;align-items:center;gap:8px">'+esc(tit)+' <span style="font-weight:600;color:#94a3b8;font-size:12px">('+g.ots.length+')</span></div>'
+            +g.ots.map(cardOT).join('');
+        }).join('');
+      } else {
+        cont.innerHTML=d.map(cardOT).join('');
+      }
       Array.prototype.forEach.call(cont.querySelectorAll('.ot-abrir'),function(b){ b.addEventListener('click',function(){ vDetalle(d.filter(function(x){return x.id==b.getAttribute('data-id');})[0]); }); });
     }).catch(function(){ cont.innerHTML='<div class="center">Error al cargar. Reintentá.</div>'; });
   }
