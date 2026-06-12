@@ -173,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.70';
+  var VER='v0.72';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -291,6 +291,9 @@
   // Fecha en formato argentino DD-MM-AAAA (y con hora). Recibe ISO o YYYY-MM-DD.
   function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10), p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
   function fmtFechaHora(v){ if(!v) return '—'; var s=String(v), hm=s.substring(11,16); return fmtFecha(s)+(hm?(' '+hm):''); }
+  // Duración entre inicio y fin (tiempo que estuvieron en la casa del cliente)
+  function _durTexto(ini,fin){ if(!ini||!fin) return ''; var ms=new Date(fin)-new Date(ini); if(!(ms>0)) return ''; var min=Math.round(ms/60000); if(min<60) return min+' min'; var hh=Math.floor(min/60), mm=min%60; return hh+'h'+(mm?(' '+mm+'min'):''); }
+  function _durChip(o){ var t=_durTexto(o.inicio_tec_at,o.fin_tec_at); return t?('<span style="background:#eef2ff;color:#3730a3;font-weight:700;font-size:12px;padding:2px 9px;border-radius:10px">⏱️ '+t+' en domicilio</span>'):''; }
   function fmtPesos(n){ if(n==null||n==='') return '—'; var x=Number(n); if(isNaN(x)) return '—'; return '$'+x.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function pill(estado){ return '<span class="pill p-'+esc(estado)+'">'+esc(estado)+'</span>'; }
 
@@ -416,7 +419,7 @@
   // ── VALIDACIÓN ── (módulo propio: OTs cerradas por el técnico, a aprobar)
   function vValidacion(){
     loading();
-    sbGet('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id,numero,tipo,fin_tec_at,cuadrillas(nombre),clientes(numero_cliente,nombre,apellido,barrio),tipos_trabajo(nombre)&order=fin_tec_at.asc').then(function(d){
+    sbGet('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id,numero,tipo,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(numero_cliente,nombre,apellido,barrio),tipos_trabajo(nombre)&order=fin_tec_at.asc').then(function(d){
       d=Array.isArray(d)?d:[];
       var h='<h1>✅ Validación</h1><p class="sub">Cierres de los técnicos pendientes de aprobar. Tocá una OT para revisar el cierre y validar.</p>';
       if(!d.length){ view.innerHTML=h+'<div class="center">No hay cierres pendientes de validar. 🎉</div>'; return; }
@@ -427,7 +430,8 @@
         {k:'cliente',t:'Cliente',sort:function(o){return o.clientes?(o.clientes.nombre||''):'';},r:function(o){return esc(o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)');}},
         {k:'barrio',t:'Barrio',sort:function(o){return o.clientes?(o.clientes.barrio||''):'';},r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
         {k:'cuadrilla',t:'Cuadrilla',sort:function(o){return o.cuadrillas?o.cuadrillas.nombre:'';},r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
-        {k:'cerrada',t:'Cerrada',sort:function(o){return o.fin_tec_at||'';},r:function(o){return esc(fmtFechaHora(o.fin_tec_at));}}
+        {k:'cerrada',t:'Cerrada',sort:function(o){return o.fin_tec_at||'';},r:function(o){return esc(fmtFechaHora(o.fin_tec_at));}},
+        {k:'tiempo',t:'⏱️ Tiempo',sort:function(o){return (o.inicio_tec_at&&o.fin_tec_at)?(new Date(o.fin_tec_at)-new Date(o.inicio_tec_at)):0;},r:function(o){var t=_durTexto(o.inicio_tec_at,o.fin_tec_at);return t?('<b>'+esc(t)+'</b>'):'<span class="muted">—</span>';}}
       ];
       gridRender(document.getElementById('val-tabla'),cols,d,{key:'val',note:d.length+' OT a validar',onRow:function(o){ valDetalle(o.id); }});
     });
@@ -456,9 +460,10 @@
           +'<div class="muted" style="font-size:12px">'+esc(o.tipo)+(o.tipos_trabajo?(' · '+esc(o.tipos_trabajo.nombre)):'')+' · '+esc(_domLimpio(c.domicilio_full)||'')+(c.barrio?(' · '+esc(c.barrio)):'')+'</div></div>'
           +'<div style="text-align:right;font-size:12px"><div class="muted">Cuadrilla</div><b style="color:var(--azul)">🔧 '+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</b></div></div>';
         // GPS inicio/fin
-        h+='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">'
+        h+='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;align-items:center">'
           +'<span>▶️ <b>Inicio:</b> '+(o.inicio_tec_at?(esc(fmtFechaHora(o.inicio_tec_at))+' '+ubicLink(o.lat_inicio,o.lng_inicio)):'<span class="muted">— no inició</span>')+'</span>'
           +'<span>🏁 <b>Fin:</b> '+(o.fin_tec_at?(esc(fmtFechaHora(o.fin_tec_at))+' '+ubicLink(o.lat_fin,o.lng_fin)):'—')+'</span>'
+          +_durChip(o)
           +(fotos.length?('<span>📷 <b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">'+(i+1)+'</a>';}).join(' ')+'</span>'):'')+'</div>';
         // 3 columnas
         h+='<div style="display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:12px;align-items:start">';
@@ -1061,10 +1066,13 @@
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
         +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))+'</div>'+obsTecHtml
         +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Este cliente lleva TV</div><div class="muted" style="font-size:12px">Asignale una cuenta de TV (usuario y contraseña) para que se imprima en la orden y el técnico la habilite.</div><div id="ot-tv-cont" style="margin-top:8px"></div></div>':'')
-        +'<label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select>'
-        +'<div class="row"><div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div><div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div></div>'
-        +'<label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select>'
-        +'<label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;margin-top:4px">'
+          +'<div><label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select></div>'
+          +'<div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div>'
+          +'<div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div>'
+          +'<div><label class="l">Asignar a cuadrilla</label><select id="ot-cuad">'+cuadOpts+'</select></div>'
+          +'<div style="grid-column:span 2"><label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select></div>'
+        +'</div>'
         +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button>'+accBtns+'<button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>'
         +'<div id="ot-hist" style="margin-top:14px"></div>', 'wide');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
@@ -1312,14 +1320,116 @@
     }).catch(function(){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudieron cargar las órdenes asignadas.</div>'; });
   }
   function _cerrOTobj(g,o){ return { id:o.id, numero:o.numero, tipo:o.tipo, tipo_trabajo_id:o.tipo_trabajo_id, cuadrilla_id:o.cuadrilla_id, cliente_id:o.cliente_id, estado:o.estado, clientes:g.cli }; }   // g.cli trae tecnologia/precinto/caja/puerto para precargar el cierre
+  // ── Cierre manual INLINE a todo el ancho (como validación) — finaliza directo ──
+  function cierreInline(o){
+    loading();
+    var CI={ o:o, accion:'REALIZADA', ttId:(o.tipo_trabajo_id||_ttPorTec(o.clientes&&o.clientes.tecnologia)||null), kitMat:[], kitMo:[], seriales:[], motivos:[], mats:{}, mos:{}, scan:{}, datos:{} };
+    window._CI=CI;
+    sbGet('motivos_ot?select=id,nombre&order=nombre').then(function(m){ CI.motivos=Array.isArray(m)?m:[]; _ciCargarKit(CI); });
+  }
+  function _ciCargarKit(CI){
+    var ttId=CI.ttId;
+    Promise.all([
+      ttId?sbGet('tipo_trabajo_material?tipo_trabajo_id=eq.'+ttId+'&select=orden,catalogo_materiales(id,nombre,serial_tipo,unidad)&order=orden.asc'):Promise.resolve([]),
+      ttId?sbGet('tipo_trabajo_mano_obra?tipo_trabajo_id=eq.'+ttId+'&select=orden,mano_obra_catalogo(id,nombre)&order=orden.asc'):Promise.resolve([]),
+      CI.o.cuadrilla_id?sbGet('stock_seriales?estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+CI.o.cuadrilla_id+'&select=id,serial,material_id'):Promise.resolve([])
+    ]).then(function(r){
+      var arr=function(x){return Array.isArray(x)?x:[];};
+      CI.kitMat=arr(r[0]).map(function(x){return x.catalogo_materiales;}).filter(Boolean);
+      CI.kitMo=arr(r[1]).map(function(x){return x.mano_obra_catalogo;}).filter(Boolean);
+      CI.seriales=arr(r[2]);
+      _ciRender(CI);
+    });
+  }
+  function _ciEsSer(m){ return m.serial_tipo==='INDIVIDUAL'||m.serial_tipo==='CORRELATIVO'; }
+  function _ciAutoDato(CI,k){ if(k!=='precinto'&&k!=='mac') return ''; for(var i=0;i<CI.kitMat.length;i++){ var m=CI.kitMat[i], s=CI.scan[m.id]; if(!s||!s.length) continue; if(k==='precinto'&&m.serial_tipo==='CORRELATIVO') return s[0]; if(k==='mac'&&m.serial_tipo==='INDIVIDUAL') return s[0]; } return ''; }
+  function _ciRender(CI){
+    var o=CI.o, c=o.clientes||{}, cli=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    var tiposOpts=(REF.tiposTrab||[]).map(function(t){return '<option value="'+t.id+'"'+(CI.ttId==t.id?' selected':'')+'>'+esc(t.nombre)+'</option>';}).join('');
+    var h='<div class="toolbar" style="margin-bottom:10px"><button class="btn btn-2" id="ci-back">← Volver a Cerrar OTs</button><h1 style="margin:0;font-size:18px">✍️ Cerrar OT N° '+esc(o.numero)+'</h1></div>';
+    h+='<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:9px 14px;margin-bottom:10px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center"><div><div style="font-weight:800;font-size:15px">'+(c.codigo_ispcube?('ISP '+esc(c.codigo_ispcube)+' · '):'')+esc(cli||'(obra de red)')+'</div><div class="muted" style="font-size:12px">'+esc(o.tipo)+' · '+esc(_domLimpio(c.domicilio_full)||'')+(c.barrio?(' · '+esc(c.barrio)):'')+'</div></div><div style="text-align:right;font-size:12px"><div class="muted">Cuadrilla</div><b style="color:var(--azul)">🔧 '+esc(_cuadNombre(o.cuadrilla_id)||'—')+'</b></div></div>';
+    h+='<div style="display:flex;gap:8px;margin-bottom:10px"><button type="button" class="btn '+(CI.accion==='REALIZADA'?'btn-ok':'btn-2')+'" id="ci-si">✅ Realizada</button><button type="button" class="btn '+(CI.accion==='NO_REALIZADA'?'btn-x':'btn-2')+'" id="ci-no">✕ No realizada</button></div>';
+    if(CI.accion==='REALIZADA'){
+      h+='<div style="display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:12px;align-items:start">';
+      // COL1: tipo trabajo + datos + obs
+      h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:11px"><label class="l">Tipo de trabajo (define el kit)</label><select id="ci-tt"><option value="">— elegí —</option>'+tiposOpts+'</select>';
+      var df=[['precinto','Precinto'],['caja_nap','Caja (NAP)'],['puerto','Puerto'],['access_point','Access Point'],['mac','MAC'],['serial','Serial/Modelo']];
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 8px;margin-top:6px">'+df.map(function(p){var v=(CI.datos[p[0]]!=null?CI.datos[p[0]]:_ciAutoDato(CI,p[0]));return '<div><label class="l">'+p[1]+'</label><input class="ci-dato" data-k="'+p[0]+'" value="'+esc(v||'')+'"></div>';}).join('')+'</div>';
+      h+='<label class="l">Observaciones</label><textarea id="ci-obs" style="min-height:44px">'+esc(CI.obs||'')+'</textarea></div>';
+      // COL2: materiales
+      h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:11px"><div class="l" style="margin:0 0 6px">🔧 Materiales</div>';
+      if(!CI.ttId) h+='<div class="muted" style="font-size:12px">Elegí el tipo de trabajo para ver el kit.</div>';
+      else if(!CI.kitMat.length) h+='<div class="muted" style="font-size:12px">Sin materiales en este tipo.</div>';
+      CI.kitMat.forEach(function(m){
+        if(_ciEsSer(m)){ var sel=CI.scan[m.id]||[], disp=CI.seriales.filter(function(s){return s.material_id==m.id;});
+          h+='<div style="padding:5px 0;border-bottom:1px solid #f1f5f9"><div style="font-size:12.5px;font-weight:600">'+esc(m.nombre)+' <span class="muted" style="font-size:10px">serial · '+sel.length+'</span></div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">';
+          disp.forEach(function(s){ var on=sel.indexOf(s.serial)>=0; h+='<button type="button" class="ci-chip" data-m="'+m.id+'" data-s="'+esc(s.serial)+'" style="padding:3px 8px;font-size:11px;font-family:monospace;border-radius:6px;cursor:pointer;border:1.5px solid '+(on?'var(--pri)':'#e2e8f0')+';background:'+(on?'var(--pri)':'#fff')+';color:'+(on?'#fff':'#475569')+'">'+esc(s.serial)+'</button>'; });
+          sel.forEach(function(v){ if(!disp.some(function(s){return s.serial===v;})) h+='<button type="button" class="ci-chip" data-m="'+m.id+'" data-s="'+esc(v)+'" style="padding:3px 8px;font-size:11px;font-family:monospace;border-radius:6px;border:1.5px solid var(--pri);background:var(--pri);color:#fff">'+esc(v)+' ✕</button>'; });
+          h+='<input class="ci-serman" data-m="'+m.id+'" placeholder="escaneá/otro…" style="font-size:11px;padding:4px;width:auto;flex:1;min-width:110px"></div></div>';
+        } else { h+='<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:12.5px">'+esc(m.nombre)+'</span><input type="number" min="0" class="ci-matc" data-m="'+m.id+'" value="'+(CI.mats[m.id]>0?CI.mats[m.id]:'')+'" placeholder="0" style="width:54px;text-align:center;padding:3px"></div>'; }
+      });
+      h+='</div>';
+      // COL3: mano de obra
+      h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:11px"><div class="l" style="margin:0 0 6px">👷 Mano de obra</div>';
+      if(!CI.kitMo.length) h+='<div class="muted" style="font-size:12px">—</div>';
+      CI.kitMo.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:12.5px">'+esc(m.nombre)+'</span><input type="number" min="0" class="ci-moc" data-m="'+m.id+'" data-nom="'+esc(m.nombre)+'" value="'+(CI.mos[m.id]>0?CI.mos[m.id]:'')+'" placeholder="0" style="width:54px;text-align:center;padding:3px"></div>'; });
+      h+='</div></div>';
+    } else {
+      h+='<div style="max-width:520px"><label class="l">Motivo</label><select id="ci-motivo"><option value="">— elegí —</option>'+CI.motivos.map(function(m){return '<option>'+esc(m.nombre)+'</option>';}).join('')+'</select><label class="l">Observación</label><textarea id="ci-obs">'+esc(CI.obs||'')+'</textarea></div>';
+    }
+    h+='<div id="ci-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div><div class="toolbar" style="margin-top:4px"><button class="btn btn-ok" id="ci-ok" style="font-size:15px;padding:11px 26px">✔️ Cerrar y finalizar</button></div>';
+    view.innerHTML=h;
+    document.getElementById('ci-back').addEventListener('click',function(){ navTo('cerrarot'); });
+    document.getElementById('ci-si').addEventListener('click',function(){ CI.accion='REALIZADA'; _ciKeep(CI); _ciRender(CI); });
+    document.getElementById('ci-no').addEventListener('click',function(){ CI.accion='NO_REALIZADA'; _ciKeep(CI); _ciRender(CI); });
+    var tt=document.getElementById('ci-tt'); if(tt) tt.addEventListener('change',function(){ _ciKeep(CI); CI.ttId=tt.value?Number(tt.value):null; if(CI.ttId) _ciCargarKit(CI); else { CI.kitMat=[];CI.kitMo=[]; _ciRender(CI); } });
+    Array.prototype.forEach.call(view.querySelectorAll('.ci-matc'),function(i){ i.addEventListener('input',function(){ CI.mats[i.getAttribute('data-m')]=Math.max(0,parseInt(i.value,10)||0); }); });
+    Array.prototype.forEach.call(view.querySelectorAll('.ci-moc'),function(i){ i.addEventListener('input',function(){ CI.mos[i.getAttribute('data-m')]=Math.max(0,parseInt(i.value,10)||0); }); });
+    Array.prototype.forEach.call(view.querySelectorAll('.ci-dato'),function(i){ i.addEventListener('input',function(){ CI.datos[i.getAttribute('data-k')]=i.value; }); });
+    var ob=document.getElementById('ci-obs'); if(ob) ob.addEventListener('input',function(){ CI.obs=ob.value; });
+    Array.prototype.forEach.call(view.querySelectorAll('.ci-chip'),function(b){ b.addEventListener('click',function(){ var mid=b.getAttribute('data-m'), v=b.getAttribute('data-s'); var s=CI.scan[mid]||(CI.scan[mid]=[]); var k=s.indexOf(v); if(k>=0)s.splice(k,1); else s.push(v); _ciKeep(CI); _ciRender(CI); }); });
+    Array.prototype.forEach.call(view.querySelectorAll('.ci-serman'),function(inp){ var add=function(){ var mid=inp.getAttribute('data-m'), v=_normSerial(inp.value); if(!v)return; var s=CI.scan[mid]||(CI.scan[mid]=[]); if(s.indexOf(v)<0){ s.push(v); _ciKeep(CI); _ciRender(CI); } }; inp.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } }; inp.onchange=add; });
+    document.getElementById('ci-ok').addEventListener('click',function(){ _ciConfirm(CI); });
+  }
+  function _ciKeep(CI){ // guarda los inputs actuales del DOM antes de re-renderizar
+    Array.prototype.forEach.call(document.querySelectorAll('.ci-matc'),function(i){ CI.mats[i.getAttribute('data-m')]=Math.max(0,parseInt(i.value,10)||0); });
+    Array.prototype.forEach.call(document.querySelectorAll('.ci-moc'),function(i){ CI.mos[i.getAttribute('data-m')]=Math.max(0,parseInt(i.value,10)||0); });
+    Array.prototype.forEach.call(document.querySelectorAll('.ci-dato'),function(i){ CI.datos[i.getAttribute('data-k')]=i.value; });
+    var ob=document.getElementById('ci-obs'); if(ob) CI.obs=ob.value;
+  }
+  function _ciConfirm(CI){
+    var o=CI.o, err=document.getElementById('ci-err'), btn=document.getElementById('ci-ok'); _ciKeep(CI);
+    var nowISO=new Date().toISOString(), obs=(CI.obs||'').trim();
+    if(CI.accion==='NO_REALIZADA'){ var mot=(document.getElementById('ci-motivo')||{}).value||''; if(!mot){ err.textContent='Elegí un motivo.'; return; }
+      btn.disabled=true; btn.textContent='Guardando…';
+      sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'NO_REALIZADA', fin_tec_at:nowISO, observaciones_tec:obs||null, motivo_cancelacion:mot, validado_admin_at:nowISO, validado_por:USER.id, tipo_trabajo_id:(CI.ttId||o.tipo_trabajo_id||null) })
+        .then(function(){ logOT(o.id,'NO_REALIZADA',{de:o.estado,a:'NO_REALIZADA',cuadId:o.cuadrilla_id,detalle:'Cierre manual (admin) · '+mot}); toast('OT marcada NO realizada ✓'); navTo('cerrarot'); })
+        .catch(function(){ btn.disabled=false; btn.textContent='✔️ Cerrar y finalizar'; err.textContent='No se pudo guardar.'; });
+      return;
+    }
+    var mats=[]; CI.kitMat.forEach(function(m){ if(_ciEsSer(m)){ (CI.scan[m.id]||[]).forEach(function(ser){ mats.push({ot_id:o.id,material_id:m.id,cantidad:1,serial:ser}); }); } else { var q=CI.mats[m.id]||0; if(q>0) mats.push({ot_id:o.id,material_id:m.id,cantidad:q,serial:null}); } });
+    var mos=[]; CI.kitMo.forEach(function(m){ var q=CI.mos[m.id]||0; if(q>0) mos.push({ot_id:o.id,mano_obra_id:m.id,nombre:m.nombre,cantidad:q}); });
+    var datos=CI.datos||{};
+    btn.disabled=true; btn.textContent='Cerrando…';
+    var jobs=[ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', fin_tec_at:nowISO, observaciones_tec:obs||null, validado_admin_at:nowISO, validado_por:USER.id, tipo_trabajo_id:(CI.ttId||o.tipo_trabajo_id||null) }) ];
+    if(mats.length) jobs.push(sbPost('ot_materiales',mats));
+    if(mos.length) jobs.push(sbPost('ot_mano_obra',mos));
+    Object.keys(datos).forEach(function(k){ if((datos[k]||'').trim()) jobs.push(fetch(SB_URL+'/rest/v1/ot_datos_servicio?on_conflict=ot_id,clave',{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({ot_id:o.id,clave:k,valor:datos[k].trim(),origen:'ADMIN'})})); });
+    mats.filter(function(m){return !m.serial&&m.material_id;}).forEach(function(m){ if(o.cuadrilla_id){
+      jobs.push(sbGet('stock_cuadrillas?cuadrilla_id=eq.'+o.cuadrilla_id+'&material_id=eq.'+m.material_id+'&select=id,cantidad').then(function(s){ if(s&&s[0]){ var n=Math.max(0,Number(s[0].cantidad)-Number(m.cantidad)); return sbPatch('stock_cuadrillas?id=eq.'+s[0].id,{cantidad:n,updated_at:nowISO}); } }));
+      jobs.push(sbPost('stock_movimientos',{material_id:m.material_id,tipo:'CONSUMO_OT',cantidad:m.cantidad,ot_id:o.id,cuadrilla_id:o.cuadrilla_id,usuario_id:USER.id,observaciones:'Cierre manual OT N° '+o.numero})); } });
+    mats.filter(function(m){return m.serial&&m.material_id;}).forEach(function(m){ jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(m.serial)+'&material_id=eq.'+m.material_id,{estado:'INSTALADO',cliente_id:(o.cliente_id||null),cuadrilla_id:null,ot_id:o.id})); });
+    Promise.all(jobs).then(function(){ logOT(o.id,'CIERRE_MANUAL',{de:o.estado,a:'FINALIZADA',cuadId:o.cuadrilla_id,detalle:'Cierre manual por administración'}); toast('OT N° '+o.numero+' cerrada y finalizada ✓'); navTo('cerrarot'); })
+      .catch(function(){ btn.disabled=false; btn.textContent='✔️ Cerrar y finalizar'; err.textContent='Error al cerrar. Reintentá.'; });
+  }
   function cerrarGrupoUI(g){
-    if(g.ots.length===1){ cierreManualOT(_cerrOTobj(g,g.ots[0])); return; }
+    if(g.ots.length===1){ cierreInline(_cerrOTobj(g,g.ots[0])); return; }
     var h='<h2>Cerrar OTs · '+(g.cli?('N°'+esc(g.cli.numero_cliente)+' '+esc(g.cli.nombre||'')):'grupo')+'</h2><p class="muted">Este cliente tiene varias órdenes. Cerralas una por una.</p>';
     g.ots.forEach(function(o){ h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid #f1f5f9;padding:9px 0"><div style="flex:1"><b>OT N° '+esc(o.numero)+'</b> · '+esc(o.tipo)+'</div><button class="btn btn-ok cg-cerrar" data-id="'+o.id+'">✍️ Cerrar</button></div>'; });
     h+='<div style="margin-top:12px"><button class="btn btn-2" id="cg-x">Cerrar ventana</button></div>';
     modal(h,'wide');
     document.getElementById('cg-x').addEventListener('click',cerrarModal);
-    Array.prototype.forEach.call(document.querySelectorAll('.cg-cerrar'),function(b){ b.addEventListener('click',function(){ var o=g.ots.filter(function(x){return String(x.id)===b.getAttribute('data-id');})[0]; cerrarModal(); cierreManualOT(_cerrOTobj(g,o)); }); });
+    Array.prototype.forEach.call(document.querySelectorAll('.cg-cerrar'),function(b){ b.addEventListener('click',function(){ var o=g.ots.filter(function(x){return String(x.id)===b.getAttribute('data-id');})[0]; cerrarModal(); cierreInline(_cerrOTobj(g,o)); }); });
   }
   function reasignarOTs(otIds, cuadActual, cuadNom){
     var cuadOpts=REF.cuadrillas.filter(function(c){return c.id!=cuadActual;}).map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
@@ -1391,6 +1501,7 @@
       h+='<div class="fichagrid" style="margin:0 0 6px">'
         +'<div class="ficha-row"><span class="k">▶️ Inicio</span><span class="v" style="text-align:right">'+(o.inicio_tec_at?(esc(fmtFechaHora(o.inicio_tec_at))+'<br>'+ubicLink(o.lat_inicio,o.lng_inicio)):'<span class="muted">— no inició la tarea</span>')+'</span></div>'
         +'<div class="ficha-row"><span class="k">🏁 Fin</span><span class="v" style="text-align:right">'+(o.fin_tec_at?(esc(fmtFechaHora(o.fin_tec_at))+'<br>'+ubicLink(o.lat_fin,o.lng_fin)):'—')+'</span></div></div>';
+      if(_durTexto(o.inicio_tec_at,o.fin_tec_at)) h+='<div style="margin:2px 0 6px">'+_durChip(o)+'</div>';
       if(editable) h+='<label class="l">Observaciones del técnico</label><textarea id="ot-obs-edit">'+esc(o.observaciones_tec||'')+'</textarea>';
       else if(o.observaciones_tec) h+='<div style="margin:6px 0"><b>Observaciones:</b> '+esc(o.observaciones_tec)+'</div>';
       if(o.motivo_cancelacion) h+='<div style="margin:6px 0;color:var(--rojo)"><b>No realizada — motivo:</b> '+esc(o.motivo_cancelacion)+'</div>';
@@ -2441,26 +2552,35 @@
   function depIngreso(){
     var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
     sbGet('catalogo_materiales?select=id,nombre,unidad,serial_tipo,cant_por_paquete,nombre_paquete&activo=eq.true&order=orden.asc').then(function(d){
-      var mats=Array.isArray(d)?d:[]; window._depMats=mats;
-      var matOpts='<option value="">— elegí un material —</option>'+mats.map(function(m){return '<option value="'+m.id+'">'+esc(m.nombre)+'</option>';}).join('');
+      var mats=Array.isArray(d)?d:[]; window._depMats=mats; window._ingSel=null;
       cont.innerHTML='<div class="kpi" style="margin-bottom:14px"><b>Ingreso de material al depósito.</b> <span class="muted">Cargá uno o varios y confirmá al final.</span></div>'
         +'<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">'
         +'<div style="flex:1;min-width:300px;border:1px solid var(--bord);border-radius:12px;padding:14px">'
-          +'<label class="l">Material</label><select id="ing-mat">'+matOpts+'</select>'
+          +'<label class="l">Material <span class="muted" style="text-transform:none;font-weight:400">(escribí para buscar)</span></label>'
+          +'<div style="position:relative"><input id="ing-search" placeholder="Buscá el material…" autocomplete="off"><div id="ing-list" class="colmenu" style="display:none;left:0;right:0;top:100%"></div></div>'
           +'<div id="ing-dyn" style="margin-top:8px"></div>'
           +'<button class="btn btn-2" id="ing-add" style="margin-top:10px" disabled>+ Agregar al ingreso</button>'
         +'</div>'
         +'<div style="flex:1;min-width:300px"><div class="l">A ingresar</div><div id="ing-lista"></div>'
           +'<button class="btn btn-ok" id="ing-confirm" style="margin-top:10px" disabled>✅ Confirmar ingreso al depósito</button></div>'
         +'</div>';
-      document.getElementById('ing-mat').addEventListener('change',ingDyn);
+      var srch=document.getElementById('ing-search'), list=document.getElementById('ing-list');
+      function renderList(q){ q=(q||'').toLowerCase().trim(); var arr=mats.filter(function(m){return !q||m.nombre.toLowerCase().indexOf(q)>=0;}).slice(0,25);
+        if(!arr.length){ list.style.display='none'; return; }
+        list.innerHTML=arr.map(function(m){return '<label style="cursor:pointer" data-mid="'+m.id+'">'+esc(m.nombre)+' <span class="muted" style="font-size:11px">'+stipTxt(m.serial_tipo)+'</span></label>';}).join('');
+        list.style.display='block';
+        Array.prototype.forEach.call(list.querySelectorAll('[data-mid]'),function(el){ el.addEventListener('click',function(){ window._ingSel=_matById(el.getAttribute('data-mid')); srch.value=window._ingSel.nombre; list.style.display='none'; document.getElementById('ing-add').disabled=false; ingDyn(); }); });
+      }
+      srch.addEventListener('input',function(){ window._ingSel=null; document.getElementById('ing-add').disabled=true; renderList(srch.value); });
+      srch.addEventListener('focus',function(){ renderList(srch.value); });
+      document.addEventListener('click',function(e){ if(!e.target.closest('#ing-list')&&!e.target.closest('#ing-search')) list.style.display='none'; });
       document.getElementById('ing-add').addEventListener('click',ingAdd);
       document.getElementById('ing-confirm').addEventListener('click',ingConfirm);
       ingRenderLista();
     });
   }
   function ingDyn(){
-    var m=_matById(document.getElementById('ing-mat').value), dyn=document.getElementById('ing-dyn'), add=document.getElementById('ing-add');
+    var m=window._ingSel, dyn=document.getElementById('ing-dyn'), add=document.getElementById('ing-add');
     if(!m){ dyn.innerHTML=''; add.disabled=true; return; }
     add.disabled=false;
     if(m.serial_tipo==='NINGUNO'){
@@ -2480,7 +2600,7 @@
     }
   }
   function ingAdd(){
-    var m=_matById(document.getElementById('ing-mat').value); if(!m) return;
+    var m=window._ingSel; if(!m) return;
     var item={ material_id:m.id, nombre:m.nombre, unidad:m.unidad, serial_tipo:m.serial_tipo, cantidad:0, seriales:[] };
     if(m.serial_tipo==='NINGUNO'){
       if(m.cant_por_paquete>1){ var paq=parseInt(document.getElementById('ing-paq').value,10); if(!(paq>0)){ toast('Cantidad de paquetes inválida.'); return; } item.cantidad=paq*m.cant_por_paquete; item.detalle=paq+' '+(m.nombre_paquete||'paq')+' × '+m.cant_por_paquete; }
@@ -2489,7 +2609,7 @@
     else if(m.serial_tipo==='CORRELATIVO'){ var i=parseInt(document.getElementById('ing-ini').value,10), c2=parseInt(document.getElementById('ing-cant').value,10); if(!(i>=0)||!(c2>0)){ toast('Completá número inicial y cantidad.'); return; } for(var k=0;k<c2;k++) item.seriales.push(pad6(i+k)); item.cantidad=c2; }
     else { var ss=_parseSeriales(document.getElementById('ing-ser').value); if(!ss.length){ toast('Pegá al menos un serial.'); return; } item.seriales=ss; item.cantidad=ss.length; }
     INGRESO_TEMP.push(item); ingRenderLista();
-    document.getElementById('ing-mat').value=''; ingDyn();
+    window._ingSel=null; var s=document.getElementById('ing-search'); if(s)s.value=''; var dyn=document.getElementById('ing-dyn'); if(dyn)dyn.innerHTML=''; var add=document.getElementById('ing-add'); if(add)add.disabled=true;
   }
   function ingRenderLista(){
     var c=document.getElementById('ing-lista'); if(!c) return;
