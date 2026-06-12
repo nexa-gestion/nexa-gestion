@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.9</title>
+<title>Nexa · Técnico — v0.10</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.9';
+  var VER='v0.10';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -111,7 +111,7 @@
 
   // ── LISTA DE OTs ──
   function topBar(titulo, sub){
-    return '<div class="top"><div><div class="t">'+esc(titulo)+'</div>'+(sub?'<div class="s">'+esc(sub)+'</div>':'')+'</div><a id="top-menu" style="font-size:22px">☰</a></div>'
+    return '<div class="top"><div><div class="t">'+esc(titulo)+'</div><div class="s">'+(sub?esc(sub)+' · ':'')+VER+'</div></div><a id="top-menu" style="font-size:22px">☰</a></div>'
       +'<div id="menu-ov" class="menu-ov" style="display:none"><div class="menu-card">'
       +'<a data-m="lista">📋 Mis órdenes</a><a data-m="buscar">🔎 Buscar cliente</a><a data-m="descon">🔌 Desconexiones</a><a data-m="salir">🚪 Salir</a>'
       +'</div></div>';
@@ -211,7 +211,7 @@
       sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&origen=eq.ADMIN&select=clave,valor')
     ]).then(function(r){
       var ot=(r[0]&&r[0][0])||o, tipos=_cieArr(r[1]), tec=ot.clientes?ot.clientes.tecnologia:'';
-      CIE={ o:ot, accion:'REALIZADA', tipos:tipos, ttId:(ot.tipo_trabajo_id||_ttPorTec(tipos,tec)||null), kitMat:[], kitMo:[], seriales:_cieArr(r[2]), motivos:_cieArr(r[3]), datosAdmin:_cieArr(r[4]), mats:{}, mos:{}, fotos:[] };
+      CIE={ o:ot, accion:'REALIZADA', tipos:tipos, ttId:(ot.tipo_trabajo_id||_ttPorTec(tipos,tec)||null), kitMat:[], kitMo:[], seriales:_cieArr(r[2]), motivos:_cieArr(r[3]), datosAdmin:_cieArr(r[4]), mats:{}, mos:{}, datos:{}, fotos:[] };
       cieCargarKit();
     });
   }
@@ -228,7 +228,16 @@
     });
   }
   function cieMat(matId){ if(!CIE.mats[matId]) CIE.mats[matId]={cant:0,sel:[]}; return CIE.mats[matId]; }
-  function dInput(k,lbl){ return '<div class="label" style="margin-top:8px">'+esc(lbl)+'</div><input class="cie-dato" data-k="'+k+'" placeholder="'+esc(lbl)+'">'; }
+  // Auto-completa precinto (desde el material precinto/CORRELATIVO usado) y MAC (desde el equipo/INDIVIDUAL usado)
+  function _cieAutoDato(k){
+    if(k!=='precinto'&&k!=='mac') return '';
+    for(var i=0;i<(CIE.kitMat||[]).length;i++){ var m=CIE.kitMat[i], st=CIE.mats[m.id]; if(!st||!st.sel.length) continue;
+      if(k==='precinto' && m.serial_tipo==='CORRELATIVO') return st.sel[0];
+      if(k==='mac' && m.serial_tipo==='INDIVIDUAL') return st.sel[0];
+    }
+    return '';
+  }
+  function dInput(k,lbl){ var v=(CIE.datos&&CIE.datos[k]!=null)?CIE.datos[k]:_cieAutoDato(k); return '<div class="label" style="margin-top:8px">'+esc(lbl)+'</div><input class="cie-dato" data-k="'+k+'" value="'+esc(v||'')+'" placeholder="'+esc(lbl)+'">'; }
   function renderFotos(){ if(!CIE.fotos.length) return '<span class="muted">Sin fotos.</span>'; return '<div style="display:flex;flex-wrap:wrap;gap:8px">'+CIE.fotos.map(function(f,i){return '<div style="position:relative"><img src="'+f.preview+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px"><button class="btn foto-del" data-i="'+i+'" style="position:absolute;top:-7px;right:-7px;width:22px;height:22px;padding:0;background:var(--rojo);color:#fff;border-radius:50%;line-height:1">×</button><div style="font-size:10px;text-align:center;color:'+(f.url?'var(--verde)':'var(--ambar)')+'">'+(f.url?'✓ subida':'subiendo…')+'</div></div>';}).join('')+'</div>'; }
   function renderCierre(){
     var o=CIE.o, h=topBar('Cerrar OT N° '+o.numero,o.tipo)+'<div class="wrap">';
@@ -281,6 +290,7 @@
     // Serial: tildar/destildar (sin tope) o escanear/escribir; la cantidad la dan los seriales elegidos
     each('.ser-chip',function(b){ b.onclick=function(){ var s=cieMat(b.getAttribute('data-m')),v=b.getAttribute('data-s'),i=s.sel.indexOf(v); if(i>=0)s.sel.splice(i,1); else s.sel.push(v); renderCierre(); }; });
     each('.ser-man',function(inp){ var add=function(){ var s=cieMat(inp.getAttribute('data-m')),v=(inp.value||'').trim().toUpperCase().replace(/[:\-.\s]/g,''); if(v&&s.sel.indexOf(v)<0){ s.sel.push(v); renderCierre(); } }; inp.onchange=add; inp.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } }; });
+    each('.cie-dato',function(inp){ inp.oninput=function(){ if(!CIE.datos)CIE.datos={}; CIE.datos[inp.getAttribute('data-k')]=inp.value; }; });
     each('.foto-del',function(b){ b.onclick=function(){ CIE.fotos.splice(+b.getAttribute('data-i'),1); renderCierre(); }; });
     var fin=document.getElementById('cie-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirFotos(e.target.files); });
     document.getElementById('cie-confirmar').addEventListener('click',confirmarCierre);

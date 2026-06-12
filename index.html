@@ -173,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.65';
+  var VER='v0.66';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -1273,21 +1273,38 @@
       datos.forEach(function(x){ dm[x.clave]=x.valor; });
       var h='<div style="border-top:2px solid #dbeafe;margin-top:14px;padding-top:10px"><h3 style="margin:0 0 4px;color:var(--azul)">📥 Cierre del técnico</h3>'
         +'<div class="muted" style="font-size:13px">Cerrada por técnico: '+fmtFechaHora(o.fin_tec_at)+(o.lat_fin?(' · 📍'+o.lat_fin+','+o.lng_fin):'')+'</div>';
-      if(o.observaciones_tec) h+='<div style="margin:6px 0"><b>Observaciones:</b> '+esc(o.observaciones_tec)+'</div>';
+      var editable=(o.estado==='CERRADA_TECNICO');   // mientras está pendiente de validar, el admin puede corregir los datos
+      if(editable) h+='<label class="l">Observaciones del técnico</label><textarea id="ot-obs-edit">'+esc(o.observaciones_tec||'')+'</textarea>';
+      else if(o.observaciones_tec) h+='<div style="margin:6px 0"><b>Observaciones:</b> '+esc(o.observaciones_tec)+'</div>';
       if(o.motivo_cancelacion) h+='<div style="margin:6px 0;color:var(--rojo)"><b>No realizada — motivo:</b> '+esc(o.motivo_cancelacion)+'</div>';
       h+='<div style="margin-top:8px"><b>Materiales:</b> '+(mats.length?'':'—')+'</div>';
       if(mats.length) h+='<ul style="margin:4px 0 0 18px">'+mats.map(function(m){return '<li>'+esc(m.catalogo_materiales?m.catalogo_materiales.nombre:(m.descripcion||'Material'))+' ×'+m.cantidad+(m.serial?(' <span class="muted">('+esc(m.serial)+')</span>'):'')+'</li>';}).join('')+'</ul>';
       h+='<div style="margin-top:6px"><b>Mano de obra:</b> '+(mos.length?'':'—')+'</div>';
       if(mos.length) h+='<ul style="margin:4px 0 0 18px">'+mos.map(function(m){return '<li>'+esc(m.nombre)+' ×'+m.cantidad+'</li>';}).join('')+'</ul>';
       if(fotos.length) h+='<div style="margin-top:6px"><b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">📷 '+(i+1)+'</a>';}).join(' · ')+'</div>';
-      h+='<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px;margin-top:10px"><div style="font-weight:700;margin-bottom:4px">📋 Datos para ISPcube</div>'
-        +ispRow('Precinto',dm.precinto)+ispRow('Caja (NAP)',dm.caja_nap)+ispRow('Puerto',dm.puerto)+ispRow('Access Point',dm.access_point)+ispRow('MAC',dm.mac)+ispRow('Serial/Modelo',dm.serial);
+      h+='<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px;margin-top:10px"><div style="font-weight:700;margin-bottom:4px">📋 Datos para ISPcube'+(editable?' <span class="muted" style="font-weight:400">— editá y guardá antes de validar</span>':'')+'</div>';
+      if(editable){
+        var df=[['precinto','Precinto'],['caja_nap','Caja (NAP)'],['puerto','Puerto'],['access_point','Access Point'],['mac','MAC'],['serial','Serial/Modelo']];
+        h+='<div class="fsgrid">'+df.map(function(p){return '<div><label class="l">'+p[1]+'</label><input id="ot-d-'+p[0]+'" value="'+esc(dm[p[0]]||'')+'"></div>';}).join('')+'</div>'
+          +'<button class="btn btn-pri" id="ot-datos-save" style="margin-top:8px;width:100%">💾 Guardar cambios del cierre</button>';
+      } else {
+        h+=ispRow('Precinto',dm.precinto)+ispRow('Caja (NAP)',dm.caja_nap)+ispRow('Puerto',dm.puerto)+ispRow('Access Point',dm.access_point)+ispRow('MAC',dm.mac)+ispRow('Serial/Modelo',dm.serial);
+      }
       if((dm.caja_nap||dm.puerto||dm.precinto)&&o.cliente_id) h+='<button class="btn btn-2" id="ot-cli-copy" style="margin-top:8px;width:100%">⬇️ Guardar caja/puerto/precinto en el cliente</button>';
       h+='</div>';
       if(o.estado==='CERRADA_TECNICO') h+='<button class="btn btn-ok" id="ot-validar" style="margin-top:10px;width:100%">✅ Validar y finalizar</button>';
       else if(o.estado==='FINALIZADA') h+='<div class="muted" style="margin-top:8px">✓ Validada'+(o.validado_admin_at?(' el '+fmtFechaHora(o.validado_admin_at)):'')+'</div>';
       h+='</div>';
       cont.innerHTML=h;
+      var ds=document.getElementById('ot-datos-save'); if(ds) ds.addEventListener('click',function(){
+        var keys=['precinto','caja_nap','puerto','access_point','mac','serial'], jobs=[];
+        keys.forEach(function(k){ var el=document.getElementById('ot-d-'+k); if(!el)return; var v=el.value.trim();
+          jobs.push(fetch(SB_URL+'/rest/v1/ot_datos_servicio?on_conflict=ot_id,clave',{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({ot_id:o.id,clave:k,valor:v||null,origen:'TECNICO'})})); });
+        var obsEl=document.getElementById('ot-obs-edit'); if(obsEl) jobs.push(sbPatch('ordenes_trabajo?id=eq.'+o.id,{ observaciones_tec:obsEl.value.trim()||null }));
+        ds.disabled=true; ds.textContent='Guardando…';
+        Promise.all(jobs).then(function(){ if(obsEl) o.observaciones_tec=obsEl.value.trim()||null; toast('Cambios del cierre guardados ✓'); logOT(o.id,'CAMBIO_ESTADO',{ detalle:'Admin corrigió datos del cierre antes de validar' }); cargarCierreOT(o); })
+          .catch(function(){ ds.disabled=false; ds.textContent='💾 Guardar cambios del cierre'; toast('No se pudo guardar.'); });
+      });
       var cp=document.getElementById('ot-cli-copy'); if(cp) cp.addEventListener('click',function(){
         var upd={}; if(dm.caja_nap)upd.caja_nap=dm.caja_nap; if(dm.puerto)upd.puerto=dm.puerto; if(dm.precinto)upd.precinto=dm.precinto;
         cp.disabled=true; sbPatch('clientes?id=eq.'+o.cliente_id,upd).then(function(){ toast('Datos guardados en el cliente ✓'); }).catch(function(){ toast('No se pudo guardar.'); cp.disabled=false; });
@@ -2925,7 +2942,7 @@
   // ── util UI ──
   function opt(arr,sel){ return arr.map(function(x){return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>';}).join(''); }
   function _modalEsc(e){ if(e.key==='Escape'||e.keyCode===27) cerrarModal(); }
-  function modal(html,cls){ var d=document.createElement('div'); d.className='ov'; d.id='ov'; d.innerHTML='<div class="modal '+(cls||'')+'">'+html+'</div>'; d.addEventListener('click',function(e){ if(e.target===d)cerrarModal(); }); document.body.appendChild(d); document.addEventListener('keydown',_modalEsc); }
+  function modal(html,cls){ var prev=document.getElementById('ov'); if(prev) prev.remove(); /* nunca apilar modales */ var d=document.createElement('div'); d.className='ov'; d.id='ov'; d.innerHTML='<div class="modal '+(cls||'')+'">'+html+'</div>'; d.addEventListener('click',function(e){ if(e.target===d)cerrarModal(); }); document.body.appendChild(d); document.addEventListener('keydown',_modalEsc); }
   function cerrarModal(){ var o=document.getElementById('ov'); if(o)o.remove(); document.removeEventListener('keydown',_modalEsc); }
 
   document.getElementById('lg-btn').addEventListener('click',login);
