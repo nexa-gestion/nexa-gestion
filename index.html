@@ -16,11 +16,11 @@
   .login-card{ background:#fff; border:1px solid var(--bord); border-radius:18px; padding:30px; width:340px; box-shadow:0 4px 20px rgba(0,0,0,.06); }
   .marca{ font-weight:800; font-size:30px; letter-spacing:1px; color:var(--pri-d); text-align:center; }
   .marca-sub{ text-align:center; color:var(--gris); font-size:13px; margin-bottom:20px; }
-  input,select,textarea{ width:100%; border:2px solid var(--bord); border-radius:10px; padding:11px; font-size:15px; font-family:inherit; background:#fff; }
+  input,select,textarea{ width:100%; border:1.5px solid var(--bord); border-radius:9px; padding:9px 11px; font-size:14px; font-family:inherit; background:#fff; }
   input[type=checkbox],input[type=radio]{ width:auto; padding:0; margin:0 6px 0 0; vertical-align:middle; }
   input:focus,select:focus,textarea:focus{ outline:none; border-color:var(--pri); }
-  label.l{ display:block; font-size:12px; font-weight:700; color:var(--gris); text-transform:uppercase; letter-spacing:.4px; margin:12px 0 5px; }
-  .btn{ border:none; border-radius:10px; padding:11px 16px; font-size:14px; font-weight:700; cursor:pointer; }
+  label.l{ display:block; font-size:11px; font-weight:700; color:var(--gris); text-transform:uppercase; letter-spacing:.4px; margin:8px 0 4px; }
+  .btn{ border:none; border-radius:9px; padding:9px 14px; font-size:13.5px; font-weight:700; cursor:pointer; }
   .btn-pri{ background:var(--pri); color:#fff; } .btn-pri:active{ background:var(--pri-d); }
   .btn-2{ background:#fff; color:#334155; border:2px solid var(--bord); }
   .btn-ok{ background:var(--ok); color:#fff; } .btn-x{ background:#fff; color:var(--rojo); border:2px solid #fecaca; }
@@ -75,10 +75,10 @@
   .ag-numlbl{ background:transparent!important; border:0!important; box-shadow:none!important; color:#fff!important; font-weight:700; font-size:11px; }
   .ag-numlbl::before{ display:none!important; }
   /* Modal */
-  .ov{ position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
-  .modal{ background:#fff; border-radius:16px; padding:24px 26px; width:780px; max-width:96vw; max-height:92vh; overflow:auto; }
-  .modal.wide{ width:1100px; }
-  .modal h2{ margin:0 0 4px; font-size:20px; } .row{ display:flex; gap:10px; } .row>div{ flex:1; }
+  .ov{ position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:14px; z-index:50; }
+  .modal{ background:#fff; border-radius:14px; padding:16px 20px; width:720px; max-width:96vw; max-height:92vh; overflow:auto; font-size:13.5px; }
+  .modal.wide{ width:1080px; }
+  .modal h2{ margin:0 0 4px; font-size:18px; } .row{ display:flex; gap:10px; } .row>div{ flex:1; }
   .fichagrid{ display:grid; grid-template-columns:1fr 1fr; gap:0 30px; }
   @media(max-width:780px){ .fichagrid{ grid-template-columns:1fr; } }
   .fsgrid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 18px; }
@@ -173,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.68';
+  var VER='v0.69';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -1272,15 +1272,19 @@
     var after=document.getElementById('ot-cierre-after'); if(!after) return;
     var cont=document.getElementById('ot-cierre'); if(!cont){ cont=document.createElement('div'); cont.id='ot-cierre'; after.parentNode.insertBefore(cont,after); }
     cont.innerHTML='<div class="muted" style="margin-top:10px">Cargando cierre…</div>';
+    var ed0=(o.estado==='CERRADA_TECNICO');
     Promise.all([
       sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=id,material_id,cantidad,serial,descripcion,catalogo_materiales(nombre,serial_tipo)'),
-      sbGet('ot_mano_obra?ot_id=eq.'+o.id+'&select=id,nombre,cantidad'),
+      sbGet('ot_mano_obra?ot_id=eq.'+o.id+'&select=id,mano_obra_id,nombre,cantidad'),
       sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&origen=eq.TECNICO&select=clave,valor'),
-      sbGet('ot_fotos?ot_id=eq.'+o.id+'&select=url')
+      sbGet('ot_fotos?ot_id=eq.'+o.id+'&select=url'),
+      ed0?sbGet('catalogo_materiales?select=id,nombre,serial_tipo&activo=eq.true&order=orden.asc'):Promise.resolve([]),
+      ed0?sbGet('mano_obra_catalogo?select=id,nombre&activo=eq.true&order=orden.asc'):Promise.resolve([])
     ]).then(function(r){
-      var mats=r[0]||[], mos=r[1]||[], datos=r[2]||[], fotos=r[3]||[], dm={};
+      var mats=r[0]||[], mos=r[1]||[], datos=r[2]||[], fotos=r[3]||[], matCat=r[4]||[], moCat=r[5]||[], dm={};
       datos.forEach(function(x){ dm[x.clave]=x.valor; });
       var editable=(o.estado==='CERRADA_TECNICO');   // pendiente de validar → el admin puede corregir
+      window._valCtx={ o:o };
       var h='<div style="border-top:2px solid #dbeafe;margin-top:14px;padding-top:10px"><h3 style="margin:0 0 6px;color:var(--azul)">📥 Cierre del técnico</h3>';
       // Ubicación de INICIO y FIN (clickeables)
       h+='<div class="fichagrid" style="margin:0 0 6px">'
@@ -1289,19 +1293,23 @@
       if(editable) h+='<label class="l">Observaciones del técnico</label><textarea id="ot-obs-edit">'+esc(o.observaciones_tec||'')+'</textarea>';
       else if(o.observaciones_tec) h+='<div style="margin:6px 0"><b>Observaciones:</b> '+esc(o.observaciones_tec)+'</div>';
       if(o.motivo_cancelacion) h+='<div style="margin:6px 0;color:var(--rojo)"><b>No realizada — motivo:</b> '+esc(o.motivo_cancelacion)+'</div>';
-      // Dos columnas: Materiales (izq, cantidades editables) | Mano de obra (der, editable)
+      // Dos columnas: Materiales (izq) | Mano de obra (der) — editables: cantidad, agregar, quitar
+      function _xbtn(cls,id){ return '<button class="'+cls+'" data-id="'+id+'" title="Quitar" style="width:24px;height:24px;flex:none;border:1.5px solid #fecaca;background:#fff;color:var(--rojo);border-radius:6px;cursor:pointer;padding:0;font-weight:700">✕</button>'; }
       h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px">';
-      h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:10px"><div class="l" style="margin:0 0 6px">🔧 Materiales usados</div>';
-      if(!mats.length) h+='<div class="muted" style="font-size:13px">—</div>';
+      h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div class="l" style="margin:0">🔧 Materiales</div>'+(editable?'<button class="btn btn-2 val-add-mat" style="padding:3px 9px;font-size:12px">+ material</button>':'')+'</div>';
+      if(!mats.length) h+='<div class="muted" style="font-size:13px;padding:4px 0">—</div>';
       mats.forEach(function(m){ var nom=m.catalogo_materiales?m.catalogo_materiales.nombre:(m.descripcion||'Material');
-        h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:13px">'+esc(nom)+(m.serial?('<br><span class="muted" style="font-size:11px;font-family:monospace">'+esc(m.serial)+'</span>'):'')+'</span>'
-          +((editable&&!m.serial)?('<input type="number" min="0" class="val-mat-cant" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:62px;text-align:center;padding:5px">'):('<b style="white-space:nowrap">× '+esc(m.cantidad)+'</b>'))+'</div>';
+        h+='<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:13px">'+esc(nom)+(m.serial?('<br><span class="muted" style="font-size:11px;font-family:monospace">'+esc(m.serial)+'</span>'):'')+'</span>'
+          +((editable&&!m.serial)?('<input type="number" min="0" class="val-mat-cant" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:58px;text-align:center;padding:4px">'):('<b style="white-space:nowrap">× '+esc(m.cantidad)+'</b>'))
+          +(editable?_xbtn('val-del-mat',m.id+(m.serial?('|'+encodeURIComponent(m.serial)+'|'+m.material_id):'')):'')+'</div>';
       });
-      h+='</div><div style="border:1px solid var(--bord);border-radius:10px;padding:10px"><div class="l" style="margin:0 0 6px">👷 Mano de obra</div>';
-      if(!mos.length) h+='<div class="muted" style="font-size:13px">—</div>';
-      mos.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:13px">'+esc(m.nombre)+'</span>'+(editable?('<input type="number" min="0" class="val-mo-cant" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:62px;text-align:center;padding:5px">'):('<b style="white-space:nowrap">× '+esc(m.cantidad)+'</b>'))+'</div>'; });
+      if(editable) h+='<div class="val-add-mat-panel" style="display:none;margin-top:6px;padding:8px;background:#eff6ff;border:1px dashed #93c5fd;border-radius:8px"><select id="val-mat-sel" style="margin-bottom:6px">'+'<option value="">— elegí material —</option>'+matCat.map(function(c){return '<option value="'+c.id+'" data-st="'+esc(c.serial_tipo)+'">'+esc(c.nombre)+'</option>';}).join('')+'</select><div style="display:flex;gap:6px"><input id="val-mat-qty" type="number" min="1" value="1" style="width:64px;text-align:center"><button class="btn btn-ok val-mat-add-ok" style="flex:1;padding:6px">Agregar</button></div></div>';
+      h+='</div><div style="border:1px solid var(--bord);border-radius:10px;padding:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div class="l" style="margin:0">👷 Mano de obra</div>'+(editable?'<button class="btn btn-2 val-add-mo" style="padding:3px 9px;font-size:12px">+ M.O.</button>':'')+'</div>';
+      if(!mos.length) h+='<div class="muted" style="font-size:13px;padding:4px 0">—</div>';
+      mos.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:13px">'+esc(m.nombre)+'</span>'+(editable?('<input type="number" min="0" class="val-mo-cant" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:58px;text-align:center;padding:4px">'):('<b style="white-space:nowrap">× '+esc(m.cantidad)+'</b>'))+(editable?_xbtn('val-del-mo',m.id):'')+'</div>'; });
+      if(editable) h+='<div class="val-add-mo-panel" style="display:none;margin-top:6px;padding:8px;background:#f0fdf4;border:1px dashed #86efac;border-radius:8px"><select id="val-mo-sel" style="margin-bottom:6px">'+'<option value="">— elegí mano de obra —</option>'+moCat.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('')+'</select><div style="display:flex;gap:6px"><input id="val-mo-qty" type="number" min="1" value="1" style="width:64px;text-align:center"><button class="btn btn-ok val-mo-add-ok" style="flex:1;padding:6px">Agregar</button></div></div>';
       h+='</div></div>';
-      if(editable) h+='<div class="muted" style="font-size:12px;margin-top:4px">✏️ Podés corregir las cantidades acá (se guardan al instante). Los seriales no se editan.</div>';
+      if(editable) h+='<div class="muted" style="font-size:12px;margin-top:4px">✏️ Editá cantidades, agregá (+) o quitá (✕). Se guarda al instante. Al quitar un equipo/precinto su serial vuelve a la cuadrilla.</div>';
       if(fotos.length) h+='<div style="margin-top:8px"><b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">📷 '+(i+1)+'</a>';}).join(' · ')+'</div>';
       h+='<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px;margin-top:10px"><div style="font-weight:700;margin-bottom:4px">📋 Datos para ISPcube'+(editable?' <span class="muted" style="font-weight:400">— editá y guardá antes de validar</span>':'')+'</div>';
       if(editable){
@@ -1320,6 +1328,31 @@
       // Cantidades editables (se guardan al instante)
       Array.prototype.forEach.call(cont.querySelectorAll('.val-mat-cant'),function(inp){ inp.addEventListener('change',function(){ var c=Math.max(0,parseInt(inp.value,10)||0); inp.value=c; sbPatch('ot_materiales?id=eq.'+inp.getAttribute('data-id'),{cantidad:c}).then(function(){ toast('Cantidad actualizada ✓'); }); }); });
       Array.prototype.forEach.call(cont.querySelectorAll('.val-mo-cant'),function(inp){ inp.addEventListener('change',function(){ var c=Math.max(0,parseInt(inp.value,10)||0); inp.value=c; sbPatch('ot_mano_obra?id=eq.'+inp.getAttribute('data-id'),{cantidad:c}).then(function(){ toast('Cantidad actualizada ✓'); }); }); });
+      // Agregar / quitar material y mano de obra
+      var amb=cont.querySelector('.val-add-mat'); if(amb) amb.addEventListener('click',function(){ var p=cont.querySelector('.val-add-mat-panel'); if(p) p.style.display=(p.style.display==='none'?'block':'none'); });
+      var amob=cont.querySelector('.val-add-mo'); if(amob) amob.addEventListener('click',function(){ var p=cont.querySelector('.val-add-mo-panel'); if(p) p.style.display=(p.style.display==='none'?'block':'none'); });
+      var matOk=cont.querySelector('.val-mat-add-ok'); if(matOk) matOk.addEventListener('click',function(){
+        var sel=document.getElementById('val-mat-sel'), mid=sel.value, qty=Math.max(1,parseInt(document.getElementById('val-mat-qty').value,10)||1);
+        if(!mid){ toast('Elegí un material.'); return; }
+        this.disabled=true; sbPost('ot_materiales',{ ot_id:o.id, material_id:Number(mid), cantidad:qty, serial:null }).then(function(){ toast('Material agregado ✓'); cargarCierreOT(o); });
+      });
+      var moOk=cont.querySelector('.val-mo-add-ok'); if(moOk) moOk.addEventListener('click',function(){
+        var sel=document.getElementById('val-mo-sel'), sid=sel.value, qty=Math.max(1,parseInt(document.getElementById('val-mo-qty').value,10)||1);
+        if(!sid){ toast('Elegí una mano de obra.'); return; }
+        var nom=sel.options[sel.selectedIndex].text;
+        this.disabled=true; sbPost('ot_mano_obra',{ ot_id:o.id, mano_obra_id:Number(sid), nombre:nom, cantidad:qty }).then(function(){ toast('Mano de obra agregada ✓'); cargarCierreOT(o); });
+      });
+      Array.prototype.forEach.call(cont.querySelectorAll('.val-del-mat'),function(b){ b.addEventListener('click',function(){
+        var raw=b.getAttribute('data-id'), parts=raw.split('|'), id=parts[0], serial=parts[1]?decodeURIComponent(parts[1]):null, matId=parts[2];
+        if(!confirm('¿Quitar este material del cierre?')) return;
+        var jobs=[ fetch(SB_URL+'/rest/v1/ot_materiales?id=eq.'+id,{method:'DELETE',headers:H}) ];
+        if(serial&&matId) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial)+'&material_id=eq.'+matId+'&estado=eq.COMPROMETIDO',{ estado:'EN_CUADRILLA', ot_id:null }));  // el serial vuelve a la cuadrilla
+        Promise.all(jobs).then(function(){ toast('Material quitado ✓'); cargarCierreOT(o); });
+      }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.val-del-mo'),function(b){ b.addEventListener('click',function(){
+        if(!confirm('¿Quitar esta mano de obra?')) return;
+        fetch(SB_URL+'/rest/v1/ot_mano_obra?id=eq.'+b.getAttribute('data-id'),{method:'DELETE',headers:H}).then(function(){ toast('Mano de obra quitada ✓'); cargarCierreOT(o); });
+      }); });
       var ds=document.getElementById('ot-datos-save'); if(ds) ds.addEventListener('click',function(){
         var keys=['precinto','caja_nap','puerto','access_point','mac','serial'], jobs=[];
         keys.forEach(function(k){ var el=document.getElementById('ot-d-'+k); if(!el)return; var v=el.value.trim();
