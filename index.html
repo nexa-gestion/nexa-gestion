@@ -174,7 +174,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.74';
+  var VER='v0.75';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -1088,7 +1088,7 @@
         +(o.clientes?'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(o.clientes.lat,o.clientes.lng)+'</span></div>':'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
         +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+fr('Agendada',fmtFecha(o.fecha_agendada))+'</div>'+obsTecHtml
-        +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Este cliente lleva TV</div><div class="muted" style="font-size:12px">Asignale una cuenta de TV (usuario y contraseña) para que se imprima en la orden y el técnico la habilite.</div><div id="ot-tv-cont" style="margin-top:8px"></div></div>':'')
+        +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Cuenta de TV</div><div id="ot-tv-cont" style="margin-top:6px"></div></div>':'')
         +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;margin-top:4px">'
           +'<div><label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select></div>'
           +'<div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div>'
@@ -1474,15 +1474,36 @@
   function cargarTvOT(o){
     var cont=document.getElementById('ot-tv-cont'); if(!cont) return;
     cont.innerHTML='<div class="muted" style="font-size:12px">Cargando cuentas…</div>';
+    var cliId=o.cliente_id||(o.clientes&&o.clientes.id)||null;
     Promise.all([
       sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&clave=in.(usuario_tv,pass_tv)&select=clave,valor'),
-      sbGet('cuentas_tv?estado=eq.DISPONIBLE&select=id,usuario,contrasena,mail,pack_futbol&order=usuario&limit=500')
+      sbGet('cuentas_tv?estado=eq.DISPONIBLE&select=id,usuario,contrasena,mail,pack_futbol&order=usuario&limit=500'),
+      cliId? sbGet('cuentas_tv?cliente_id=eq.'+cliId+'&estado=in.(EN_USO,RESERVADA)&select=id,usuario,contrasena,pack_futbol,estado&limit=5') : Promise.resolve([])
     ]).then(function(r){
       var dm={}; (r[0]||[]).forEach(function(x){ dm[x.clave]=x.valor; }); var disp=r[1]||[];
+      var ctaCli=(r[2]||[])[0];
       if(dm.usuario_tv){
-        cont.innerHTML='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>✅ Cuenta asignada: <b>'+esc(dm.usuario_tv)+'</b> · clave <b>'+esc(dm.pass_tv||'—')+'</b> <span class="muted">(se imprime en la OT)</span></span><button class="btn btn-2" id="ot-tv-change">Cambiar</button></div>';
+        // Esta OT ya tiene una cuenta cargada para imprimir
+        cont.innerHTML='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>✅ Cuenta en esta OT: <b>'+esc(dm.usuario_tv)+'</b> · clave <b>'+esc(dm.pass_tv||'—')+'</b> <span class="muted">(se imprime en la orden)</span></span><button class="btn btn-2" id="ot-tv-change">Cambiar</button></div>';
         var ch=document.getElementById('ot-tv-change'); if(ch) ch.addEventListener('click',function(){ _tvPicker(o,disp,cont); });
-      } else { _tvPicker(o,disp,cont); }
+      } else if(ctaCli){
+        // El cliente YA tiene una cuenta de TV asociada (instalación previa). No hace falta instalar otra.
+        var est=ctaCli.estado==='RESERVADA'?'reservada':'en uso';
+        cont.innerHTML='<div style="font-size:13px;color:#15803d;margin-bottom:6px">✅ Este cliente <b>ya tiene cuenta de TV</b>: <b>'+esc(ctaCli.usuario||('cuenta '+ctaCli.id))+'</b>'+(ctaCli.pack_futbol?' ⚽':'')+' <span class="muted">('+est+')</span>. No hace falta asignar otra.</div>'
+          +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-2" id="ot-tv-print">🖨️ Imprimir esta cuenta en la OT</button><button class="btn btn-2" id="ot-tv-otra">Asignar otra cuenta…</button></div>';
+        var bp=document.getElementById('ot-tv-print'); if(bp) bp.addEventListener('click',function(){
+          var btn=this; btn.disabled=true; btn.textContent='Guardando…';
+          fetch(SB_URL+'/rest/v1/ot_datos_servicio?ot_id=eq.'+o.id+'&clave=in.(usuario_tv,pass_tv)',{method:'DELETE',headers:H})
+            .then(function(){ return sbPost('ot_datos_servicio',[{ot_id:o.id,clave:'usuario_tv',valor:ctaCli.usuario||'',origen:'ADMIN'},{ot_id:o.id,clave:'pass_tv',valor:ctaCli.contrasena||'',origen:'ADMIN'}]); })
+            .then(function(){ toast('Cuenta TV lista para imprimir en la OT ✓'); cargarTvOT(o); })
+            .catch(function(){ btn.disabled=false; btn.textContent='🖨️ Imprimir esta cuenta en la OT'; toast('No se pudo guardar.'); });
+        });
+        var bo=document.getElementById('ot-tv-otra'); if(bo) bo.addEventListener('click',function(){ _tvPicker(o,disp,cont); });
+      } else {
+        // Sin cuenta en la OT ni asociada al cliente → instalación nueva: ofrecer el pool
+        cont.innerHTML='<div class="muted" style="font-size:12px;margin-bottom:6px">El cliente lleva TV y todavía no tiene cuenta. Asignale una del pool para imprimirla en la orden.</div><div id="ot-tv-pick"></div>';
+        _tvPicker(o,disp,document.getElementById('ot-tv-pick'));
+      }
     }).catch(function(){ cont.innerHTML='<div class="muted" style="font-size:12px;color:var(--rojo)">No se pudieron cargar las cuentas TV.</div>'; });
   }
   function _tvPicker(o,disp,cont){
