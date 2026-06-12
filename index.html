@@ -173,7 +173,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.66';
+  var VER='v0.67';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -1264,24 +1264,36 @@
     var cont=document.getElementById('ot-cierre'); if(!cont){ cont=document.createElement('div'); cont.id='ot-cierre'; after.parentNode.insertBefore(cont,after); }
     cont.innerHTML='<div class="muted" style="margin-top:10px">Cargando cierre…</div>';
     Promise.all([
-      sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=material_id,cantidad,serial,descripcion,catalogo_materiales(nombre)'),
-      sbGet('ot_mano_obra?ot_id=eq.'+o.id+'&select=nombre,cantidad'),
+      sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=id,material_id,cantidad,serial,descripcion,catalogo_materiales(nombre,serial_tipo)'),
+      sbGet('ot_mano_obra?ot_id=eq.'+o.id+'&select=id,nombre,cantidad'),
       sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&origen=eq.TECNICO&select=clave,valor'),
       sbGet('ot_fotos?ot_id=eq.'+o.id+'&select=url')
     ]).then(function(r){
       var mats=r[0]||[], mos=r[1]||[], datos=r[2]||[], fotos=r[3]||[], dm={};
       datos.forEach(function(x){ dm[x.clave]=x.valor; });
-      var h='<div style="border-top:2px solid #dbeafe;margin-top:14px;padding-top:10px"><h3 style="margin:0 0 4px;color:var(--azul)">📥 Cierre del técnico</h3>'
-        +'<div class="muted" style="font-size:13px">Cerrada por técnico: '+fmtFechaHora(o.fin_tec_at)+(o.lat_fin?(' · 📍'+o.lat_fin+','+o.lng_fin):'')+'</div>';
-      var editable=(o.estado==='CERRADA_TECNICO');   // mientras está pendiente de validar, el admin puede corregir los datos
+      var editable=(o.estado==='CERRADA_TECNICO');   // pendiente de validar → el admin puede corregir
+      var h='<div style="border-top:2px solid #dbeafe;margin-top:14px;padding-top:10px"><h3 style="margin:0 0 6px;color:var(--azul)">📥 Cierre del técnico</h3>';
+      // Ubicación de INICIO y FIN (clickeables)
+      h+='<div class="fichagrid" style="margin:0 0 6px">'
+        +'<div class="ficha-row"><span class="k">▶️ Inicio</span><span class="v" style="text-align:right">'+(o.inicio_tec_at?(esc(fmtFechaHora(o.inicio_tec_at))+'<br>'+ubicLink(o.lat_inicio,o.lng_inicio)):'<span class="muted">— no inició la tarea</span>')+'</span></div>'
+        +'<div class="ficha-row"><span class="k">🏁 Fin</span><span class="v" style="text-align:right">'+(o.fin_tec_at?(esc(fmtFechaHora(o.fin_tec_at))+'<br>'+ubicLink(o.lat_fin,o.lng_fin)):'—')+'</span></div></div>';
       if(editable) h+='<label class="l">Observaciones del técnico</label><textarea id="ot-obs-edit">'+esc(o.observaciones_tec||'')+'</textarea>';
       else if(o.observaciones_tec) h+='<div style="margin:6px 0"><b>Observaciones:</b> '+esc(o.observaciones_tec)+'</div>';
       if(o.motivo_cancelacion) h+='<div style="margin:6px 0;color:var(--rojo)"><b>No realizada — motivo:</b> '+esc(o.motivo_cancelacion)+'</div>';
-      h+='<div style="margin-top:8px"><b>Materiales:</b> '+(mats.length?'':'—')+'</div>';
-      if(mats.length) h+='<ul style="margin:4px 0 0 18px">'+mats.map(function(m){return '<li>'+esc(m.catalogo_materiales?m.catalogo_materiales.nombre:(m.descripcion||'Material'))+' ×'+m.cantidad+(m.serial?(' <span class="muted">('+esc(m.serial)+')</span>'):'')+'</li>';}).join('')+'</ul>';
-      h+='<div style="margin-top:6px"><b>Mano de obra:</b> '+(mos.length?'':'—')+'</div>';
-      if(mos.length) h+='<ul style="margin:4px 0 0 18px">'+mos.map(function(m){return '<li>'+esc(m.nombre)+' ×'+m.cantidad+'</li>';}).join('')+'</ul>';
-      if(fotos.length) h+='<div style="margin-top:6px"><b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">📷 '+(i+1)+'</a>';}).join(' · ')+'</div>';
+      // Dos columnas: Materiales (izq, cantidades editables) | Mano de obra (der, editable)
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px">';
+      h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:10px"><div class="l" style="margin:0 0 6px">🔧 Materiales usados</div>';
+      if(!mats.length) h+='<div class="muted" style="font-size:13px">—</div>';
+      mats.forEach(function(m){ var nom=m.catalogo_materiales?m.catalogo_materiales.nombre:(m.descripcion||'Material');
+        h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:13px">'+esc(nom)+(m.serial?('<br><span class="muted" style="font-size:11px;font-family:monospace">'+esc(m.serial)+'</span>'):'')+'</span>'
+          +((editable&&!m.serial)?('<input type="number" min="0" class="val-mat-cant" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:62px;text-align:center;padding:5px">'):('<b style="white-space:nowrap">× '+esc(m.cantidad)+'</b>'))+'</div>';
+      });
+      h+='</div><div style="border:1px solid var(--bord);border-radius:10px;padding:10px"><div class="l" style="margin:0 0 6px">👷 Mano de obra</div>';
+      if(!mos.length) h+='<div class="muted" style="font-size:13px">—</div>';
+      mos.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:13px">'+esc(m.nombre)+'</span>'+(editable?('<input type="number" min="0" class="val-mo-cant" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:62px;text-align:center;padding:5px">'):('<b style="white-space:nowrap">× '+esc(m.cantidad)+'</b>'))+'</div>'; });
+      h+='</div></div>';
+      if(editable) h+='<div class="muted" style="font-size:12px;margin-top:4px">✏️ Podés corregir las cantidades acá (se guardan al instante). Los seriales no se editan.</div>';
+      if(fotos.length) h+='<div style="margin-top:8px"><b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">📷 '+(i+1)+'</a>';}).join(' · ')+'</div>';
       h+='<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px;margin-top:10px"><div style="font-weight:700;margin-bottom:4px">📋 Datos para ISPcube'+(editable?' <span class="muted" style="font-weight:400">— editá y guardá antes de validar</span>':'')+'</div>';
       if(editable){
         var df=[['precinto','Precinto'],['caja_nap','Caja (NAP)'],['puerto','Puerto'],['access_point','Access Point'],['mac','MAC'],['serial','Serial/Modelo']];
@@ -1296,6 +1308,9 @@
       else if(o.estado==='FINALIZADA') h+='<div class="muted" style="margin-top:8px">✓ Validada'+(o.validado_admin_at?(' el '+fmtFechaHora(o.validado_admin_at)):'')+'</div>';
       h+='</div>';
       cont.innerHTML=h;
+      // Cantidades editables (se guardan al instante)
+      Array.prototype.forEach.call(cont.querySelectorAll('.val-mat-cant'),function(inp){ inp.addEventListener('change',function(){ var c=Math.max(0,parseInt(inp.value,10)||0); inp.value=c; sbPatch('ot_materiales?id=eq.'+inp.getAttribute('data-id'),{cantidad:c}).then(function(){ toast('Cantidad actualizada ✓'); }); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.val-mo-cant'),function(inp){ inp.addEventListener('change',function(){ var c=Math.max(0,parseInt(inp.value,10)||0); inp.value=c; sbPatch('ot_mano_obra?id=eq.'+inp.getAttribute('data-id'),{cantidad:c}).then(function(){ toast('Cantidad actualizada ✓'); }); }); });
       var ds=document.getElementById('ot-datos-save'); if(ds) ds.addEventListener('click',function(){
         var keys=['precinto','caja_nap','puerto','access_point','mac','serial'], jobs=[];
         keys.forEach(function(k){ var el=document.getElementById('ot-d-'+k); if(!el)return; var v=el.value.trim();
@@ -1309,7 +1324,12 @@
         var upd={}; if(dm.caja_nap)upd.caja_nap=dm.caja_nap; if(dm.puerto)upd.puerto=dm.puerto; if(dm.precinto)upd.precinto=dm.precinto;
         cp.disabled=true; sbPatch('clientes?id=eq.'+o.cliente_id,upd).then(function(){ toast('Datos guardados en el cliente ✓'); }).catch(function(){ toast('No se pudo guardar.'); cp.disabled=false; });
       });
-      var vb=document.getElementById('ot-validar'); if(vb) vb.addEventListener('click',function(){ validarOT(o,mats); });
+      var vb=document.getElementById('ot-validar'); if(vb) vb.addEventListener('click',function(){
+        if(vb.getAttribute('data-ok')!=='1'){ vb.setAttribute('data-ok','1'); vb.textContent='¿Seguro? Tocá otra vez para validar y descontar stock'; return; }
+        vb.disabled=true; vb.textContent='Validando…';
+        // re-leer materiales por si el admin corrigió cantidades
+        sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=material_id,cantidad,serial').then(function(fresh){ validarOT(o, Array.isArray(fresh)?fresh:mats); });
+      });
     });
   }
   function validarOT(o,mats){
