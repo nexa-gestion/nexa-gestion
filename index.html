@@ -229,7 +229,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.83';
+  var VER='v0.84';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2758,11 +2758,17 @@
   function pad6(n){ var s=String(parseInt(n,10)); while(s.length<6) s='0'+s; return s; }
   function normSerial(s){ return String(s||'').trim().toUpperCase().replace(/[\s:\-]/g,''); }
   function _parseSeriales(txt){ return String(txt||'').split(/[\n,;\s]+/).map(normSerial).filter(Boolean); }
-  // conteo de seriales por material para un estado (y cuadrilla opcional)
+  // conteo de seriales por material para un estado (y cuadrilla opcional) — PAGINADO (no se corta nunca)
   function _conteoSeriales(estado, cuadId){
-    var p='stock_seriales?estado=eq.'+estado+'&select=material_id&limit=20000';
-    if(cuadId) p+='&cuadrilla_id=eq.'+cuadId;
-    return sbGet(p).then(function(d){ var m={}; (Array.isArray(d)?d:[]).forEach(function(s){ m[s.material_id]=(m[s.material_id]||0)+1; }); return m; });
+    var base='stock_seriales?estado=eq.'+estado+'&select=material_id'+(cuadId?('&cuadrilla_id=eq.'+cuadId):'')+'&order=id';
+    var m={};
+    function page(off){
+      return fetch(SB_URL+'/rest/v1/'+base+'&limit=1000&offset='+off,{headers:H}).then(function(r){return r.json();}).then(function(d){
+        d=Array.isArray(d)?d:[]; d.forEach(function(s){ m[s.material_id]=(m[s.material_id]||0)+1; });
+        return d.length===1000? page(off+1000) : m;
+      });
+    }
+    return page(0);
   }
   function _upsertDeposito(matId,delta){
     return sbGet('stock_deposito?material_id=eq.'+matId+'&select=id,cantidad').then(function(d){
@@ -2910,15 +2916,29 @@
     Array.prototype.forEach.call(c.querySelectorAll('.ing-del'),function(b){ b.addEventListener('click',function(){ INGRESO_TEMP.splice(Number(b.getAttribute('data-i')),1); ingRenderLista(); }); });
     if(cf) cf.disabled=false;
   }
-  function _insertSeriales(matId, seriales){
-    var dup=0, ok=0, i=0, BATCH=200;
-    function next(){
-      if(i>=seriales.length) return Promise.resolve({ok:ok,dup:dup});
-      var lote=seriales.slice(i,i+BATCH).map(function(s){return {material_id:Number(matId),serial:s,estado:'EN_DEPOSITO'};}); i+=BATCH;
-      return sbPost('stock_seriales',lote).then(function(r){ if(Array.isArray(r)){ ok+=r.length; return next(); } throw 0; })
-        .catch(function(){ var j=0; function one(){ if(j>=lote.length) return next(); var reg=lote[j++]; return sbPost('stock_seriales',reg).then(function(rr){ if(Array.isArray(rr)&&rr.length) ok++; else dup++; return one(); }).catch(function(){ dup++; return one(); }); } return one(); });
+  // ¿Cuáles de estos seriales YA existen para el material? (chequea solo los que se van a cargar → eficiente)
+  function _existSerialesSet(matId, seriales){
+    var set={}, i=0, CH=100;
+    function next(){ if(i>=seriales.length) return Promise.resolve(set); var chunk=seriales.slice(i,i+CH); i+=CH;
+      var inlist=chunk.map(function(s){return encodeURIComponent('"'+String(s).replace(/"/g,'')+'"');}).join(',');
+      return sbGet('stock_seriales?material_id=eq.'+matId+'&serial=in.('+inlist+')&select=serial&limit='+chunk.length)
+        .then(function(d){ (Array.isArray(d)?d:[]).forEach(function(x){ set[x.serial]=true; }); return next(); }).catch(function(){ return next(); });
     }
     return next();
+  }
+  function _insertSeriales(matId, seriales){
+    // Evita duplicar: descarta los seriales que ya están cargados para ese material (cualquier estado)
+    return _existSerialesSet(matId, seriales).then(function(exist){
+      var nuevos=[], dup=0; seriales.forEach(function(s){ if(exist[s]) dup++; else { exist[s]=true; nuevos.push(s); } });
+      var ok=0, i=0, BATCH=200;
+      function next(){
+        if(i>=nuevos.length) return Promise.resolve({ok:ok,dup:dup});
+        var lote=nuevos.slice(i,i+BATCH).map(function(s){return {material_id:Number(matId),serial:s,estado:'EN_DEPOSITO'};}); i+=BATCH;
+        return sbPost('stock_seriales',lote).then(function(r){ if(Array.isArray(r)){ ok+=r.length; return next(); } throw 0; })
+          .catch(function(){ var j=0; function one(){ if(j>=lote.length) return next(); var reg=lote[j++]; return sbPost('stock_seriales',reg).then(function(rr){ if(Array.isArray(rr)&&rr.length) ok++; else dup++; return one(); }).catch(function(){ dup++; return one(); }); } return one(); });
+      }
+      return next();
+    });
   }
   function ingConfirm(){
     if(!INGRESO_TEMP.length) return;
