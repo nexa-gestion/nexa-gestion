@@ -229,7 +229,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.85';
+  var VER='v0.86';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2967,12 +2967,68 @@
         {k:'material',t:'Material',sort:function(x){return x.m.nombre||'';},r:function(x){return '<b>'+esc(x.m.nombre)+'</b>';}},
         {k:'tec',t:'Tecnología',sort:function(x){return x.m.tecnologia||'';},r:function(x){return tecPill(x.m.tecnologia);}},
         {k:'serial',t:'Serial',sort:function(x){return x.m.serial_tipo||'';},r:function(x){return stipPill(x.m.serial_tipo);}},
-        {k:'dep',t:'En depósito',sort:function(x){return x.cant;},r:function(x){return '<b>'+x.cant+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span>';}}
+        {k:'dep',t:'En depósito',sort:function(x){return x.cant;},r:function(x){return '<b>'+x.cant+'</b> <span class="muted">'+esc(x.m.unidad||'')+'</span>';}},
+        {k:'ver',t:'',sort:null,r:function(x){return '<span class="muted" style="font-size:12px">ver / editar ›</span>';}}
       ];
-      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q?rows.filter(function(x){return (x.m.nombre||'').toLowerCase().indexOf(q)>=0;}):rows; gridRender(document.getElementById('dep-stk-t'),cols,rs,{key:'depstk',note:rs.length+' material(es)'}); }
+      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q?rows.filter(function(x){return (x.m.nombre||'').toLowerCase().indexOf(q)>=0;}):rows; gridRender(document.getElementById('dep-stk-t'),cols,rs,{key:'depstk',note:rs.length+' material(es)',onRow:function(x){ verMaterialStock(x.m); }}); }
       document.getElementById('dep-stk-q').addEventListener('input',function(){ pinta(this.value); });
       pinta('');
     });
+  }
+  // ===== Detalle de stock de UN material: ver seriales / cantidad, agregar, eliminar, ajustar =====
+  function verMaterialStock(m){
+    modal('<h2>📦 '+esc(m.nombre)+' <span class="muted" style="font-size:13px;font-weight:400">'+stipTxt(m.serial_tipo)+'</span></h2><div id="vms-body"><div class="center"><div class="spin"></div></div></div>','wide');
+    _vmsRender(m);
+  }
+  function _vmsRender(m){
+    var body=document.getElementById('vms-body'); if(!body) return;
+    body.innerHTML='<div class="center"><div class="spin"></div></div>';
+    if(m.serial_tipo==='NINGUNO'){
+      sbGet('stock_deposito?material_id=eq.'+m.id+'&select=cantidad').then(function(d){
+        var existe=Array.isArray(d)&&d.length, cant=existe?(Number(d[0].cantidad)||0):0;
+        body.innerHTML='<div class="kpi" style="margin-bottom:12px">En depósito: <b style="font-size:24px">'+cant+'</b> <span class="muted">'+esc(m.unidad||'')+'</span></div>'
+          +'<label class="l">Ajustar cantidad real</label><div style="display:flex;gap:8px;align-items:center"><input id="vms-cant" type="number" min="0" value="'+cant+'" style="width:150px"><button class="btn btn-pri" id="vms-set">💾 Guardar cantidad</button></div>'
+          +'<div class="muted" style="font-size:12px;margin-top:6px">Poné la cantidad real que hay en el depósito (corrige diferencias).</div>'
+          +'<div style="margin-top:14px"><button class="btn btn-2" id="vms-x">Cerrar</button></div>';
+        document.getElementById('vms-x').addEventListener('click',cerrarModal);
+        document.getElementById('vms-set').addEventListener('click',function(){
+          var nv=parseInt(document.getElementById('vms-cant').value,10); if(!(nv>=0)){ toast('Cantidad inválida.'); return; }
+          var btn=this; btn.disabled=true; btn.textContent='Guardando…';
+          var prom=existe? sbPatch('stock_deposito?material_id=eq.'+m.id,{cantidad:nv}) : sbPost('stock_deposito',{material_id:m.id,cantidad:nv});
+          prom.then(function(){ logAct('Ajustó stock de depósito',{entidad:'STOCK',detalle:m.nombre+': '+cant+' → '+nv}); sbPost('stock_movimientos',{material_id:m.id,tipo:'AJUSTE',cantidad:(nv-cant),usuario_id:USER.id}).catch(function(){}); toast('Stock actualizado ✓'); _vmsRender(m); if(document.getElementById('dep-stk-t')&&depState.tab==='deposito') depStock(); })
+            .catch(function(){ btn.disabled=false; btn.textContent='💾 Guardar cantidad'; toast('No se pudo guardar.'); });
+        });
+      });
+    } else {
+      sbGet('stock_seriales?material_id=eq.'+m.id+'&estado=eq.EN_DEPOSITO&select=id,serial&order=serial&limit=5000').then(function(d){
+        d=Array.isArray(d)?d:[];
+        var lista=d.length? d.map(function(s){ return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;border-bottom:1px solid #f1f5f9;font-family:monospace;font-size:13px"><span>'+esc(s.serial)+'</span><button class="btn btn-x vms-del" data-id="'+s.id+'" data-ser="'+esc(s.serial)+'" style="padding:1px 8px">✕</button></div>'; }).join('') : '<div class="muted" style="padding:10px">Sin seriales en depósito.</div>';
+        var addUI=(m.serial_tipo==='CORRELATIVO')
+          ? '<div class="row"><div><label class="l">Primer número</label><input id="vms-ini" type="number" min="0" placeholder="Ej: 100"></div><div><label class="l">Cantidad</label><input id="vms-c" type="number" min="1" placeholder="Ej: 50"></div></div>'
+          : '<label class="l">Seriales / MACs (uno por línea)</label><textarea id="vms-ser" rows="5" placeholder="1C60D2F96288"></textarea>';
+        body.innerHTML='<div class="kpi" style="margin-bottom:12px">En depósito: <b style="font-size:24px">'+d.length+'</b> <span class="muted">equipos</span></div>'
+          +'<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">'
+          +'<div style="flex:1;min-width:240px"><div class="l">Seriales cargados</div><div style="max-height:340px;overflow:auto;border:1px solid var(--bord);border-radius:8px">'+lista+'</div></div>'
+          +'<div style="flex:1;min-width:240px;border:1px solid var(--bord);border-radius:10px;padding:12px"><div class="l">➕ Agregar al depósito</div>'+addUI+'<button class="btn btn-ok" id="vms-add" style="margin-top:10px;width:100%">Agregar</button><div id="vms-err" style="color:var(--rojo);font-size:12px;min-height:14px;margin-top:6px"></div></div>'
+          +'</div><div style="margin-top:14px"><button class="btn btn-2" id="vms-x">Cerrar</button></div>';
+        document.getElementById('vms-x').addEventListener('click',cerrarModal);
+        Array.prototype.forEach.call(body.querySelectorAll('.vms-del'),function(b){ b.addEventListener('click',function(){
+          if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Borrar? ✕'; return; }
+          var id=b.getAttribute('data-id'), ser=b.getAttribute('data-ser'); b.disabled=true;
+          fetch(SB_URL+'/rest/v1/stock_seriales?id=eq.'+id+'&estado=eq.EN_DEPOSITO',{method:'DELETE',headers:H})
+            .then(function(){ logAct('Eliminó serial de depósito',{entidad:'STOCK',detalle:m.nombre+': '+ser}); toast('Serial eliminado ✓'); _vmsRender(m); })
+            .catch(function(){ b.disabled=false; toast('No se pudo eliminar.'); });
+        }); });
+        document.getElementById('vms-add').addEventListener('click',function(){
+          var err=document.getElementById('vms-err'); err.textContent=''; var seriales=[];
+          if(m.serial_tipo==='CORRELATIVO'){ var i=parseInt(document.getElementById('vms-ini').value,10), c=parseInt(document.getElementById('vms-c').value,10); if(!(i>=0)||!(c>0)){ err.textContent='Completá número inicial y cantidad.'; return; } if(c>5000){ err.textContent='Cantidad demasiado alta (máx 5000).'; return; } for(var k=0;k<c;k++) seriales.push(pad6(i+k)); }
+          else { seriales=_parseSeriales(document.getElementById('vms-ser').value); if(!seriales.length){ err.textContent='Pegá al menos un serial.'; return; } }
+          var btn=this; btn.disabled=true; btn.textContent='Agregando…';
+          _insertSeriales(m.id,seriales).then(function(res){ logAct('Ingresó seriales a depósito',{entidad:'STOCK',detalle:m.nombre+': +'+res.ok+(res.dup?(' ('+res.dup+' ya existían)'):'')}); if(res.ok) sbPost('stock_movimientos',{material_id:m.id,tipo:'INGRESO',cantidad:res.ok,usuario_id:USER.id}).catch(function(){}); toast('✅ '+res.ok+' agregados'+(res.dup?(' · '+res.dup+' ya existían'):'')); _vmsRender(m); })
+            .catch(function(){ btn.disabled=false; btn.textContent='Agregar'; toast('No se pudo agregar.'); });
+        });
+      });
+    }
   }
 
   // ===== ENTREGA a cuadrilla (con traslado de serial DEPÓSITO → CUADRILLA) =====
