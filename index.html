@@ -229,7 +229,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.82';
+  var VER='v0.83';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -346,10 +346,24 @@
   function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2200); }
   // Fecha en formato argentino DD-MM-AAAA (y con hora). Recibe ISO o YYYY-MM-DD.
   function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10), p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
-  function fmtFechaHora(v){ if(!v) return '—'; var s=String(v), hm=s.substring(11,16); return fmtFecha(s)+(hm?(' '+hm):''); }
+  // Fecha+hora en hora LOCAL (Argentina) — los timestamps se guardan en UTC (toISOString), hay que convertir
+  function fmtFechaHora(v){ if(!v) return '—'; var d=new Date(v); if(isNaN(d.getTime())) return fmtFecha(v); var p=function(n){return ('0'+n).slice(-2);}; return p(d.getDate())+'-'+p(d.getMonth()+1)+'-'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+  function _horaLocal(v){ if(!v) return ''; var d=new Date(v); if(isNaN(d.getTime())) return ''; var p=function(n){return ('0'+n).slice(-2);}; return p(d.getHours())+':'+p(d.getMinutes()); }
   // Duración entre inicio y fin (tiempo que estuvieron en la casa del cliente)
   function _durTexto(ini,fin){ if(!ini||!fin) return ''; var ms=new Date(fin)-new Date(ini); if(!(ms>0)) return ''; var min=Math.round(ms/60000); if(min<60) return min+' min'; var hh=Math.floor(min/60), mm=min%60; return hh+'h'+(mm?(' '+mm+'min'):''); }
   function _durChip(o){ var t=_durTexto(o.inicio_tec_at,o.fin_tec_at); return t?('<span style="background:#eef2ff;color:#3730a3;font-weight:700;font-size:12px;padding:2px 9px;border-radius:10px">⏱️ '+t+' en domicilio</span>'):''; }
+  // Link de mapa compacto (+ copiar p/ ISPcube opcional) para el bloque de cierre
+  function _ubicMini(lat,lng,copy){ if(lat==null||lng==null||lat===''||lng==='') return '<span class="muted" style="font-size:12px">sin GPS</span>'; var la=+lat,ln=+lng; if(isNaN(la)||isNaN(ln)) return '<span class="muted" style="font-size:12px">sin GPS</span>'; var ll=la.toFixed(6)+','+ln.toFixed(6);
+    return '<a href="https://www.google.com/maps?q='+ll+'" target="_blank" rel="noopener" style="color:var(--ok);font-weight:700;font-size:12px;text-decoration:none" onclick="event.stopPropagation()">📍 Ver mapa →</a>'+(copy?(' <button class="btn btn-2 ubic-copy" data-ll="'+esc(ll)+'" style="padding:2px 7px;font-size:11px" title="Copiar lat,lng para ISPcube">⧉</button>'):''); }
+  // Bloque visual del cierre (inicio / fin / duración / fotos) — estilo FG
+  function _cierreStats(o,fotos){ fotos=fotos||[]; var ini=o.inicio_tec_at, fin=o.fin_tec_at, dur=_durTexto(ini,fin);
+    function tile(ico,lbl,hora,fecha,mapHtml){ return '<div style="min-width:118px"><div class="muted" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+ico+' '+lbl+'</div><div style="font-weight:800;font-size:19px;line-height:1.15;color:#0f172a">'+hora+'</div>'+(fecha?('<div class="muted" style="font-size:11px">'+esc(fecha)+'</div>'):'')+'<div style="margin-top:3px">'+mapHtml+'</div></div>'; }
+    var h='<div style="background:#fff;border:1px solid var(--bord);border-radius:12px;padding:13px 16px;margin-bottom:12px;box-shadow:var(--card-shadow);display:flex;gap:26px;flex-wrap:wrap;align-items:center">';
+    h+=tile('▶️','Inicio', ini?_horaLocal(ini):'—', ini?fmtFecha(ini):'', ini?_ubicMini(o.lat_inicio,o.lng_inicio,false):'<span class="muted" style="font-size:12px">no inició</span>');
+    h+=tile('🏁','Fin', fin?_horaLocal(fin):'—', fin?fmtFecha(fin):'', fin?_ubicMini(o.lat_fin,o.lng_fin,true):'<span class="muted" style="font-size:12px">—</span>');
+    if(dur) h+='<div style="min-width:96px"><div class="muted" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">⏱️ En domicilio</div><div style="font-weight:800;font-size:24px;color:var(--ok);line-height:1.1">'+esc(dur)+'</div></div>';
+    if(fotos.length){ h+='<div style="margin-left:auto"><div class="muted" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">📷 Fotos ('+fotos.length+')</div><div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">'+fotos.map(function(f){return '<a href="'+esc(f.url)+'" target="_blank" rel="noopener"><img src="'+esc(f.url)+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)"></a>';}).join('')+'</div></div>'; }
+    h+='</div>'; return h; }
   function fmtPesos(n){ if(n==null||n==='') return '—'; var x=Number(n); if(isNaN(x)) return '—'; return '$'+x.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function pill(estado){ return '<span class="pill p-'+esc(estado)+'">'+esc(estado)+'</span>'; }
 
@@ -622,12 +636,8 @@
           +'<div><div style="font-weight:800;font-size:15px;color:#14532d">'+(c.codigo_ispcube?('ISP '+esc(c.codigo_ispcube)+' · '):'')+esc(cli||'(obra de red)')+(noIsp?' <span class="pill p-bloqueado" style="font-size:10px">⚠️ falta ISPcube</span>':'')+'</div>'
           +'<div class="muted" style="font-size:12px">'+esc(o.tipo)+(o.tipos_trabajo?(' · '+esc(o.tipos_trabajo.nombre)):'')+' · '+esc(_domLimpio(c.domicilio_full)||'')+(c.barrio?(' · '+esc(c.barrio)):'')+'</div></div>'
           +'<div style="text-align:right;font-size:12px"><div class="muted">Cuadrilla</div><b style="color:var(--azul)">🔧 '+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</b></div></div>';
-        // GPS inicio/fin
-        h+='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;align-items:center">'
-          +'<span>▶️ <b>Inicio:</b> '+(o.inicio_tec_at?(esc(fmtFechaHora(o.inicio_tec_at))+' '+ubicLink(o.lat_inicio,o.lng_inicio)):'<span class="muted">— no inició</span>')+'</span>'
-          +'<span>🏁 <b>Fin:</b> '+(o.fin_tec_at?(esc(fmtFechaHora(o.fin_tec_at))+' '+ubicLink(o.lat_fin,o.lng_fin)):'—')+'</span>'
-          +_durChip(o)
-          +(fotos.length?('<span>📷 <b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">'+(i+1)+'</a>';}).join(' ')+'</span>'):'')+'</div>';
+        // Bloque visual de cierre (inicio / fin / duración / fotos) — estilo FG
+        h+=_cierreStats(o,fotos);
         // 3 columnas
         h+='<div style="display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:12px;align-items:start">';
         // COL 1 — cierre + datos ISPcube
@@ -1729,11 +1739,8 @@
       var editable=(o.estado==='CERRADA_TECNICO');   // pendiente de validar → el admin puede corregir
       window._valCtx={ o:o };
       var h='<div style="border-top:2px solid #dbeafe;margin-top:14px;padding-top:10px"><h3 style="margin:0 0 6px;color:var(--azul)">📥 Cierre del técnico</h3>';
-      // Ubicación de INICIO y FIN (clickeables)
-      h+='<div class="fichagrid" style="margin:0 0 6px">'
-        +'<div class="ficha-row"><span class="k">▶️ Inicio</span><span class="v" style="text-align:right">'+(o.inicio_tec_at?(esc(fmtFechaHora(o.inicio_tec_at))+'<br>'+ubicLink(o.lat_inicio,o.lng_inicio)):'<span class="muted">— no inició la tarea</span>')+'</span></div>'
-        +'<div class="ficha-row"><span class="k">🏁 Fin</span><span class="v" style="text-align:right">'+(o.fin_tec_at?(esc(fmtFechaHora(o.fin_tec_at))+'<br>'+ubicLink(o.lat_fin,o.lng_fin)):'—')+'</span></div></div>';
-      if(_durTexto(o.inicio_tec_at,o.fin_tec_at)) h+='<div style="margin:2px 0 6px">'+_durChip(o)+'</div>';
+      // Bloque visual de cierre (inicio / fin / duración / fotos) — estilo FG
+      h+=_cierreStats(o,fotos);
       if(editable) h+='<label class="l">Observaciones del técnico</label><textarea id="ot-obs-edit">'+esc(o.observaciones_tec||'')+'</textarea>';
       else if(o.observaciones_tec) h+='<div style="margin:6px 0"><b>Observaciones:</b> '+esc(o.observaciones_tec)+'</div>';
       if(o.motivo_cancelacion) h+='<div style="margin:6px 0;color:var(--rojo)"><b>No realizada — motivo:</b> '+esc(o.motivo_cancelacion)+'</div>';
@@ -1754,7 +1761,6 @@
       if(editable) h+='<div class="val-add-mo-panel" style="display:none;margin-top:6px;padding:8px;background:#f0fdf4;border:1px dashed #86efac;border-radius:8px"><select id="val-mo-sel" style="margin-bottom:6px">'+'<option value="">— elegí mano de obra —</option>'+moCat.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('')+'</select><div style="display:flex;gap:6px"><input id="val-mo-qty" type="number" min="1" value="1" style="width:64px;text-align:center"><button class="btn btn-ok val-mo-add-ok" style="flex:1;padding:6px">Agregar</button></div></div>';
       h+='</div></div>';
       if(editable) h+='<div class="muted" style="font-size:12px;margin-top:4px">✏️ Editá cantidades, agregá (+) o quitá (✕). Se guarda al instante. Al quitar un equipo/precinto su serial vuelve a la cuadrilla.</div>';
-      if(fotos.length) h+='<div style="margin-top:8px"><b>Fotos:</b> '+fotos.map(function(f,i){return '<a href="'+esc(f.url)+'" target="_blank">📷 '+(i+1)+'</a>';}).join(' · ')+'</div>';
       h+='<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px;margin-top:10px"><div style="font-weight:700;margin-bottom:4px">📋 Datos para ISPcube'+(editable?' <span class="muted" style="font-weight:400">— editá y guardá antes de validar</span>':'')+'</div>';
       if(editable){
         var df=[['precinto','Precinto'],['caja_nap','Caja (NAP)'],['puerto','Puerto'],['access_point','Access Point'],['mac','MAC'],['serial','Serial/Modelo']];

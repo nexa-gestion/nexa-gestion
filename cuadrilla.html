@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.12</title>
+<title>Nexa · Técnico — v0.13</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.12';
+  var VER='v0.13';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -71,7 +71,7 @@
   function sbGet(p){ return fetch(SB_URL+'/rest/v1/'+p,{headers:H}).then(function(r){return r.json();}); }
   function sbPost(p,b){ return fetch(SB_URL+'/rest/v1/'+p,{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(b)}).then(function(r){return r.json();}); }
   function sbPatch(p,b){ return fetch(SB_URL+'/rest/v1/'+p,{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(b)}).then(function(r){return r.json();}); }
-  function getGPS(){ return new Promise(function(res){ if(!navigator.geolocation){res(null);return;} navigator.geolocation.getCurrentPosition(function(p){res({lat:+p.coords.latitude.toFixed(6),lng:+p.coords.longitude.toFixed(6)});},function(){res(null);},{enableHighAccuracy:true,timeout:10000,maximumAge:60000}); }); }
+  function getGPS(){ return new Promise(function(res){ if(!navigator.geolocation){res(null);return;} navigator.geolocation.getCurrentPosition(function(p){res({lat:+p.coords.latitude.toFixed(6),lng:+p.coords.longitude.toFixed(6)});},function(){res(null);},{enableHighAccuracy:true,timeout:20000,maximumAge:30000}); }); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2400); }
   function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10), p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
@@ -216,7 +216,7 @@
     getGPS().then(function(g){
       var body={ estado:'EN_CURSO', inicio_tec_at:new Date().toISOString() };
       if(g){ body.lat_inicio=g.lat; body.lng_inicio=g.lng; }
-      sbPatch('ordenes_trabajo?id=eq.'+o.id,body).then(function(){ o.estado='EN_CURSO'; toast('Tarea iniciada ▶'); vDetalle(o); });
+      sbPatch('ordenes_trabajo?id=eq.'+o.id,body).then(function(){ o.estado='EN_CURSO'; toast(g?'Tarea iniciada ▶':'Tarea iniciada ▶ (no se pudo tomar GPS — activá la ubicación)'); vDetalle(o); });
     });
   }
   function _cieArr(x){ return Array.isArray(x)?x:[]; }
