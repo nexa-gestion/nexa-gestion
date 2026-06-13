@@ -229,7 +229,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.86';
+  var VER='v0.87';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -1082,7 +1082,7 @@
   }
 
   // ── ORDENES ──
-  var otState={ estado:'', tipo:'', antig:'', page:0, size:50, total:0, orderBy:'creada', orderDir:'desc', cols:null, sel:{}, rows:[], soloTv:false };
+  var otState={ estado:'', tipo:'', antig:'', q:'', page:0, size:50, total:0, orderBy:'creada', orderDir:'desc', cols:null, sel:{}, rows:[], soloTv:false };
   var _PRIO_ORD={BAJA:0,NORMAL:1,ALTA:2,URGENTE:3};
   // ord = orden del lado del cliente (sobre la lista ya traída) → permite ordenar por CUALQUIER columna, barrio incluido
   var OT_COLS=[
@@ -1111,6 +1111,7 @@
   function vOrdenes(){
     view.innerHTML='<h1>Órdenes de trabajo</h1><p class="sub">Generación y seguimiento.</p>'
       +'<div class="toolbar">'
+      +'<input id="ot-q" placeholder="🔎 Buscar N° OT, cliente, DNI, domicilio, barrio, tel…" value="'+esc(otState.q||'')+'" style="min-width:280px;flex:1">'
       +'<select id="ot-estado"><option value="">Todos los estados</option>'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],otState.estado)+'</select>'
       +'<select id="ot-filtro-tipo"><option value=""'+(otState.tipo?'':' selected')+'>Todos los tipos</option>'+opt(OT_TIPOS,otState.tipo)+'</select>'
       +'<select id="ot-filtro-antig"><option value="">Cualquier antigüedad</option><option value="a"'+(otState.antig==='a'?' selected':'')+'>&lt; 24 hs</option><option value="b"'+(otState.antig==='b'?' selected':'')+'>24 a 72 hs</option><option value="d"'+(otState.antig==='d'?' selected':'')+'>&gt; 72 hs</option></select>'
@@ -1121,6 +1122,7 @@
     document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.page=0; cargarOT(); });
     document.getElementById('ot-tv').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.soloTv=!otState.soloTv; otState.page=0; vOrdenes(); });
     document.getElementById('ot-nueva').addEventListener('click',function(){ nuevaOT(null); });
+    var qel=document.getElementById('ot-q'); if(qel) qel.addEventListener('input',function(){ otState.q=this.value; otState.page=0; renderOT(); });
     cargarOT();
   }
   function cargarOT(){
@@ -1138,6 +1140,7 @@
     var cont=document.getElementById('ot-tabla'); if(!cont) return;
     var rows=(otState.rows||[]).slice();
     if(otState.soloTv) rows=rows.filter(function(o){ return o.clientes&&(o.clientes.tv_online||o.clientes.pack_futbol); });
+    if(otState.q){ var _toks=otState.q.toLowerCase().trim().split(/\s+/).filter(Boolean); if(_toks.length) rows=rows.filter(function(o){ var c=o.clientes||{}; var hay=((''+(o.numero||''))+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.doc_numero||'')+' '+(c.numero_cliente||'')+' '+(c.codigo_ispcube||'')+' '+(c.domicilio_full||'')+' '+(c.barrio||'')+' '+(c.telefono||'')+' '+(o.tipo||'')).toLowerCase(); return _toks.every(function(t){ return hay.indexOf(t)>=0; }); }); }
     if(otState.antig){ var _ahora=Date.now(); rows=rows.filter(function(o){ if(!o.created_at)return false; var hs=(_ahora-new Date(o.created_at).getTime())/3600000; return otState.antig==='a'?hs<24:(otState.antig==='b'?(hs>=24&&hs<72):hs>=72); }); }
     var col=OT_COLS.filter(function(c){return c.k===otState.orderBy;})[0]||OT_COLS.filter(function(c){return c.k==='creada';})[0];
     if(col&&col.ord){ var dir=otState.orderDir==='asc'?1:-1; rows.sort(function(a,b){ var va=col.ord(a),vb=col.ord(b); if(va<vb)return -dir; if(va>vb)return dir; return 0; }); }
