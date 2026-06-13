@@ -142,6 +142,32 @@
   .coord-grp{ margin-top:10px; }
   .coord-grp-h{ font-size:12px; font-weight:700; color:#334155; margin-bottom:4px; display:flex; align-items:center; gap:8px; }
   .coord-li{ display:flex; justify-content:space-between; gap:10px; font-size:12.5px; padding:5px 0; border-bottom:1px dashed #eef2f7; }
+  /* ───────── Barra superior móvil (oculta en escritorio) ───────── */
+  .mtopbar{ display:none; }
+  .side-backdrop{ display:none; }
+  /* ───────── RESPONSIVE: celular / tablet angosta ───────── */
+  @media(max-width:860px){
+    #app{ display:block; }
+    .mtopbar{ display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:55; background:#fff; border-bottom:1px solid var(--bord); padding:9px 14px; }
+    .mtopbar .mham{ font-size:23px; background:none; border:0; cursor:pointer; color:#0f172a; padding:2px 8px; line-height:1; border-radius:8px; }
+    .mtopbar .mham:active{ background:#f1f5f9; }
+    .mtopbar .mbrand{ display:flex; align-items:center; gap:9px; font-weight:800; color:#0f172a; font-size:15px; }
+    .mtopbar .mbrand .lg-sq{ width:30px; height:30px; border-radius:8px; background:var(--pri); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; }
+    .side{ position:fixed; top:0; left:0; height:100vh; width:255px; transform:translateX(-100%); transition:transform .25s ease; z-index:70; box-shadow:0 0 34px rgba(0,0,0,.22); }
+    .side.open{ transform:none; }
+    .side-backdrop.open{ display:block; position:fixed; inset:0; background:rgba(0,0,0,.42); z-index:65; }
+    .main{ padding:14px 12px; }
+    .main table{ min-width:560px; }          /* las tablas scrollean en horizontal en vez de aplastarse */
+    h1{ font-size:19px; }
+    .toolbar input,.toolbar select{ min-width:0; flex:1; }
+    /* apilar las grillas internas de los modales y fichas en una sola columna */
+    .modal [style*="grid-template-columns"]{ grid-template-columns:1fr !important; }
+    .fsgrid{ grid-template-columns:1fr; }
+    /* performance por cuadrilla: más compacta, sin la barra de progreso */
+    .perf-head,.perf-row{ grid-template-columns:34px 1.5fr .7fr .7fr .7fr; gap:8px; }
+    .perf-head>div:last-child,.perf-row>div:last-child{ display:none; }
+    .ohero-ring svg{ width:120px; height:120px; }
+  }
 </style>
 </head>
 <body>
@@ -162,7 +188,9 @@
 
 <!-- ───────── APP ───────── -->
 <div id="app" class="hidden">
-  <div class="side">
+  <div class="mtopbar"><button class="mham" id="mham" aria-label="Menú">☰</button><div class="mbrand"><div class="lg-sq">N</div> Nexa Gestión</div></div>
+  <div class="side-backdrop" id="side-bd"></div>
+  <div class="side" id="side">
     <div class="logo"><div class="lg-sq">N</div><div><div class="lg-t">Nexa Gestión</div><div class="lg-s">Panel de cuadrillas</div></div></div>
     <div class="nav" id="nav">
       <div class="sec">Principal</div>
@@ -201,7 +229,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.81';
+  var VER='v0.82';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -363,8 +391,11 @@
   document.getElementById('nav').addEventListener('click',function(e){
     var a=e.target.closest('a[data-v]'); if(!a) return;
     Array.prototype.forEach.call(this.querySelectorAll('a'),function(x){x.classList.remove('on');});
-    a.classList.add('on'); ir(a.getAttribute('data-v'));
+    a.classList.add('on'); ir(a.getAttribute('data-v')); _sideToggle(false);
   });
+  // Drawer del menú en celular (hamburguesa + fondo)
+  function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
+  (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
   function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,actividad:vActividad,informes:vInformes}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
