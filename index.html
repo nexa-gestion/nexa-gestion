@@ -231,7 +231,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.89';
+  var VER='v0.90';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2595,7 +2595,7 @@
       +'<label class="l">Tipo de comisión</label><select id="vf-ctipo">'+tipos.map(function(t){return '<option value="'+t[0]+'"'+((v.comision_tipo||'FIJO')===t[0]?' selected':'')+'>'+t[1]+'</option>';}).join('')+'</select>'
       +'<div id="vf-valwrap"><label class="l" id="vf-vallbl">Monto ($ por instalación)</label><input id="vf-valor" type="number" min="0" step="0.01" value="'+esc(v.comision_valor!=null?v.comision_valor:'')+'"></div>'
       +'<label class="l" style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" id="vf-activo"'+((v.activo===undefined||v.activo)?' checked':'')+' style="width:auto"> Activo</label>'
-      +(v.token?('<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:9px 12px;margin-top:10px;font-size:12px;word-break:break-all">🔗 <b>Link:</b> '+esc(_vendLink(v.token))+'</div>'):'')
+      +(v.token?('<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:9px 12px;margin-top:10px;font-size:12px;word-break:break-all">🔗 <b>Link de solicitud</b> (para el cliente): '+esc(_vendLink(v.token))+'<br><br>📊 <b>Link de su cuenta</b> (para el vendedor): '+esc(_vendLink(v.token).replace('solicitud.html','vendedor.html'))+'</div>'):'')
       +'<div id="vf-err" style="color:var(--rojo);font-size:13px;min-height:14px;margin-top:8px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ok" id="vf-save">Guardar</button>'+(nuevo?'':'<button class="btn btn-2" id="vf-toggle">'+(v.activo?'Desactivar':'Activar')+'</button>')+'<button class="btn btn-2" id="vf-x">Cancelar</button></div>');
     function refLbl(){ var t=document.getElementById('vf-ctipo').value, l=document.getElementById('vf-vallbl'), w=document.getElementById('vf-valwrap'); if(t==='PLAN'){ w.style.display='none'; } else { w.style.display=''; l.textContent=(t==='PORCENTAJE')?'Porcentaje (%)':'Monto ($ por instalación)'; } }
@@ -2614,57 +2614,108 @@
     });
   }
 
-  // ══════════ COMISIONES ══════════ (certificar/pagar ventas instaladas, solo superadmin/gerencial)
+  // ══════════ COMISIONES — cuenta corriente por vendedor (solo superadmin/gerencial) ══════════
+  function _comSug(v,s){ if(!v) return 0; if(v.comision_tipo==='PORCENTAJE'){ var pr=(s.planes&&s.planes.precio)||0; return Math.round(pr*(v.comision_valor||0)/100); } if(v.comision_tipo==='PLAN'){ return (s.planes&&s.planes.comision_monto)||0; } return v.comision_valor||0; }
+  function _comMonto(v,s){ return (s.comision_monto!=null&&s.comision_monto!=='')?Number(s.comision_monto):_comSug(v,s); }
   function vComisiones(){
     if(!USER||(USER.rol!=='superadmin'&&USER.rol!=='gerencial')){ view.innerHTML='<h1>Comisiones</h1><div class="center">Solo disponible para superadmin o gerencial.</div>'; return; }
     loading();
     Promise.all([
-      sbGet('vendedores?select=id,nombre,comision_tipo,comision_valor&order=nombre'),
-      sbGet('solicitudes_alta?vendedor_id=not.is.null&select=id,nombre,apellido,cliente_id,vendedor_id,estado,comision_estado,comision_monto,comision_pagada_at,plan_id,planes(nombre,precio,comision_monto)&order=created_at.desc&limit=5000'),
-      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&cliente_id=not.is.null&select=cliente_id&limit=5000')
+      sbGet('vendedores?select=id,nombre,comision_tipo,comision_valor,activo&order=nombre'),
+      sbGet('solicitudes_alta?vendedor_id=not.is.null&select=id,cliente_id,vendedor_id,comision_monto,plan_id,planes(precio,comision_monto)&limit=5000'),
+      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&cliente_id=not.is.null&select=cliente_id&limit=5000'),
+      sbGet('vendedor_pagos?select=vendedor_id,monto&limit=5000')
     ]).then(function(r){
-      var vends=r[0]||[], ventas=r[1]||[], inst=r[2]||[];
+      var vends=r[0]||[], ventas=r[1]||[], inst=r[2]||[], pagos=r[3]||[];
       var instSet={}; inst.forEach(function(o){ instSet[o.cliente_id]=true; });
-      var vmap={}; vends.forEach(function(v){ vmap[v.id]=v; });
-      // calcula comisión sugerida de una venta según la config del vendedor
-      function sugerido(s){ var v=vmap[s.vendedor_id]||{}; if(v.comision_tipo==='PORCENTAJE'){ var pr=(s.planes&&s.planes.precio)||0; return Math.round(pr*(v.comision_valor||0)/100); } if(v.comision_tipo==='PLAN'){ return (s.planes&&s.planes.comision_monto)||0; } return v.comision_valor||0; }
-      // estado de cada venta
-      ventas.forEach(function(s){ s._instalada=!!(s.cliente_id&&instSet[s.cliente_id]); s._pagada=(s.comision_estado==='PAGADA'); s._sug=sugerido(s); });
-      window._comData={ ventas:ventas, vmap:vmap };
-      if(!window._comFiltro) window._comFiltro={ vend:'', estado:'instaladas' };
-      var f=window._comFiltro;
-      var vendOpts='<option value="">Todos los vendedores</option>'+vends.map(function(v){return '<option value="'+v.id+'"'+(f.vend==v.id?' selected':'')+'>'+esc(v.nombre)+'</option>';}).join('');
-      var estOpts=[['instaladas','Instaladas sin pagar'],['pagadas','Pagadas'],['pendientes','Sin instalar todavía'],['todas','Todas']].map(function(e){return '<option value="'+e[0]+'"'+(f.estado===e[0]?' selected':'')+'>'+e[1]+'</option>';}).join('');
-      view.innerHTML='<h1>💰 Comisiones</h1><p class="sub">La comisión se paga cuando el cliente está <b>instalado</b> (OT de instalación finalizada). Certificá y marcá como pagada.</p>'
-        +'<div class="toolbar"><select id="com-vend" style="min-width:200px">'+vendOpts+'</select><select id="com-est" style="min-width:190px">'+estOpts+'</select><span class="muted" id="com-tot" style="margin-left:auto;font-weight:700"></span></div>'
+      var vmap={}; vends.forEach(function(v){ v._dev=0; v._inst=0; vmap[v.id]=v; });
+      ventas.forEach(function(s){ if(s.cliente_id&&instSet[s.cliente_id]){ var v=vmap[s.vendedor_id]; if(v){ v._dev+=_comMonto(v,s); v._inst++; } } });
+      var pagMap={}; pagos.forEach(function(p){ pagMap[p.vendedor_id]=(pagMap[p.vendedor_id]||0)+(Number(p.monto)||0); });
+      vends.forEach(function(v){ v._pag=pagMap[v.id]||0; v._saldo=v._dev-v._pag; });
+      view.innerHTML='<h1>💰 Comisiones</h1><p class="sub">Cuenta corriente por vendedor. La comisión se devenga cuando el cliente queda <b>instalado</b>. Tocá un vendedor para ver el estado de cuenta y registrar pagos.</p>'
         +'<div id="com-t"></div>';
-      document.getElementById('com-vend').addEventListener('change',function(){ f.vend=this.value; vComisiones(); });
-      document.getElementById('com-est').addEventListener('change',function(){ f.estado=this.value; vComisiones(); });
-      var rows=ventas.filter(function(s){ if(f.vend&&String(s.vendedor_id)!==String(f.vend))return false;
-        if(f.estado==='instaladas') return s._instalada&&!s._pagada;
-        if(f.estado==='pagadas') return s._pagada;
-        if(f.estado==='pendientes') return !s._instalada&&!s._pagada;
-        return true; });
-      var totPagar=0; rows.forEach(function(s){ if(s._instalada&&!s._pagada) totPagar+=s._sug; });
-      document.getElementById('com-tot').textContent=(f.estado==='instaladas'? ('A pagar: $'+totPagar) : (rows.length+' venta(s)'));
-      function estPill(s){ if(s._pagada) return '<span class="pill" style="background:#dcfce7;color:#166534">✅ pagada</span>'; if(s._instalada) return '<span class="pill" style="background:#dbeafe;color:#1e40af">📌 instalada</span>'; if(s.estado==='convertida') return '<span class="pill" style="background:#fef9c3;color:#854d0e">cliente, sin instalar</span>'; return '<span class="pill" style="background:#f1f5f9;color:#475569">solicitud</span>'; }
+      var totDeuda=vends.reduce(function(a,v){return a+(v._saldo>0?v._saldo:0);},0);
       var cols=[
-        {k:'vend',t:'Vendedor',sort:function(s){return (vmap[s.vendedor_id]||{}).nombre||'';},r:function(s){return esc((vmap[s.vendedor_id]||{}).nombre||'—');}},
-        {k:'cli',t:'Cliente vendido',sort:function(s){return (s.apellido||'')+(s.nombre||'');},r:function(s){return esc(((s.nombre||'')+' '+(s.apellido||'')).trim()||'—');}},
-        {k:'plan',t:'Plan',sort:null,r:function(s){return esc(s.planes?s.planes.nombre:'—');}},
-        {k:'est',t:'Estado',sort:function(s){return s._pagada?3:(s._instalada?2:1);},r:function(s){return estPill(s);}},
-        {k:'com',t:'Comisión',sort:function(s){return s._pagada?(s.comision_monto||0):s._sug;},r:function(s){return s._pagada?('<b>$'+(s.comision_monto||0)+'</b> <span class="muted" style="font-size:11px">'+esc(fmtFecha(s.comision_pagada_at))+'</span>'):(s._instalada?('<span class="muted">sugerido $'+s._sug+'</span>'):'—');}},
-        {k:'acc',t:'',sort:null,r:function(s){return s._instalada&&!s._pagada?'<button class="btn btn-ok com-pay" data-id="'+s.id+'" data-sug="'+s._sug+'" style="padding:3px 10px;font-size:12px">💵 Pagar</button>':(s._pagada?'<button class="btn btn-2 com-unpay" data-id="'+s.id+'" style="padding:3px 9px;font-size:12px">deshacer</button>':'');}}
+        {k:'vend',t:'Vendedor',sort:function(v){return v.nombre||'';},r:function(v){return '<b>'+esc(v.nombre)+'</b>'+(v.activo?'':' <span class="muted">(inactivo)</span>');}},
+        {k:'inst',t:'Ventas instaladas',sort:function(v){return v._inst;},r:function(v){return '<b>'+v._inst+'</b>';}},
+        {k:'dev',t:'Devengado',sort:function(v){return v._dev;},r:function(v){return '$'+v._dev;}},
+        {k:'pag',t:'Pagado',sort:function(v){return v._pag;},r:function(v){return '$'+v._pag;}},
+        {k:'saldo',t:'Deuda',sort:function(v){return v._saldo;},r:function(v){return '<b style="color:'+(v._saldo>0?'#dc2626':'#16a34a')+'">$'+v._saldo+'</b>';}},
+        {k:'acc',t:'',sort:null,r:function(v){return '<span class="muted" style="font-size:12px">ver cuenta ›</span>';}}
       ];
-      gridRender(document.getElementById('com-t'),cols,rows,{key:'com',note:rows.length+' venta(s)'});
-      var ct=document.getElementById('com-t');
-      ct.addEventListener('click',function(e){
-        var p=e.target.closest('.com-pay'); if(p){ var id=p.getAttribute('data-id'), sug=p.getAttribute('data-sug'); var monto=prompt('Monto de comisión a pagar ($):',sug); if(monto===null)return; monto=parseFloat(monto)||0;
-          sbPatch('solicitudes_alta?id=eq.'+id,{comision_estado:'PAGADA',comision_monto:monto,comision_pagada_at:new Date().toISOString(),comision_pagada_por:USER.id}).then(function(){ logAct('Pagó comisión',{entidad:'VENDEDOR',entidad_id:id,detalle:'$'+monto}); toast('Comisión pagada ✓'); vComisiones(); }); return; }
-        var u=e.target.closest('.com-unpay'); if(u){ var id2=u.getAttribute('data-id'); if(u.getAttribute('data-ok')!=='1'){ u.setAttribute('data-ok','1'); u.textContent='¿seguro?'; return; }
-          sbPatch('solicitudes_alta?id=eq.'+id2,{comision_estado:null,comision_monto:null,comision_pagada_at:null,comision_pagada_por:null}).then(function(){ logAct('Deshizo pago de comisión',{entidad:'VENDEDOR',entidad_id:id2}); toast('Pago deshecho'); vComisiones(); }); }
-      });
-    }).catch(function(){ view.innerHTML='<h1>💰 Comisiones</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL v23 (tabla vendedores + columnas)?</div>'; });
+      gridRender(document.getElementById('com-t'),cols,vends,{key:'comv',note:'Deuda total: $'+totDeuda,onRow:function(v){ comCuenta(v.id); }});
+    }).catch(function(){ view.innerHTML='<h1>💰 Comisiones</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste los SQL v23 y v24 (vendedores + vendedor_pagos)?</div>'; });
+  }
+  // Estado de cuenta de un vendedor: ventas comisionables + pagos + saldo
+  function comCuenta(vId){
+    loading();
+    Promise.all([
+      sbGet('vendedores?id=eq.'+vId+'&select=*&limit=1'),
+      sbGet('solicitudes_alta?vendedor_id=eq.'+vId+'&select=id,nombre,apellido,cliente_id,comision_monto,plan_id,planes(nombre,precio,comision_monto),clientes(numero_cliente)&order=created_at.desc&limit=5000'),
+      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&cliente_id=not.is.null&select=cliente_id,validado_admin_at,fin_tec_at&limit=5000'),
+      sbGet('vendedor_pagos?vendedor_id=eq.'+vId+'&select=*&order=fecha.desc&limit=2000')
+    ]).then(function(r){
+      var v=(r[0]||[])[0]; if(!v){ vComisiones(); return; }
+      var ventas=r[1]||[], inst=r[2]||[], pagos=r[3]||[];
+      var instDate={}; inst.forEach(function(o){ instDate[o.cliente_id]=o.validado_admin_at||o.fin_tec_at; });
+      var comis=ventas.filter(function(s){ return s.cliente_id&&instDate[s.cliente_id]; });
+      var dev=0; comis.forEach(function(s){ s._monto=_comMonto(v,s); s._fecha=instDate[s.cliente_id]; dev+=s._monto; });
+      var pag=pagos.reduce(function(a,p){return a+(Number(p.monto)||0);},0), saldo=dev-pag;
+      var h='<div class="toolbar" style="margin-bottom:10px"><button class="btn btn-2" id="cc-back">← Volver</button><h1 style="margin:0;font-size:20px">💰 '+esc(v.nombre)+'</h1><span class="muted">'+esc(_comTxt(v))+'</span></div>';
+      // resumen
+      h+='<div class="dkpis" style="margin-bottom:14px">'
+        +'<div class="dkpi" style="border-left-color:#2563eb"><div class="dkpi-lbl">Devengado</div><div class="dkpi-n" style="color:#2563eb">$'+dev+'</div><div class="dkpi-sub">'+comis.length+' venta(s) instalada(s)</div></div>'
+        +'<div class="dkpi" style="border-left-color:#16a34a"><div class="dkpi-lbl">Pagado</div><div class="dkpi-n" style="color:#16a34a">$'+pag+'</div><div class="dkpi-sub">'+pagos.length+' pago(s)</div></div>'
+        +'<div class="dkpi" style="border-left-color:'+(saldo>0?'#dc2626':'#16a34a')+';'+(saldo>0?'background:#fef2f2':'')+'"><div class="dkpi-lbl">Deuda (saldo)</div><div class="dkpi-n" style="color:'+(saldo>0?'#dc2626':'#16a34a')+'">$'+saldo+'</div></div>'
+        +'</div>';
+      // dos columnas: ventas | pagos
+      h+='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">';
+      // VENTAS
+      h+='<div style="flex:1;min-width:320px"><div class="dash-sec" style="margin:0 0 8px">Ventas comisionables</div><div style="border:1px solid var(--bord);border-radius:10px;overflow:hidden">';
+      if(!comis.length) h+='<div class="muted" style="padding:12px">Todavía no hay ventas instaladas.</div>';
+      else { h+='<table style="width:100%"><thead><tr><th>Cliente</th><th>Plan</th><th>Instalada</th><th>Comisión</th></tr></thead><tbody>';
+        comis.forEach(function(s){ var cli=((s.nombre||'')+' '+(s.apellido||'')).trim(), nc=s.clientes?s.clientes.numero_cliente:'';
+          h+='<tr><td>'+(nc?('<b>N° '+esc(nc)+'</b> · '):'')+esc(cli||'—')+'</td><td>'+esc(s.planes?s.planes.nombre:'—')+'</td><td>'+esc(fmtFecha(s._fecha))+'</td><td><input type="number" class="cc-monto" data-id="'+s.id+'" value="'+s._monto+'" style="width:90px;text-align:right;padding:4px"></td></tr>'; });
+        h+='</tbody></table>'; }
+      h+='</div><div class="muted" style="font-size:12px;margin-top:4px">Podés ajustar el monto de cada venta; se guarda al instante.</div></div>';
+      // PAGOS
+      h+='<div style="flex:1;min-width:300px"><div class="dash-sec" style="margin:0 0 8px;display:flex;align-items:center"><span>Pagos</span><button class="btn btn-ok" id="cc-nuevopago" style="margin-left:auto;padding:4px 12px;font-size:13px">+ Registrar pago</button></div><div style="border:1px solid var(--bord);border-radius:10px;overflow:hidden">';
+      if(!pagos.length) h+='<div class="muted" style="padding:12px">Sin pagos registrados.</div>';
+      else { h+='<table style="width:100%"><thead><tr><th>Fecha</th><th>Monto</th><th>Comprob.</th><th></th></tr></thead><tbody>';
+        pagos.forEach(function(p){ h+='<tr><td>'+esc(fmtFecha(p.fecha))+'</td><td><b>$'+(p.monto||0)+'</b></td><td>'+(p.comprobante_url?('<a href="'+esc(p.comprobante_url)+'" target="_blank">ver</a>'):'<span class="muted">—</span>')+'</td><td><button class="btn btn-x cc-delpago" data-id="'+p.id+'" style="padding:1px 8px">✕</button></td></tr>'; });
+        h+='</tbody></table>'; }
+      h+='</div></div></div>';
+      view.innerHTML=h;
+      document.getElementById('cc-back').addEventListener('click',vComisiones);
+      document.getElementById('cc-nuevopago').addEventListener('click',function(){ comPagoModal(v); });
+      Array.prototype.forEach.call(view.querySelectorAll('.cc-monto'),function(inp){ inp.addEventListener('change',function(){ var nv=parseFloat(inp.value); if(isNaN(nv))return; sbPatch('solicitudes_alta?id=eq.'+inp.getAttribute('data-id'),{comision_monto:nv}).then(function(){ logAct('Ajustó comisión de venta',{entidad:'VENDEDOR',entidad_id:v.id,detalle:'$'+nv}); toast('Monto guardado ✓'); comCuenta(vId); }); }); });
+      Array.prototype.forEach.call(view.querySelectorAll('.cc-delpago'),function(b){ b.addEventListener('click',function(){ if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿borrar?'; return; } fetch(SB_URL+'/rest/v1/vendedor_pagos?id=eq.'+b.getAttribute('data-id'),{method:'DELETE',headers:H}).then(function(){ logAct('Borró pago a vendedor',{entidad:'VENDEDOR',entidad_id:v.id}); toast('Pago borrado'); comCuenta(vId); }); }); });
+    }).catch(function(){ toast('No se pudo cargar la cuenta.'); vComisiones(); });
+  }
+  function comPagoModal(v){
+    modal('<h2>💵 Registrar pago a '+esc(v.nombre)+'</h2>'
+      +'<div style="display:flex;gap:10px"><div style="flex:1"><label class="l">Fecha</label><input type="date" id="cp-fecha" value="'+_hoyISO()+'"></div><div style="flex:1"><label class="l">Monto $</label><input type="number" id="cp-monto" min="0" step="0.01" placeholder="0"></div></div>'
+      +'<label class="l">Comprobante de transferencia (opcional)</label><input type="file" id="cp-file" accept="image/*,application/pdf" style="border:0;padding:6px 0"><div id="cp-fstat" class="muted" style="font-size:12px"></div>'
+      +'<label class="l">Nota (opcional)</label><input id="cp-nota" placeholder="Ej: transferencia Galicia">'
+      +'<div id="cp-err" style="color:var(--rojo);font-size:13px;min-height:14px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ok" id="cp-save">Guardar pago</button><button class="btn btn-2" id="cp-x">Cancelar</button></div>');
+    document.getElementById('cp-x').addEventListener('click',cerrarModal);
+    var compUrl=null, subiendo=false;
+    document.getElementById('cp-file').addEventListener('change',function(e){ var f=e.target.files[0]; if(!f)return; subiendo=true; var st=document.getElementById('cp-fstat'); st.textContent='Subiendo comprobante…';
+      var ext=(f.name.split('.').pop()||'dat').toLowerCase(); var nombre='comprobantes/'+v.id+'/'+Date.now()+'.'+ext;
+      fetch(SB_URL+'/storage/v1/object/ot-fotos/'+nombre,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':f.type||'application/octet-stream','x-upsert':'true'},body:f})
+        .then(function(r){ if(!r.ok) throw 0; compUrl=SB_URL+'/storage/v1/object/public/ot-fotos/'+nombre; subiendo=false; st.textContent='✓ comprobante listo'; st.style.color='var(--ok)'; })
+        .catch(function(){ subiendo=false; st.textContent='No se pudo subir el comprobante.'; st.style.color='var(--rojo)'; });
+    });
+    document.getElementById('cp-save').addEventListener('click',function(){
+      var err=document.getElementById('cp-err'); err.textContent='';
+      var monto=parseFloat(document.getElementById('cp-monto').value); if(!(monto>0)){ err.textContent='Poné un monto válido.'; return; }
+      if(subiendo){ err.textContent='Esperá a que termine de subir el comprobante.'; return; }
+      var btn=this; btn.disabled=true; btn.textContent='Guardando…';
+      sbPost('vendedor_pagos',{ vendedor_id:v.id, fecha:document.getElementById('cp-fecha').value||_hoyISO(), monto:monto, comprobante_url:compUrl, nota:document.getElementById('cp-nota').value.trim()||null, creado_por:USER.id })
+        .then(function(){ logAct('Registró pago a vendedor',{entidad:'VENDEDOR',entidad_id:v.id,detalle:'$'+monto}); cerrarModal(); toast('Pago registrado ✓'); comCuenta(v.id); })
+        .catch(function(){ err.textContent='No se pudo guardar.'; btn.disabled=false; btn.textContent='Guardar pago'; });
+    });
   }
 
   // ── ACTIVIDAD ── (solo superadmin/gerencial: log interactivo de qué hace cada usuario y cuadrilla)

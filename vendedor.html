@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Nexa · Mi cuenta de ventas</title>
+<style>
+  :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0; --verde:#16a34a; --rojo:#dc2626; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--tinta);font-size:15px}
+  #app{max-width:760px;margin:0 auto;padding:14px}
+  .head{background:var(--azul);color:#fff;border-radius:14px;padding:16px 18px;margin-bottom:14px}
+  .head .t{font-size:13px;opacity:.85}
+  .head .n{font-size:22px;font-weight:800;margin-top:2px}
+  .head .c{font-size:13px;opacity:.85;margin-top:3px}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+  .kpi{background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px;border-left:4px solid #64748b}
+  .kpi .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8}
+  .kpi .n{font-size:24px;font-weight:800;margin-top:2px}
+  .sec{font-size:13px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px}
+  .card{background:#fff;border:1px solid var(--bord);border-radius:12px;overflow:hidden}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;text-align:left;padding:9px 12px;border-bottom:1px solid var(--bord)}
+  td{padding:9px 12px;border-bottom:1px solid #f1f5f9;font-size:14px}
+  tr:last-child td{border-bottom:0}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px}
+  .muted{color:var(--gris)}
+  .center{text-align:center;padding:40px;color:var(--gris)}
+  .spin{width:30px;height:30px;border:3px solid var(--bord);border-top-color:var(--azul2);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(max-width:520px){ .kpis{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="app"><div class="center"><div class="spin"></div></div></div>
+<script>
+  var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
+  var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
+  var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
+  var app=document.getElementById('app');
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function g(p){ return fetch(SB_URL+'/rest/v1/'+p,{headers:H}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];}); }
+  function fmtFecha(v){ if(!v) return '—'; var s=String(v).substring(0,10),p=s.split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s; }
+  function token(){ try{ return new URLSearchParams(location.search).get('v')||''; }catch(e){ return ''; } }
+  function comSug(v,s){ if(v.comision_tipo==='PORCENTAJE'){ var pr=(s.planes&&s.planes.precio)||0; return Math.round(pr*(v.comision_valor||0)/100); } if(v.comision_tipo==='PLAN'){ return (s.planes&&s.planes.comision_monto)||0; } return v.comision_valor||0; }
+  function comMonto(v,s){ return (s.comision_monto!=null&&s.comision_monto!=='')?Number(s.comision_monto):comSug(v,s); }
+
+  function err(msg){ app.innerHTML='<div class="center">'+esc(msg)+'</div>'; }
+
+  (function(){
+    var tk=token();
+    if(!tk){ err('Link inválido. Pedile a Nexa tu link de vendedor.'); return; }
+    g('vendedores?token=eq.'+encodeURIComponent(tk)+'&select=id,nombre,comision_tipo,comision_valor,activo&limit=1').then(function(vs){
+      var v=(vs||[])[0];
+      if(!v){ err('Link inválido o vendedor no encontrado.'); return; }
+      Promise.all([
+        g('solicitudes_alta?vendedor_id=eq.'+v.id+'&select=id,nombre,apellido,cliente_id,comision_monto,plan_id,planes(nombre,precio,comision_monto),clientes(numero_cliente)&order=created_at.desc&limit=5000'),
+        g('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&cliente_id=not.is.null&select=cliente_id,validado_admin_at,fin_tec_at&limit=5000'),
+        g('vendedor_pagos?vendedor_id=eq.'+v.id+'&select=fecha,monto,comprobante_url&order=fecha.desc&limit=2000')
+      ]).then(function(r){
+        var ventas=r[0]||[], inst=r[1]||[], pagos=r[2]||[];
+        var instDate={}; inst.forEach(function(o){ instDate[o.cliente_id]=o.validado_admin_at||o.fin_tec_at; });
+        var dev=0; ventas.forEach(function(s){ s._inst=!!(s.cliente_id&&instDate[s.cliente_id]); s._monto=comMonto(v,s); s._fecha=instDate[s.cliente_id]; if(s._inst) dev+=s._monto; });
+        var pag=pagos.reduce(function(a,p){return a+(Number(p.monto)||0);},0), saldo=dev-pag;
+        var comTxt=v.comision_tipo==='PORCENTAJE'?((v.comision_valor||0)+'% del plan'):(v.comision_tipo==='PLAN'?'Según el plan':('$'+(v.comision_valor||0)+' por instalación'));
+        var h='<div class="head"><div class="t">Nexa · Mi cuenta de ventas</div><div class="n">'+esc(v.nombre)+'</div><div class="c">Comisión: '+esc(comTxt)+'</div></div>';
+        h+='<div class="kpis">'
+          +'<div class="kpi" style="border-left-color:#2563eb"><div class="l">Ganado (instalado)</div><div class="n" style="color:#2563eb">$'+dev+'</div></div>'
+          +'<div class="kpi" style="border-left-color:#16a34a"><div class="l">Cobrado</div><div class="n" style="color:#16a34a">$'+pag+'</div></div>'
+          +'<div class="kpi" style="border-left-color:'+(saldo>0?'#dc2626':'#16a34a')+'"><div class="l">Te deben</div><div class="n" style="color:'+(saldo>0?'#dc2626':'#16a34a')+'">$'+saldo+'</div></div>'
+          +'</div>';
+        // ventas
+        h+='<div class="sec">Mis ventas ('+ventas.length+')</div><div class="card">';
+        if(!ventas.length) h+='<div class="center" style="padding:18px">Todavía no tenés ventas cargadas.</div>';
+        else { h+='<table><thead><tr><th>Cliente</th><th>Plan</th><th>Estado</th><th>Comisión</th></tr></thead><tbody>';
+          ventas.forEach(function(s){ var cli=((s.nombre||'')+' '+(s.apellido||'')).trim(), nc=s.clientes?s.clientes.numero_cliente:'';
+            var est=s._inst?'<span class="pill" style="background:#dcfce7;color:#166534">✅ instalada</span>':'<span class="pill" style="background:#fef9c3;color:#854d0e">en proceso</span>';
+            h+='<tr><td>'+(nc?('<b>N° '+esc(nc)+'</b> · '):'')+esc(cli||'—')+'</td><td>'+esc(s.planes?s.planes.nombre:'—')+'</td><td>'+est+'</td><td>'+(s._inst?('<b>$'+s._monto+'</b><br><span class="muted" style="font-size:11px">'+esc(fmtFecha(s._fecha))+'</span>'):'<span class="muted">—</span>')+'</td></tr>'; });
+          h+='</tbody></table>'; }
+        h+='</div>';
+        // pagos
+        h+='<div class="sec">Pagos recibidos ('+pagos.length+')</div><div class="card">';
+        if(!pagos.length) h+='<div class="center" style="padding:18px">Sin pagos registrados.</div>';
+        else { h+='<table><thead><tr><th>Fecha</th><th>Monto</th><th>Comprobante</th></tr></thead><tbody>';
+          pagos.forEach(function(p){ h+='<tr><td>'+esc(fmtFecha(p.fecha))+'</td><td><b>$'+(p.monto||0)+'</b></td><td>'+(p.comprobante_url?('<a href="'+esc(p.comprobante_url)+'" target="_blank">ver</a>'):'<span class="muted">—</span>')+'</td></tr>'; });
+          h+='</tbody></table>'; }
+        h+='</div><div class="muted" style="font-size:12px;text-align:center;margin:16px 0">La comisión se cobra cuando el cliente queda instalado.</div>';
+        app.innerHTML=h;
+      });
+    });
+  })();
+</script>
+</body>
+</html>
