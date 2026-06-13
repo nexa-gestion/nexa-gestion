@@ -229,7 +229,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.84';
+  var VER='v0.85';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2901,7 +2901,7 @@
       if(m.cant_por_paquete>1){ var paq=parseInt(document.getElementById('ing-paq').value,10); if(!(paq>0)){ toast('Cantidad de paquetes inválida.'); return; } item.cantidad=paq*m.cant_por_paquete; item.detalle=paq+' '+(m.nombre_paquete||'paq')+' × '+m.cant_por_paquete; }
       else { var c=parseInt(document.getElementById('ing-cant').value,10); if(!(c>0)){ toast('Cantidad inválida.'); return; } item.cantidad=c; }
     }
-    else if(m.serial_tipo==='CORRELATIVO'){ var i=parseInt(document.getElementById('ing-ini').value,10), c2=parseInt(document.getElementById('ing-cant').value,10); if(!(i>=0)||!(c2>0)){ toast('Completá número inicial y cantidad.'); return; } for(var k=0;k<c2;k++) item.seriales.push(pad6(i+k)); item.cantidad=c2; }
+    else if(m.serial_tipo==='CORRELATIVO'){ var i=parseInt(document.getElementById('ing-ini').value,10), c2=parseInt(document.getElementById('ing-cant').value,10); if(!(i>=0)||!(c2>0)){ toast('Completá número inicial y cantidad.'); return; } if(c2>5000){ toast('⚠️ Cantidad demasiado alta ('+c2+'). Máximo 5000 precintos por carga — revisá el número.'); return; } for(var k=0;k<c2;k++) item.seriales.push(pad6(i+k)); item.cantidad=c2; }
     else { var ss=_parseSeriales(document.getElementById('ing-ser').value); if(!ss.length){ toast('Pegá al menos un serial.'); return; } item.seriales=ss; item.cantidad=ss.length; }
     INGRESO_TEMP.push(item); ingRenderLista();
     window._ingSel=null; var s=document.getElementById('ing-search'); if(s)s.value=''; var dyn=document.getElementById('ing-dyn'); if(dyn)dyn.innerHTML=''; var add=document.getElementById('ing-add'); if(add)add.disabled=true;
