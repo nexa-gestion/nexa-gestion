@@ -76,7 +76,8 @@
   var CONFIGURADO = SB_URL.indexOf('TU-PROYECTO') === -1;
 
   var app = document.getElementById('app');
-  var PLANES = [], BARRIOS = [], PROMOS = [], CONFIG = {};
+  var PLANES = [], BARRIOS = [], PROMOS = [], CONFIG = {}, VENDEDOR = null;
+  function _vendTokenURL(){ try{ return new URLSearchParams(location.search).get('v')||''; }catch(e){ return ''; } }
   function fmtPesos(n){ if(n==null||n==='') return ''; var x=Number(n); if(isNaN(x)) return ''; return '$'+x.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
   var f = { tv:false, futbol:false, yaCliente:false };
   var gps = { lat:null, lng:null };
@@ -94,7 +95,9 @@
     var p2 = fetch(SB_URL+'/rest/v1/barrios?activo=eq.true&select=nombre,tipo,empresa_sugerida&order=tipo.asc,nombre.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ BARRIOS=Array.isArray(d)?d:[]; }).catch(function(){});
     var p3 = fetch(SB_URL+'/rest/v1/promos?activo=eq.true&select=nombre,meses,descuento_pct,tecnologia,orden&order=orden.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PROMOS=Array.isArray(d)?d:[]; }).catch(function(){});
     var p4 = fetch(SB_URL+'/rest/v1/config_comercial?id=eq.1&select=*', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ CONFIG=(Array.isArray(d)&&d[0])||{}; }).catch(function(){});
-    Promise.all([p1,p2,p3,p4]).then(cb);
+    var tok=_vendTokenURL();
+    var p5 = tok ? fetch(SB_URL+'/rest/v1/vendedores?token=eq.'+encodeURIComponent(tok)+'&activo=eq.true&select=id,nombre&limit=1', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ VENDEDOR=(Array.isArray(d)&&d[0])||null; }).catch(function(){}) : Promise.resolve();
+    Promise.all([p1,p2,p3,p4,p5]).then(cb);
   }
 
   function optsBarrios(){
@@ -146,6 +149,7 @@
     h += '<div class="card">';
     h += '<div class="saludo">¡Hola! 👋 Sumate a Nexa</div>';
     h += '<div class="desc">Completá tus datos y nos comunicamos para coordinar la instalación. Toma 1 minuto.</div>';
+    if(VENDEDOR){ h += '<div style="margin-top:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:9px 12px;font-size:14px">🧑‍💼 Te atiende <b>'+esc(VENDEDOR.nombre)+'</b></div>'; }
     h += '</div>';
 
     // Datos personales
@@ -284,7 +288,8 @@
       lat:gps.lat, lng:gps.lng, plan_id:planId, plan_texto:planTexto,
       tv_online:!!f.tv, pack_futbol:!!f.futbol,
       ya_es_cliente:!!f.yaCliente, numero_cliente_existente:(f.yaCliente?(f.numCli||null):null),
-      terminos_aceptados:!!f.terminos, estado:'pendiente', origen:'link'
+      terminos_aceptados:!!f.terminos, estado:'pendiente', origen:(VENDEDOR?'vendedor':'link'),
+      vendedor_id:(VENDEDOR?VENDEDOR.id:null)
     };
 
     fetch(SB_URL + '/rest/v1/solicitudes_alta', {
