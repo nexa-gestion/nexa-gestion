@@ -229,7 +229,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.87';
+  var VER='v0.88';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -600,7 +600,7 @@
       d=Array.isArray(d)?d:[];
       var h='<h1>✅ Validación</h1><p class="sub">Cierres de los técnicos pendientes de aprobar. Tocá una OT para revisar el cierre y validar.</p>';
       if(!d.length){ view.innerHTML=h+'<div class="center">No hay cierres pendientes de validar. 🎉</div>'; return; }
-      view.innerHTML=h+'<div id="val-tabla"></div>';
+      view.innerHTML=h+'<div class="toolbar"><input id="val-q" placeholder="🔎 Buscar N° OT, cliente, barrio, cuadrilla…" style="min-width:280px;flex:1"></div><div id="val-tabla"></div>';
       var cols=[
         {k:'numero',t:'N° OT',sort:function(o){return o.numero;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
         {k:'tipo',t:'Tipo',sort:function(o){return o.tipo;},r:function(o){return esc(o.tipo);}},
@@ -610,7 +610,11 @@
         {k:'cerrada',t:'Cerrada',sort:function(o){return o.fin_tec_at||'';},r:function(o){return esc(fmtFechaHora(o.fin_tec_at));}},
         {k:'tiempo',t:'⏱️ Tiempo',sort:function(o){return (o.inicio_tec_at&&o.fin_tec_at)?(new Date(o.fin_tec_at)-new Date(o.inicio_tec_at)):0;},r:function(o){var t=_durTexto(o.inicio_tec_at,o.fin_tec_at);return t?('<b>'+esc(t)+'</b>'):'<span class="muted">—</span>';}}
       ];
-      gridRender(document.getElementById('val-tabla'),cols,d,{key:'val',note:d.length+' OT a validar',onRow:function(o){ valDetalle(o.id); }});
+      function pintaVal(q){ q=(q||'').toLowerCase().trim(); var toks=q.split(/\s+/).filter(Boolean);
+        var rs=toks.length? d.filter(function(o){ var c=o.clientes||{}; var hay=((''+(o.numero||''))+' '+(o.tipo||'')+' '+(c.numero_cliente||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(o.cuadrillas?o.cuadrillas.nombre:'')).toLowerCase(); return toks.every(function(t){return hay.indexOf(t)>=0;}); }) : d;
+        gridRender(document.getElementById('val-tabla'),cols,rs,{key:'val',note:rs.length+' OT a validar',onRow:function(o){ valDetalle(o.id); }}); }
+      document.getElementById('val-q').addEventListener('input',function(){ pintaVal(this.value); });
+      pintaVal('');
     });
   }
   // ── Validación INLINE (a todo el ancho, 3 columnas, denso — como FG, sin modal) ──
@@ -957,7 +961,7 @@
       var h='<h1>Solicitudes de alta</h1><p class="sub">Pedidos del formulario público y de la planilla. Tildá una o varias para convertir, o tocá una para revisar.</p>';
       if(!d.length){ view.innerHTML=h+'<div class="center">No hay solicitudes pendientes. 🎉</div>'; return; }
       var byId={}; d.forEach(function(s){ byId[s.id]=s; });
-      view.innerHTML=h+'<div class="toolbar" style="justify-content:flex-end;align-items:center;gap:10px"><span class="muted" id="sol-selinfo"></span><button class="btn btn-x" id="sol-del" style="display:none">🗑️ Eliminar</button><button class="btn btn-ok" id="sol-conv" style="display:none">✅ Convertir seleccionadas a cliente + OT</button></div><div id="sol-tabla"></div>';
+      view.innerHTML=h+'<div class="toolbar" style="align-items:center;gap:10px"><input id="sol-q" placeholder="🔎 Buscar nombre, DNI, teléfono, barrio, plan…" style="min-width:260px;flex:1"><span class="muted" id="sol-selinfo"></span><button class="btn btn-x" id="sol-del" style="display:none">🗑️ Eliminar</button><button class="btn btn-ok" id="sol-conv" style="display:none">✅ Convertir seleccionadas a cliente + OT</button></div><div id="sol-tabla"></div>';
       var cols=[
         {k:'sel',t:'',sort:null,r:function(s){return '<input type="checkbox" class="sol-chk" data-id="'+s.id+'"'+(_solSel[s.id]?' checked':'')+'>';}},
         {k:'fecha',t:'Fecha',sort:function(s){return s.created_at||'';},r:function(s){return esc(fmtFecha(s.created_at));}},
@@ -972,7 +976,11 @@
         {k:'gestionar',t:'',sort:null,r:function(s){return '<span class="muted" style="font-size:12px">Ver / Gestionar ›</span>';}}
       ];
       var cont=document.getElementById('sol-tabla');
-      gridRender(cont,cols,d,{key:'sol2',onRow:function(s){ fichaSolicitud(s); }});
+      function pintaSol(q){ q=(q||'').toLowerCase().trim(); var toks=q.split(/\s+/).filter(Boolean);
+        var rs=toks.length? d.filter(function(s){ var hay=((s.nombre||'')+' '+(s.apellido||'')+' '+(s.empresa||'')+' '+(s.doc_numero||'')+' '+(s.telefono||'')+' '+(s.barrio||'')+' '+(s.planes?s.planes.nombre:(s.plan_texto||''))).toLowerCase(); return toks.every(function(t){return hay.indexOf(t)>=0;}); }) : d;
+        gridRender(cont,cols,rs,{key:'sol2',onRow:function(s){ fichaSolicitud(s); }}); }
+      pintaSol('');
+      document.getElementById('sol-q').addEventListener('input',function(){ pintaSol(this.value); });
       function refSel(){ var n=Object.keys(_solSel).filter(function(k){return _solSel[k];}).length; var b=document.getElementById('sol-conv'), bd=document.getElementById('sol-del'), inf=document.getElementById('sol-selinfo'); if(b)b.style.display=n?'':'none'; if(b&&n)b.textContent='✅ Convertir '+n+' a cliente + OT'; if(bd){ bd.style.display=n?'':'none'; bd.textContent='🗑️ Eliminar'+(n?(' '+n):''); bd.removeAttribute('data-ok'); } if(inf)inf.textContent=n?(n+' seleccionada(s)'):''; }
       cont.addEventListener('change',function(e){ var ch=e.target.closest('.sol-chk'); if(!ch)return; _solSel[ch.getAttribute('data-id')]=ch.checked; refSel(); });
       document.getElementById('sol-del').addEventListener('click',function(){
