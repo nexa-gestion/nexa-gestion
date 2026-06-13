@@ -208,6 +208,7 @@
       <a data-v="cuadrillas-adm">🔧 Cuadrillas</a>
       <a data-v="manoobra">🧰 Tipos de trabajo</a>
       <a data-v="cuentastv">📺 Cuentas TV</a>
+      <a data-v="ispcargar">📤 Cargar en ISPcube</a>
       <a data-v="precios">💲 Precios</a>
       <a data-v="vendedores">🧑‍💼 Vendedores</a>
       <a data-v="comisiones" id="nav-comisiones" style="display:none">💰 Comisiones</a>
@@ -231,7 +232,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.92';
+  var VER='v0.93';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -420,7 +421,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,ispcargar:vIspCargar,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -2589,6 +2590,45 @@
         document.getElementById('bp-go').addEventListener('click',function(){ cerrarModal(); _doImprimirOTs(ids); });
       } else _doImprimirOTs(ids);
     }).catch(function(){ _doImprimirOTs(ids); });
+  }
+
+  // ══════════ CARGAR EN ISPcube ══════════ (datos de conexión de OT validadas, para cargar a mano y marcar "ya cargado")
+  function vIspCargar(){
+    loading();
+    if(!window._ispState) window._ispState={ver:'pend'};
+    var st=window._ispState, filtro=(st.ver==='pend')?'&isp_datos_cargado_at=is.null':'&isp_datos_cargado_at=not.is.null';
+    sbGet('ordenes_trabajo?estado=eq.FINALIZADA'+filtro+'&select=id,numero,tipo,validado_admin_at,isp_datos_cargado_at,clientes(numero_cliente,codigo_ispcube,nombre,apellido),ot_datos_servicio(clave,valor)&order=validado_admin_at.desc&limit=2000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var CLAVES=[['precinto','Precinto'],['caja_nap','Caja (NAP)'],['puerto','Puerto'],['access_point','Access Point'],['mac','MAC'],['serial','Serial/Modelo']];
+      var rows=d.map(function(o){ var dm={}; (o.ot_datos_servicio||[]).forEach(function(x){ if(x.valor!=null&&x.valor!=='') dm[x.clave]=x.valor; }); o._dm=dm; return o; })
+                .filter(function(o){ return CLAVES.some(function(c){ return o._dm[c[0]]; }); });
+      var h='<h1>📤 Cargar en ISPcube</h1><p class="sub">Datos de conexión de las OT validadas, para cargar a mano en ISPcube (su API no permite escribir precinto/caja/puerto). Copialos, cargalos en ISPcube y tocá «Ya cargué» para sacarlos de la lista.</p>'
+        +'<div id="isp-wrap"><div class="toolbar"><button class="btn '+(st.ver==='pend'?'btn-pri':'btn-2')+'" data-ver="pend">⏳ Pendientes</button><button class="btn '+(st.ver==='hechas'?'btn-pri':'btn-2')+'" data-ver="hechas">✅ Ya cargados</button><span class="muted" style="margin-left:auto;font-weight:700">'+rows.length+' OT</span></div>';
+      if(!rows.length){ h+='<div class="center">'+(st.ver==='pend'?'No hay datos pendientes de cargar en ISPcube. 🎉':'Sin registros.')+'</div></div>'; view.innerHTML=h; _ispWire(); return; }
+      h+='<div style="display:flex;flex-direction:column;gap:10px">'+rows.map(function(o){ var c=o.clientes||{}, cli=((c.nombre||'')+' '+(c.apellido||'')).trim();
+        var lista=CLAVES.filter(function(k){return o._dm[k[0]];});
+        var datos=lista.map(function(k){ return '<div style="display:flex;align-items:center;gap:6px"><span class="muted" style="min-width:100px;font-size:12px">'+k[1]+'</span><b style="font-family:monospace">'+esc(o._dm[k[0]])+'</b><button class="btn btn-2 isp-copy" data-v="'+esc(o._dm[k[0]])+'" style="padding:1px 7px;font-size:11px" title="Copiar">⧉</button></div>'; }).join('');
+        var todo=lista.map(function(k){return k[1]+': '+o._dm[k[0]];}).join(' · ');
+        return '<div class="ocard" style="margin:0;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">'
+          +'<div><div style="font-weight:800">'+(c.codigo_ispcube?('ISP '+esc(c.codigo_ispcube)+' · '):'<span style="color:var(--rojo)">⚠️ sin código ISP · </span>')+esc(cli||'(obra de red)')+'</div>'
+          +'<div class="muted" style="font-size:12px">OT N° '+esc(o.numero)+' · '+esc(o.tipo)+' · validada '+esc(fmtFecha(o.validado_admin_at))+'</div>'
+          +'<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">'+datos+'</div></div>'
+          +'<div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:170px">'
+            +(st.ver==='pend'?('<button class="btn btn-ok isp-done" data-id="'+o.id+'">✅ Ya cargué en ISPcube</button>'):('<button class="btn btn-2 isp-undo" data-id="'+o.id+'">↩️ Volver a pendiente</button>'))
+            +'<button class="btn btn-2 isp-copy" data-v="'+esc(todo)+'" style="font-size:12px;padding:6px 10px">⧉ Copiar todo</button></div>'
+          +'</div></div>';
+      }).join('')+'</div></div>';
+      view.innerHTML=h; _ispWire();
+    }).catch(function(){ view.innerHTML='<h1>📤 Cargar en ISPcube</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL v27?</div>'; });
+  }
+  function _ispWire(){
+    var w=document.getElementById('isp-wrap'); if(!w) return;
+    w.addEventListener('click',function(e){
+      var vb=e.target.closest('[data-ver]'); if(vb){ window._ispState.ver=vb.getAttribute('data-ver'); vIspCargar(); return; }
+      var cp=e.target.closest('.isp-copy'); if(cp){ var v=cp.getAttribute('data-v'); if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(v).then(function(){toast('Copiado ✓');},function(){prompt('Copiá:',v);}); } else prompt('Copiá:',v); return; }
+      var dn=e.target.closest('.isp-done'); if(dn){ dn.disabled=true; var id=dn.getAttribute('data-id'); sbPatch('ordenes_trabajo?id=eq.'+id,{isp_datos_cargado_at:new Date().toISOString(),isp_datos_cargado_por:USER.id}).then(function(){ logAct('Cargó datos en ISPcube (marcó OT)',{entidad:'OT',entidad_id:id}); toast('✅ Marcado como cargado'); vIspCargar(); }); return; }
+      var un=e.target.closest('.isp-undo'); if(un){ var id2=un.getAttribute('data-id'); sbPatch('ordenes_trabajo?id=eq.'+id2,{isp_datos_cargado_at:null,isp_datos_cargado_por:null}).then(function(){ toast('Vuelto a pendiente'); vIspCargar(); }); return; }
+    });
   }
 
   // ══════════ VENDEDORES ══════════ (ABM + link propio de solicitud)
