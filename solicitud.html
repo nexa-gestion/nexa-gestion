@@ -292,6 +292,12 @@
       vendedor_id:(VENDEDOR?VENDEDOR.id:null)
     };
 
+    // Anti-duplicado: si ya hay una solicitud EN CURSO con el mismo DNI / teléfono / correo, no deja cargar otra
+    var conds=[];
+    if(f.doc_numero) conds.push('doc_numero.eq.'+encodeURIComponent(f.doc_numero));
+    if(f.telefono)   conds.push('telefono.eq.'+encodeURIComponent(f.telefono));
+    if(f.email)      conds.push('email.eq.'+encodeURIComponent(f.email));
+    function postSolicitud(){
     fetch(SB_URL + '/rest/v1/solicitudes_alta', {
       method:'POST',
       headers: Object.assign({}, H, { 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
@@ -302,6 +308,13 @@
     }).catch(function(){
       btn.disabled=false; btn.textContent='Enviar solicitud ✓'; err.textContent='Sin conexión. Revisá tu internet e intentá de nuevo.';
     });
+    }
+    if(!conds.length){ postSolicitud(); return; }
+    fetch(SB_URL+'/rest/v1/solicitudes_alta?estado=in.(pendiente,convertida)&or=('+conds.join(',')+')&select=id&limit=1',{headers:H})
+      .then(function(r){return r.ok?r.json():[];}).then(function(d){
+        if(Array.isArray(d)&&d.length){ btn.disabled=false; btn.textContent='Enviar solicitud ✓'; err.textContent='Ya tenés una solicitud en curso con esos datos (DNI, teléfono o correo). Nos vamos a comunicar pronto.'; return; }
+        postSolicitud();
+      }).catch(function(){ postSolicitud(); });   // si falla el chequeo, dejamos enviar igual
   }
 
   function exito(){
