@@ -80,13 +80,23 @@
   function _vendTokenURL(){ try{ return new URLSearchParams(location.search).get('v')||''; }catch(e){ return ''; } }
   function fmtPesos(n){ if(n==null||n==='') return ''; var x=Number(n); if(isNaN(x)) return ''; return '$'+x.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
   var f = { tv:false, futbol:false, yaCliente:false };
-  var gps = { lat:null, lng:null };
+  var gps = { lat:null, lng:null, desc:null };
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function estado(ico, ttl, txt, extra){
     app.innerHTML = '<div class="card estado"><div class="ico">'+ico+'</div><div class="ttl">'+esc(ttl)+'</div><div class="txt">'+txt+'</div>'+(extra||'')+'</div>';
   }
   function emailValido(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
+  // Normaliza teléfono argentino a número nacional (área+número, sin 0/15/54/9). '' si es inválido.
+  function normTelAr(s){
+    var d=String(s||'').replace(/\D/g,''); if(!d) return '';
+    d=d.replace(/^0+/,'');                          // larga distancia
+    if(d.slice(0,2)==='54') d=d.slice(2);           // país
+    if(d.slice(0,1)==='9') d=d.slice(1);            // móvil
+    d=d.replace(/^15/,'');                           // 15 al inicio
+    d=d.replace(/^(\d{4})15(\d{6,7})$/, '$1$2');     // 15 entre área (4 díg) y número
+    return d.length>=10 ? d : '';
+  }
 
   // ── cargar referencia (planes + barrios) ──────────────────────────────
   function cargarRef(cb){
@@ -155,9 +165,9 @@
     // Datos personales
     h += '<div class="card">';
     h += '<div class="label">Nombre y apellido <span class="req">*</span></div><div class="row"><div><input id="nombre" placeholder="Nombre" value="'+esc(f.nombre)+'"></div><div><input id="apellido" placeholder="Apellido" value="'+esc(f.apellido)+'"></div></div>';
-    h += '<div class="label">DNI <span class="req">*</span></div><input id="doc_numero" inputmode="numeric" placeholder="Sin puntos" value="'+esc(f.doc_numero)+'">';
+    h += '<div class="label">DNI <span class="req">*</span></div><input id="doc_numero" inputmode="numeric" maxlength="8" placeholder="8 números, sin puntos" value="'+esc(f.doc_numero)+'">';
     h += '<div class="label">Teléfono / WhatsApp <span class="req">*</span></div><input id="telefono" type="tel" inputmode="tel" placeholder="Ej: 3764 123456" value="'+esc(f.telefono)+'">';
-    h += '<div class="label">Teléfono alternativo (opcional)</div><input id="telefono_alt" type="tel" inputmode="tel" placeholder="Otro número de contacto" value="'+esc(f.telefono_alt)+'">';
+    h += '<div class="label">Teléfono alternativo <span class="req">*</span></div><input id="telefono_alt" type="tel" inputmode="tel" placeholder="Otro número de contacto (de un familiar, etc.)" value="'+esc(f.telefono_alt)+'">';
     h += '</div>';
 
     // Email con confirmación (las facturas van por mail)
@@ -175,10 +185,12 @@
     h += '<div class="row"><div style="flex:3"><input id="calle" placeholder="Calle" value="'+esc(f.calle)+'"></div><div style="flex:1"><input id="numero" placeholder="N°" value="'+esc(f.numero)+'"></div></div>';
     h += '<div class="row" style="margin-top:8px"><div><input id="piso" placeholder="Piso/Lote (opc.)" value="'+esc(f.piso)+'"></div><div><input id="depto" placeholder="Depto/Casa (opc.)" value="'+esc(f.depto)+'"></div></div>';
     h += '<div class="label">Referencia (opcional)</div><input id="referencia" placeholder="Ej: casa de rejas verdes, al lado del kiosco" value="'+esc(f.referencia)+'">';
-    h += '<div class="gpsbox'+(gps.lat!=null?' ok':'')+'">';
-    h += '<div style="font-weight:700;font-size:14px">'+(gps.lat!=null?'✓ Ubicación recibida':'📍 Compartí tu ubicación')+'</div>';
-    h += '<div class="hint">Así el técnico te encuentra fácil, sin importar cómo esté escrita la dirección. Tocá el botón parado en tu casa.</div>';
-    h += '<button class="btn btn-2" id="gps" style="margin-top:10px">'+(gps.lat!=null?'Reenviar ubicación':'Usar mi ubicación actual')+'</button>';
+    var tieneUbic = gps.lat!=null || !!gps.desc;
+    h += '<div class="gpsbox'+(tieneUbic?' ok':'')+'">';
+    h += '<div style="font-weight:700;font-size:14px">'+(gps.lat!=null?'✓ Ubicación recibida':(gps.desc?'✓ Indicaciones recibidas':'📍 Enviá tu ubicación'))+' <span class="req">*</span></div>';
+    h += '<div class="hint"><b>Importante:</b> la ubicación tiene que ser la <b>del lugar exacto donde se va a instalar el servicio</b>. Al tocar el botón te preguntamos si estás ahí: si <b>sí</b>, enviás tu GPS; si <b>no</b>, describís cómo llegar para que el técnico te encuentre.</div>';
+    if(gps.desc) h += '<div class="hint" style="margin-top:6px;color:#0f172a">📝 «'+esc(gps.desc)+'»</div>';
+    h += '<button class="btn btn-2" id="gps" style="margin-top:10px">'+(tieneUbic?'Cambiar / volver a enviar':'📍 Enviar mi ubicación')+'</button>';
     h += '</div>';
     h += '</div>';
 
@@ -247,27 +259,42 @@
   }
 
   function pedirUbicacion(){
-    if(!navigator.geolocation){ alert('Tu navegador no permite compartir la ubicación.'); return; }
     leer();
-    var b=document.getElementById('gps'); b.textContent='Obteniendo ubicación…'; b.disabled=true;
-    navigator.geolocation.getCurrentPosition(function(pos){
-      gps.lat=pos.coords.latitude; gps.lng=pos.coords.longitude; render();
-    }, function(){
-      b.disabled=false; b.textContent='Usar mi ubicación actual';
-      alert('No pudimos obtener tu ubicación. Permití el acceso e intentá de nuevo.');
-    }, {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+    var enCasa = confirm('¿Estás AHORA en el domicilio donde se va a instalar el servicio?\n\n• Aceptar = Sí, envío mi ubicación\n• Cancelar = No, describo cómo llegar');
+    if(enCasa){
+      if(!navigator.geolocation){ alert('Tu navegador no permite compartir la ubicación.'); return; }
+      var b=document.getElementById('gps'); b.textContent='Obteniendo ubicación…'; b.disabled=true;
+      navigator.geolocation.getCurrentPosition(function(pos){
+        gps.lat=pos.coords.latitude; gps.lng=pos.coords.longitude; gps.desc=null; render();
+      }, function(){
+        b.disabled=false; render();
+        alert('No pudimos obtener tu ubicación. Permití el acceso e intentá de nuevo (o tocá de nuevo y elegí «No» para describir cómo llegar).');
+      }, {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+    } else {
+      var d=prompt('Por favor describí CÓMO LLEGAR al domicilio donde se instala (calles, esquinas, color de la casa, puntos de referencia) para que el técnico pueda encontrarlo:', gps.desc||'');
+      if(d!==null && d.trim()){ gps.desc=d.trim(); gps.lat=null; gps.lng=null; render(); }
+    }
   }
 
   function enviar(){
     leer();
     var err = document.getElementById('err');
     if(!f.nombre || !f.apellido){ err.textContent='Completá nombre y apellido.'; return; }
-    if(!f.doc_numero){ err.textContent='Completá tu DNI.'; return; }
-    if(!f.telefono){ err.textContent='Necesitamos un teléfono para contactarte.'; return; }
-    if(!emailValido(f.email)){ err.textContent='Revisá tu correo electrónico, parece inválido.'; return; }
+    var dniLimpio=String(f.doc_numero||'').replace(/\D/g,'');
+    if(dniLimpio.length!==8){ err.textContent='El DNI tiene que tener 8 números (sin puntos ni letras).'; return; }
+    f.doc_numero=dniLimpio;
+    var tel1=normTelAr(f.telefono);
+    if(!tel1){ err.textContent='Revisá el teléfono: poné código de área + número (ej: 3764 123456).'; return; }
+    var tel2=normTelAr(f.telefono_alt);
+    if(!tel2){ err.textContent='Necesitamos un teléfono alternativo válido (de un familiar o contacto).'; return; }
+    if(tel1===tel2){ err.textContent='El teléfono alternativo tiene que ser distinto al principal.'; return; }
+    f.telefono=tel1; f.telefono_alt=tel2;   // guardamos normalizados
+    if(!emailValido(f.email)){ err.textContent='Revisá tu correo electrónico, parece inválido (ej: nombre@gmail.com).'; return; }
     if(f.email.toLowerCase()!==(f.email2||'').toLowerCase()){ err.textContent='Los dos correos no coinciden.'; return; }
     if(!f.barrio){ err.textContent='Elegí tu barrio o chacra.'; return; }
     if(!f.calle || !f.numero){ err.textContent='Completá calle y número.'; return; }
+    if(!f.plan_id && !f.plan_texto){ err.textContent='Elegí un plan de internet.'; return; }
+    if(gps.lat==null && !gps.desc){ err.textContent='📍 Falta la ubicación. Tocá «Enviar mi ubicación»: si estás en el domicilio mandás el GPS, si no, describís cómo llegar.'; return; }
     if(!f.terminos){ err.textContent='Tenés que aceptar los términos para continuar.'; return; }
     err.textContent='';
 
@@ -284,7 +311,7 @@
       telefono:f.telefono, telefono_alt:f.telefono_alt||null,
       email:f.email, calle:f.calle, numero:f.numero, piso:f.piso||null, depto:f.depto||null,
       barrio:barrio, empresa:empresaDeBarrio(f.barrio)||null, domicilio_full:domFull,
-      observaciones:f.referencia||null,
+      observaciones:[f.referencia, gps.desc?('Cómo llegar: '+gps.desc):''].filter(Boolean).join(' · ')||null,
       lat:gps.lat, lng:gps.lng, plan_id:planId, plan_texto:planTexto,
       tv_online:!!f.tv, pack_futbol:!!f.futbol,
       ya_es_cliente:!!f.yaCliente, numero_cliente_existente:(f.yaCliente?(f.numCli||null):null),

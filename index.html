@@ -231,7 +231,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.91';
+  var VER='v0.92';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -283,7 +283,15 @@
     document.head.appendChild(s);
   }
   // ── WhatsApp: link directo a wa.me con mensaje predefinido según el tipo de trabajo ──
-  function _waTel(s){ var d=String(s||'').replace(/\D/g,''); if(d.length<8) return ''; if(d.slice(0,2)==='54') return d; d=d.replace(/^0+/,'').replace(/^15/,''); return '549'+d; }
+  // Normaliza a formato WhatsApp argentino (549 + área + número), tolerando 0, 15 (inicial o entre área y número), 54, 9, +, espacios, guiones.
+  function _waTel(s){ var d=String(s||'').replace(/\D/g,''); if(!d) return '';
+    d=d.replace(/^0+/,'');                          // larga distancia
+    if(d.slice(0,2)==='54') d=d.slice(2);           // país
+    if(d.slice(0,1)==='9') d=d.slice(1);            // móvil
+    d=d.replace(/^15/,'');                           // 15 al inicio
+    d=d.replace(/^(\d{4})15(\d{6,7})$/, '$1$2');     // 15 entre área (4 díg) y número
+    if(d.length<10) return '';
+    return '549'+d; }
   function waMsg(nombre, tipo, dom){
     var n=nombre?(' '+String(nombre).trim().split(/\s+/)[0]):'', t=String(tipo||'').toUpperCase();
     var trabajo=/INSTAL/.test(t)?'tu instalación':/REPAR|SERVI|MANT/.test(t)?'una visita técnica':/DESCON|RETIRO/.test(t)?'el retiro del equipo':/RECON/.test(t)?'la reconexión':/CAMBIO/.test(t)?'el cambio en tu servicio':'tu visita';
