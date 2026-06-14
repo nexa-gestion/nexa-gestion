@@ -202,6 +202,7 @@
       <a data-v="cerrarot">✔️ Cerrar OTs</a>
       <a data-v="validacion">✅ Validación <span class="nbadge" id="nav-val-badge" style="display:none">0</span></a>
       <a data-v="solicitudes">📥 Solicitudes</a>
+      <a data-v="tickets">🎫 Tickets ISP</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
       <div class="sec">Gestión</div>
       <a data-v="clientes">👥 Clientes</a>
@@ -232,7 +233,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.93';
+  var VER='v0.95';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -421,7 +422,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,ispcargar:vIspCargar,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -475,27 +476,29 @@
       sbCount('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id'),
       sbCount('ordenes_trabajo?estado=in.(CERRADA_TECNICO,FINALIZADA)&fin_tec_at=gte.'+HOY+'T00:00:00&select=id'),
       // OTs abiertas asignadas (para detectar huérfanas de cuadrilla desactivada y las sin fecha coordinada)
-      sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cuadrilla_id=not.is.null&select=id,numero,estado,fecha_agendada,cuadrilla_id&limit=3000')
+      sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cuadrilla_id=not.is.null&select=id,numero,estado,fecha_agendada,cuadrilla_id&limit=3000'),
+      sbCount('ordenes_trabajo?estado=eq.FINALIZADA&isp_datos_cargado_at=is.null&tipo=in.(INSTALACION,REPARACION,RECONEXION)&select=id').catch(function(){return 0;}),
+      sbCount('isp_tickets?estado_nexa=eq.nuevo&select=id').catch(function(){return 0;})
     ]).then(function(c){
       var pend=Array.isArray(c[0])?c[0]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0;
+      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0;
       var openA=c[6]||[]; var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var huer=openA.filter(function(o){ return !_act[o.cuadrilla_id]; });
       var sinCoord=openA.filter(function(o){ return _act[o.cuadrilla_id] && !o.fecha_agendada; });
       var now=new Date(), nombre=(USER.nombre||'').split(' ')[0];
       var qa=[
-        ['🛠️','Nueva OT','nuevaOT','#dbeafe'],['📋','Órdenes','nav|ordenes','#eef2f7'],['✅','Validar','val','#dcfce7'],
-        ['📥','Solicitudes','nav|solicitudes','#cffafe'],['👥','Clientes','nav|clientes','#e0e7ff'],['📦','Depósito','nav|deposito','#ffedd5'],
+        ['🛠️','Nueva OT','nuevaOT','#dbeafe'],['📋','Órdenes','nav|ordenes','#eef2f7',totalPend],['✅','Validar','val','#dcfce7',aValidar],
+        ['📥','Solicitudes','nav|solicitudes','#cffafe',solic],['🎫','Tickets ISP','nav|tickets','#ede9fe',ispTk],['👥','Clientes','nav|clientes','#e0e7ff'],['📦','Depósito','nav|deposito','#ffedd5'],
         ['🔧','Cuadrillas','nav|cuadrillas-adm','#eef2f7'],['📺','Cuentas TV','nav|cuentastv','#fce7f3'],['💲','Precios','nav|precios','#fef3c7'],
-        ['📍','Cobertura','nav|cobertura','#ccfbf1'],['⚠️','ISPcube','isp','#fee2e2']
+        ['📍','Cobertura','nav|cobertura','#ccfbf1'],['📤','Cargar ISP','nav|ispcargar','#e0f2fe',ispCargar],['⚠️','Falta ISP','isp','#fee2e2',faltaIsp]
       ];
       var tipos=[['INSTALACION','🔧 Instalaciones'],['REPARACION','🛠️ Reparac./Servis'],['DESCONEXION','🔌 Desconexiones'],['RETIRO_EQUIPOS','📦 Retiros'],['RECONEXION','🔁 Reconexiones'],['OTRO','⚙️ Otros']];
       function pct(x){ return Math.round(x/(totalPend||1)*100)+'% del total'; }
       view.innerHTML=
         '<div class="dhead"><div class="dhead-logo">NX</div><div style="flex:1"><div class="dhead-eyebrow">Nexa SAS · Inicio</div><div class="dhead-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dhead-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Posadas, Misiones</div></div><div class="dhead-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
-        +'<div class="qbar">'+qa.map(function(q){ var bdg=(q[2]==='val'&&aValidar>0)?'<span class="qbadge">'+aValidar+'</span>':''; return '<div class="qbtn" data-act="'+esc(q[2])+'"><div class="qico" style="background:'+q[3]+'">'+q[0]+bdg+'</div><div class="qlbl">'+q[1]+'</div></div>'; }).join('')+'</div>'
+        +'<div class="qbar">'+qa.map(function(q){ var n=q[4]||0, bdg=(n>0)?'<span class="qbadge">'+(n>99?'99+':n)+'</span>':''; return '<div class="qbtn" data-act="'+esc(q[2])+'"><div class="qico" style="background:'+q[3]+'">'+q[0]+bdg+'</div><div class="qlbl">'+esc(q[1])+'</div></div>'; }).join('')+'</div>'
         // ===== ESTADO AHORA =====
         +'<div class="dash-sec">⚡ Ahora mismo</div>'
         +'<div class="dkpis">'
@@ -2590,6 +2593,41 @@
         document.getElementById('bp-go').addEventListener('click',function(){ cerrarModal(); _doImprimirOTs(ids); });
       } else _doImprimirOTs(ids);
     }).catch(function(){ _doImprimirOTs(ids); });
+  }
+
+  // ══════════ TICKETS de ISPcube ══════════ (reclamos que los clientes crean en su app → generar OT)
+  function vTickets(){
+    loading();
+    Promise.all([
+      sbGet('isp_tickets?estado_nexa=eq.nuevo&select=*&order=created_at_isp.desc&limit=2000'),
+      sbGet('clientes?codigo_ispcube=not.is.null&estado=neq.eliminado&select=id,numero_cliente,codigo_ispcube&limit=10000')
+    ]).then(function(r){
+      var tks=Array.isArray(r[0])?r[0]:[], cls=r[1]||[], byCode={}; cls.forEach(function(c){ byCode[c.codigo_ispcube]=c; });
+      var TIPO={5:'REPARACION',2:'REPARACION',4:'INSTALACION',6:'RETIRO_EQUIPOS',11:'RECONEXION',10:'REPARACION',1:'OTRO',8:'OTRO'};
+      var h='<h1>🎫 Tickets de ISPcube</h1><p class="sub">Reclamos que los clientes crearon desde su app/portal de ISPcube. Generá la orden de trabajo desde acá (queda atada al ticket).</p>';
+      if(!tks.length){ view.innerHTML=h+'<div class="center">No hay tickets nuevos. 🎉 <span class="muted">(se importan en cada sync de ISPcube)</span></div>'; return; }
+      h+='<div id="tk-wrap" style="display:flex;flex-direction:column;gap:10px">'+tks.map(function(t){ var cl=byCode[t.codigo_ispcube];
+        return '<div class="ocard" style="margin:0;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">'
+          +'<div style="flex:1;min-width:240px"><div style="font-weight:800">'+esc(t.cliente_nombre||'(sin nombre)')+(t.codigo_ispcube?(' <span class="muted">· ISP '+esc(t.codigo_ispcube)+'</span>'):'')+(cl?(' <span class="muted">· Nexa N° '+esc(cl.numero_cliente)+'</span>'):' <span style="color:var(--rojo)">⚠️ no está en Nexa</span>')+'</div>'
+          +'<div style="margin:5px 0"><span class="pill" style="background:#eef2ff;color:#3730a3">'+esc(t.categoria||'—')+'</span> <span class="muted" style="font-size:12px">'+esc(t.prioridad||'')+' · '+esc(fmtFecha(t.created_at_isp))+' · ticket #'+esc(t.ticket_id)+'</span></div>'
+          +(t.detalle?'<div style="font-size:13px;background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:8px 10px;margin-top:4px">🗣️ '+esc(t.detalle)+'</div>':'')
+          +(t.domicilio?'<div class="muted" style="font-size:12px;margin-top:4px">📍 '+esc(t.domicilio)+'</div>':'')+'</div>'
+          +'<div style="display:flex;flex-direction:column;gap:6px;min-width:160px">'
+            +(cl?('<button class="btn btn-ok tk-gen" data-id="'+t.id+'" data-cli="'+cl.id+'" data-tipo="'+(TIPO[t.categoria_id]||'OTRO')+'">🛠️ Generar OT</button>'):'<span class="muted" style="font-size:12px;text-align:center">Cargá el cliente en Nexa para generar la OT</span>')
+            +'<button class="btn btn-2 tk-desc" data-id="'+t.id+'">Descartar</button></div>'
+          +'</div></div>';
+      }).join('')+'</div>';
+      view.innerHTML=h;
+      var w=document.getElementById('tk-wrap');
+      w.addEventListener('click',function(e){
+        var g=e.target.closest('.tk-gen'); if(g){ g.disabled=true; g.textContent='Generando…'; var id=g.getAttribute('data-id'), cli=g.getAttribute('data-cli'), tipo=g.getAttribute('data-tipo'), t=tks.filter(function(x){return String(x.id)===String(id);})[0]||{};
+          sbPost('ordenes_trabajo',{cliente_id:Number(cli),tipo:tipo,estado:'PENDIENTE',prioridad:'NORMAL',descripcion:'[Ticket ISPcube #'+t.ticket_id+'] '+(t.detalle||t.categoria||''),created_by:USER.id})
+            .then(function(o){ var otid=(Array.isArray(o)&&o[0])?o[0].id:null; return sbPatch('isp_tickets?id=eq.'+id,{estado_nexa:'convertido',cliente_id:Number(cli),ot_id:otid}); })
+            .then(function(){ logAct('Generó OT desde ticket ISPcube',{entidad:'OT',detalle:'Ticket #'+t.ticket_id+' · '+(t.categoria||'')}); toast('✅ OT generada — ya está en Órdenes'); vTickets(); })
+            .catch(function(){ g.disabled=false; g.textContent='🛠️ Generar OT'; toast('No se pudo generar la OT.'); }); return; }
+        var d=e.target.closest('.tk-desc'); if(d){ if(d.getAttribute('data-ok')!=='1'){ d.setAttribute('data-ok','1'); d.textContent='¿Descartar?'; return; } var id2=d.getAttribute('data-id'); sbPatch('isp_tickets?id=eq.'+id2,{estado_nexa:'descartado'}).then(function(){ logAct('Descartó ticket ISPcube',{entidad:'OT',entidad_id:id2}); toast('Descartado'); vTickets(); }); return; }
+      });
+    }).catch(function(){ view.innerHTML='<h1>🎫 Tickets de ISPcube</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL v29? Los tickets se importan en cada sync de ISPcube.</div>'; });
   }
 
   // ══════════ CARGAR EN ISPcube ══════════ (datos de conexión de OT validadas, para cargar a mano y marcar "ya cargado")

@@ -194,6 +194,50 @@ def _f(v):
     try: return float(v)
     except: return None
 
+def pull_tickets(token):
+    # Trae los tickets que los CLIENTES crean en ISPcube (customer_created) a la tabla isp_tickets,
+    # para generar OTs desde Nexa. Importa solo los NUEVOS (no pisa los ya convertidos/descartados).
+    H = {"api-key": APIKEY, "client-id": CLIENTID, "login-type": "api",
+         "username": USER, "Authorization": "Bearer " + token}
+    arr, off = [], 0
+    while True:
+        try:
+            d = json.load(_req(BASE + f"/tickets/tickets_list?closed=0&limit=500&offset={off}", headers=H))
+        except Exception as e:
+            print("WARN pull_tickets:", e); break
+        ch = d if isinstance(d, list) else (d.get("data") or d.get("tickets") or [])
+        arr += ch
+        if len(ch) < 500: break
+        off += 500
+    rows = []
+    for t in arr:
+        if not t.get("customer_created"): continue   # solo los que crea el cliente
+        c = t.get("customer") or {}
+        det = " | ".join([i.get("content", "") for i in (t.get("items") or []) if i.get("content")])[:2000]
+        rows.append({
+            "ticket_id": t.get("id"), "customer_id_isp": t.get("customer_id"),
+            "codigo_ispcube": (str(c.get("code") or "").strip() or None),
+            "cliente_nombre": c.get("name"), "doc_numero": c.get("doc_number"),
+            "domicilio": t.get("address") or c.get("tax_residence"),
+            "categoria": (t.get("ticket_category") or {}).get("name"), "categoria_id": t.get("ticket_category_id"),
+            "estado_isp": (t.get("ticket_status") or {}).get("name"), "estado_isp_id": t.get("ticket_status_id"),
+            "prioridad": (t.get("ticket_priority") or {}).get("name"),
+            "detalle": det or None, "creado_por_cliente": True,
+            "created_at_isp": t.get("created_at"),
+        })
+    if DRY:
+        print(f"🎫 Tickets ISPcube (DRY): {len(rows)} creados por cliente (no escribo)"); return
+    try:
+        ya = sb_get("isp_tickets?select=ticket_id&limit=20000")
+        existentes = {r["ticket_id"] for r in ya}
+    except Exception:
+        existentes = set()
+    nuevos = [r for r in rows if r["ticket_id"] not in existentes]
+    for i in range(0, len(nuevos), 200):
+        try: sb_post("isp_tickets", nuevos[i:i+200])
+        except Exception as e: print(f"  ERROR insert tickets lote {i}: {e}")
+    print(f"🎫 Tickets ISPcube: {len(nuevos)} nuevos importados (de {len(rows)} creados por cliente)")
+
 def push_gps(token, isp):
     # Empuja a ISPcube el GPS del cierre del técnico (lat_fin/lng_fin) de las OT ya validadas
     # que todavía no se enviaron. SOLO de acá en adelante (no backfill). BARATO: reusa la lista
@@ -314,6 +358,8 @@ def main():
 
     # Push del GPS de los cierres validados a ISPcube (reusa token+lista; respeta DRY adentro)
     push_gps(token, isp)
+    # Importar tickets que los clientes crearon en ISPcube → tabla isp_tickets (para generar OTs)
+    pull_tickets(token)
 
     if DRY:
         print("\n[DRY] No se escribió nada.")
