@@ -238,6 +238,60 @@ def pull_tickets(token):
         except Exception as e: print(f"  ERROR insert tickets lote {i}: {e}")
     print(f"🎫 Tickets ISPcube: {len(nuevos)} nuevos importados (de {len(rows)} creados por cliente)")
 
+def close_tickets(token):
+    # Cierra en ISPcube los tickets cuya OT en Nexa ya quedó FINALIZADA (cierra el círculo).
+    # SEGURO: lee el ticket actual y lo reescribe con estado=Cerrado (3) preservando los demás campos.
+    H = {"api-key": APIKEY, "client-id": CLIENTID, "login-type": "api",
+         "username": USER, "Authorization": "Bearer " + token}
+    try:
+        conv = sb_get("isp_tickets?estado_nexa=eq.convertido&ot_id=not.is.null&isp_cerrado_at=is.null"
+                      "&select=id,ticket_id,ot_id&limit=2000")
+    except Exception as e:
+        print("WARN close_tickets sb_get:", e); return
+    if not conv:
+        print("🎫 Tickets a cerrar en ISPcube: 0"); return
+    # ¿cuáles de esas OT están FINALIZADA?
+    ids = [str(t["ot_id"]) for t in conv if t.get("ot_id")]
+    fin = set()
+    for i in range(0, len(ids), 100):
+        try:
+            r = sb_get("ordenes_trabajo?id=in.(%s)&estado=eq.FINALIZADA&select=id" % ",".join(ids[i:i+100]))
+            for o in r: fin.add(o["id"])
+        except Exception: pass
+    cerrados = 0
+    for t in conv:
+        if t["ot_id"] not in fin: continue
+        if DRY: cerrados += 1; continue
+        try:
+            cur = json.load(_req(BASE + "/tickets?ticket_id=" + str(t["ticket_id"]), headers=H))
+            cur = cur[0] if isinstance(cur, list) else (cur.get("data") or cur)
+        except Exception as e:
+            print(f"  ERROR leer ticket {t['ticket_id']}: {e}"); continue
+        body = {
+            "ticket_area_id": cur.get("ticket_area_id"),
+            "ticket_category_id": cur.get("ticket_category_id"),
+            "ticket_priority_id": cur.get("ticket_priority_id"),
+            "ticket_status_id": 3,   # Cerrado
+            "assigned_user_id": cur.get("assigned_user_id"),
+            "connection_id": cur.get("connection_id"),
+            "price": cur.get("price"),
+            "visit_date": cur.get("visit_date"),
+            "visit_time_start": cur.get("visit_time_start"),
+            "visit_time_end": cur.get("visit_time_end"),
+            "new_item_content": "Resuelto — trabajo finalizado (Nexa, OT #%s)" % t["ot_id"],
+        }
+        try:
+            _req(BASE + "/ticket/" + str(t["ticket_id"]), body, "PUT", H)
+        except Exception as e:
+            print(f"  ERROR cerrar ticket {t['ticket_id']}: {e}"); continue
+        try:
+            sb_patch("isp_tickets?id=eq." + str(t["id"]),
+                     {"estado_nexa": "cerrado", "isp_cerrado_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        except Exception as e:
+            print(f"  WARN marcar ticket {t['id']} cerrado: {e}")
+        cerrados += 1
+    print(f"🎫 Tickets cerrados en ISPcube: {cerrados}" + (" [DRY]" if DRY else ""))
+
 def push_gps(token, isp):
     # Empuja a ISPcube el GPS del cierre del técnico (lat_fin/lng_fin) de las OT ya validadas
     # que todavía no se enviaron. SOLO de acá en adelante (no backfill). BARATO: reusa la lista
@@ -360,6 +414,8 @@ def main():
     push_gps(token, isp)
     # Importar tickets que los clientes crearon en ISPcube → tabla isp_tickets (para generar OTs)
     pull_tickets(token)
+    # Cerrar en ISPcube los tickets cuya OT ya quedó finalizada (cierra el círculo)
+    close_tickets(token)
 
     if DRY:
         print("\n[DRY] No se escribió nada.")
