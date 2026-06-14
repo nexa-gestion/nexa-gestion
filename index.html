@@ -233,7 +233,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.95';
+  var VER='v0.96';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2598,11 +2598,17 @@
   // ══════════ TICKETS de ISPcube ══════════ (reclamos que los clientes crean en su app → generar OT)
   function vTickets(){
     loading();
-    Promise.all([
-      sbGet('isp_tickets?estado_nexa=eq.nuevo&select=*&order=created_at_isp.desc&limit=2000'),
-      sbGet('clientes?codigo_ispcube=not.is.null&estado=neq.eliminado&select=id,numero_cliente,codigo_ispcube&limit=10000')
-    ]).then(function(r){
-      var tks=Array.isArray(r[0])?r[0]:[], cls=r[1]||[], byCode={}; cls.forEach(function(c){ byCode[c.codigo_ispcube]=c; });
+    sbGet('isp_tickets?estado_nexa=eq.nuevo&select=*&order=created_at_isp.desc&limit=2000').then(function(tksRaw){
+      var tks=Array.isArray(tksRaw)?tksRaw:[];
+      // solo busco los clientes cuyos códigos aparecen en los tickets (evita el tope de 1000 filas y baja costo)
+      var codes={}; tks.forEach(function(t){ if(t.codigo_ispcube) codes[t.codigo_ispcube]=1; });
+      var lista=Object.keys(codes);
+      var clQ = lista.length
+        ? sbGet('clientes?codigo_ispcube=in.('+lista.map(encodeURIComponent).join(',')+')&estado=neq.eliminado&select=id,numero_cliente,codigo_ispcube&limit=10000')
+        : Promise.resolve([]);
+      return clQ.then(function(cls){ return [tks, cls]; });
+    }).then(function(r){
+      var tks=r[0], cls=r[1]||[], byCode={}; cls.forEach(function(c){ byCode[c.codigo_ispcube]=c; });
       var TIPO={5:'REPARACION',2:'REPARACION',4:'INSTALACION',6:'RETIRO_EQUIPOS',11:'RECONEXION',10:'REPARACION',1:'OTRO',8:'OTRO'};
       var h='<h1>🎫 Tickets de ISPcube</h1><p class="sub">Reclamos que los clientes crearon desde su app/portal de ISPcube. Generá la orden de trabajo desde acá (queda atada al ticket).</p>';
       if(!tks.length){ view.innerHTML=h+'<div class="center">No hay tickets nuevos. 🎉 <span class="muted">(se importan en cada sync de ISPcube)</span></div>'; return; }
