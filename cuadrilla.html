@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.13</title>
+<title>Nexa · Técnico — v0.14</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.13';
+  var VER='v0.14';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -147,7 +147,7 @@
     else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO)';
     var agrupa=(listState.filtro==='activas');
     var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
-    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(nombre,apellido,domicilio_full,telefono,lat,lng,caja_nap),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
+    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
       function cardOT(o){
@@ -195,7 +195,10 @@
       +(o.descripcion?fila('Descripción',o.descripcion):'')
       +(o.fecha_agendada?fila('Agendada',fmtFecha(o.fecha_agendada)):'')
       +'</div>'
-      +((cli.lat!=null||cli.domicilio_full)?'<a class="btn btn-2" target="_blank" href="'+mapsUrl(cli)+'" style="margin-bottom:10px">🚗 Cómo llegar</a>':'')
+      +(function(){ var gps=(cli.lat!=null&&cli.lng!=null), medida=(cli.geo_origen==='TECNICO'), h='';
+          if(gps) h+='<a class="btn btn-pri" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+cli.lat+','+cli.lng+'" style="margin-bottom:8px">🛰️ '+(medida?'Ir al GPS de la última visita':'Ir a la ubicación (aprox.)')+'</a>';
+          if(cli.domicilio_full) h+='<a class="btn btn-2" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(cli.domicilio_full+(cli.barrio?(' '+cli.barrio):''))+'" style="margin-bottom:10px">🏠 Ir por la dirección</a>';
+          return h; })()
       +(o.estado==='EN_CURSO' ? '' : '<button class="btn btn-pri" id="dt-iniciar" style="margin-bottom:10px">▶ Iniciar tarea</button>')
       +(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA' ? '<div class="card" style="text-align:center;color:var(--cyan)">✅ Tarea cerrada por el técnico</div>' : '<button class="btn btn-ok" id="dt-cerrar">✅ Cerrar tarea</button>')
       +(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA' ? '' : '<button class="btn" id="dt-rechazar" style="background:var(--rojo);color:#fff;margin-top:10px">✕ Rechazar (no se pudo hacer)</button>')

@@ -194,6 +194,42 @@ def _f(v):
     try: return float(v)
     except: return None
 
+def push_gps(token, isp):
+    # Empuja a ISPcube el GPS del cierre del técnico (lat_fin/lng_fin) de las OT ya validadas
+    # que todavía no se enviaron. SOLO de acá en adelante (no backfill). BARATO: reusa la lista
+    # `isp` ya traída (mapa código->customer_id, sin llamadas extra) y manda 1 POST por OT, una sola vez.
+    H = {"api-key": APIKEY, "client-id": CLIENTID, "login-type": "api",
+         "username": USER, "Authorization": "Bearer " + token}
+    code2id = {str(c.get("code") or "").strip(): c.get("id") for c in isp if c.get("code")}
+    try:
+        pend = sb_get("ordenes_trabajo?estado=eq.FINALIZADA&lat_fin=not.is.null&isp_gps_push_at=is.null"
+                      "&select=id,lat_fin,lng_fin,clientes(codigo_ispcube)&limit=500")
+    except Exception as e:
+        print("WARN push_gps sb_get:", e); return
+    enviados, sinmap = 0, 0
+    for o in pend:
+        code = ((o.get("clientes") or {}).get("codigo_ispcube") or "").strip()
+        cid = code2id.get(code)
+        if not cid:
+            sinmap += 1; continue
+        if DRY:
+            enviados += 1; continue
+        try:
+            r = _req(BASE + "/customers/geolocation",
+                     {"customer_id": cid, "lat": o["lat_fin"], "lng": o["lng_fin"]}, "POST", H)
+            json.load(r)
+        except Exception as e:
+            print(f"  ERROR push_gps OT {o['id']}: {e}"); continue
+        try:
+            sb_patch("ordenes_trabajo?id=eq." + str(o["id"]),
+                     {"isp_gps_push_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        except Exception as e:
+            print(f"  WARN marcar OT {o['id']}: {e}")
+        enviados += 1
+    print(f"📍 GPS a ISPcube: {enviados} enviado(s)"
+          + (f", {sinmap} sin código ISP (omitidos)" if sinmap else "")
+          + (" [DRY]" if DRY else ""))
+
 def main():
     t0 = time.time()
     # MODO DIAGNÓSTICO: DIAG=001906 -> imprime todos los campos de ese cliente
@@ -275,6 +311,9 @@ def main():
     if revisar:
         print(f"  ⚠️ PROSPECTOS que parecen duplicados (mismo DNI que un cliente ya con código) — revisar/fusionar:")
         for pid, d, code in revisar[:20]: print(f"     prospecto id={pid} (DNI {d}) ≈ cliente código {code}")
+
+    # Push del GPS de los cierres validados a ISPcube (reusa token+lista; respeta DRY adentro)
+    push_gps(token, isp)
 
     if DRY:
         print("\n[DRY] No se escribió nada.")
