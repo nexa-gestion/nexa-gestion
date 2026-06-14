@@ -194,9 +194,12 @@ def _f(v):
     try: return float(v)
     except: return None
 
-def pull_tickets(token):
+def pull_tickets(token, isp=None):
     # Trae los tickets que los CLIENTES crean en ISPcube (customer_created) a la tabla isp_tickets,
     # para generar OTs desde Nexa. Importa solo los NUEVOS (no pisa los ya convertidos/descartados).
+    # Saltea los HUÉRFANOS: tickets de clientes que ya NO existen en ISPcube (borrados) → no se puede
+    # generar OT y solo ensucian la ticketera. Se usa la lista de clientes ya cargada (costo 0).
+    vivos = {str(c.get("code") or "").strip() for c in (isp or []) if c.get("code")}
     H = {"api-key": APIKEY, "client-id": CLIENTID, "login-type": "api",
          "username": USER, "Authorization": "Bearer " + token}
     arr, off = [], 0
@@ -209,10 +212,13 @@ def pull_tickets(token):
         arr += ch
         if len(ch) < 500: break
         off += 500
-    rows = []
+    rows, huerfanos = [], 0
     for t in arr:
         if not t.get("customer_created"): continue   # solo los que crea el cliente
         c = t.get("customer") or {}
+        code = str(c.get("code") or "").strip()
+        if vivos and code and code not in vivos:      # cliente borrado de ISPcube → ticket huérfano, no importar
+            huerfanos += 1; continue
         det = " | ".join([i.get("content", "") for i in (t.get("items") or []) if i.get("content")])[:2000]
         rows.append({
             "ticket_id": t.get("id"), "customer_id_isp": t.get("customer_id"),
@@ -226,7 +232,7 @@ def pull_tickets(token):
             "created_at_isp": t.get("created_at"),
         })
     if DRY:
-        print(f"🎫 Tickets ISPcube (DRY): {len(rows)} creados por cliente (no escribo)"); return
+        print(f"🎫 Tickets ISPcube (DRY): {len(rows)} creados por cliente ({huerfanos} huérfanos salteados) (no escribo)"); return
     try:
         ya = sb_get("isp_tickets?select=ticket_id&limit=20000")
         existentes = {r["ticket_id"] for r in ya}
@@ -236,7 +242,7 @@ def pull_tickets(token):
     for i in range(0, len(nuevos), 200):
         try: sb_post("isp_tickets", nuevos[i:i+200])
         except Exception as e: print(f"  ERROR insert tickets lote {i}: {e}")
-    print(f"🎫 Tickets ISPcube: {len(nuevos)} nuevos importados (de {len(rows)} creados por cliente)")
+    print(f"🎫 Tickets ISPcube: {len(nuevos)} nuevos importados (de {len(rows)} creados por cliente; {huerfanos} huérfanos salteados)")
 
 def close_tickets(token):
     # Cierra en ISPcube los tickets cuya OT en Nexa ya quedó FINALIZADA (cierra el círculo).
@@ -413,7 +419,7 @@ def main():
     # Push del GPS de los cierres validados a ISPcube (reusa token+lista; respeta DRY adentro)
     push_gps(token, isp)
     # Importar tickets que los clientes crearon en ISPcube → tabla isp_tickets (para generar OTs)
-    pull_tickets(token)
+    pull_tickets(token, isp)
     # Cerrar en ISPcube los tickets cuya OT ya quedó finalizada (cierra el círculo)
     close_tickets(token)
 
