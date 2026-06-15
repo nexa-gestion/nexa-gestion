@@ -70,9 +70,18 @@ def isp_list_all(token):
          "username": USER, "Authorization": "Bearer " + token}
     out, offset, calls = [], 0, 0
     while True:
-        r = _req(BASE + f"/customers/customers_list?limit={PAGE}&offset={offset}", headers=H)
-        d = json.load(r); calls += 1
-        chunk = d if isinstance(d, list) else (d.get("data") or d.get("customers") or [])
+        chunk = None
+        for attempt in range(4):   # reintentos por página: un 403/429/5xx transitorio no debe abortar ni devolver lista parcial
+            try:
+                d = json.load(_req(BASE + f"/customers/customers_list?limit={PAGE}&offset={offset}", headers=H))
+                chunk = d if isinstance(d, list) else (d.get("data") or d.get("customers") or [])
+                break
+            except Exception as e:
+                if attempt < 3:
+                    time.sleep(5); continue
+                # falló definitivamente → abortar TODO el sync: con la lista incompleta NO se puede marcar eliminados sin riesgo
+                raise RuntimeError(f"isp_list_all: la página offset={offset} falló tras 4 intentos ({e}) — se aborta el sync para no borrar de más")
+        calls += 1
         out += chunk
         if len(chunk) < PAGE: break
         offset += PAGE
@@ -336,12 +345,19 @@ def push_gps(token, isp):
 
 def generar_desconexiones_pendientes():
     # Genera órdenes PENDIENTE para clientes a dar de baja (baja ISPcube + bloqueado +30d) que no tengan ya una.
+    # "Ya tiene" = desconexión ABIERTA (PEND/ASIG/PEND_ADMIN) + en revisión + finalizada.
+    # NO cuenta ANULADA_PAGO/CANCELADA → el moroso que pagó y volvió a caer en mora vuelve a la cola.
+    # Se chequea SOLO contra los candidatos (chunks), no toda la tabla (evita el tope de 1000 filas).
     try:
         cut = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 30*86400))
-        ya = sb_get("desconexiones?select=cliente_id&limit=20000")
-        yaset = {r["cliente_id"] for r in (ya or [])}
         baja = sb_get("clientes?estado=eq.baja&select=id&limit=3000") or []
         blo  = sb_get("clientes?estado=eq.bloqueado&bloqueado_desde=lt.%s&select=id&limit=3000" % cut) or []
+        cand_ids = [c["id"] for c in baja] + [c["id"] for c in blo]
+        yaset = set()
+        for i in range(0, len(cand_ids), 150):
+            part = ",".join(str(x) for x in cand_ids[i:i+150])
+            r = sb_get("desconexiones?cliente_id=in.(%s)&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO)&select=cliente_id&limit=2000" % part)
+            for x in (r or []): yaset.add(x["cliente_id"])
     except Exception as e:
         print("WARN generar_desconexiones:", e); return 0
     nuevos  = [{"cliente_id": c["id"], "estado": "PENDIENTE", "origen": "baja_isp"}      for c in baja if c["id"] not in yaset]
@@ -356,9 +372,10 @@ def generar_desconexiones_pendientes():
     return n
 
 def anular_desconexiones_rehabilitados():
-    # Bajas PENDIENTE/ASIGNADA cuyo cliente ya volvió a 'activo' (pagó antes del corte) → se anulan solas.
+    # SOLO bajas automáticas (baja_isp/bloqueado_30d) cuyo cliente volvió a 'activo' (pagó) → se anulan solas.
+    # Las bajas MANUALES no se tocan (son decisión del admin).
     try:
-        d = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&select=id,clientes!inner(estado)&clientes.estado=eq.activo&limit=2000")
+        d = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(estado)&clientes.estado=eq.activo&limit=2000")
     except Exception as e:
         print("WARN anular_desconexiones:", e); return 0
     d = d if isinstance(d, list) else []

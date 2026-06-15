@@ -176,7 +176,7 @@
 <div id="login">
   <div class="login-card">
     <div class="marca">NEXA</div>
-    <div class="marca-sub">Gestión · v0.39</div>
+    <div class="marca-sub" id="marca-ver">Gestión</div>
     <label class="l">Usuario</label>
     <input id="lg-user" placeholder="usuario" autocapitalize="off">
     <label class="l">PIN</label>
@@ -234,7 +234,8 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.03';
+  var VER='v1.04';
+  try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2686,24 +2687,40 @@
   function _dxOrigen(o){ return {manual:'✋ manual',baja_isp:'⬇️ baja ISPcube',bloqueado_30d:'⛔ bloqueado +30d'}[o]||o||''; }
   function _dxEstadoTxt(e){ return {ANULADA_PAGO:'🟢 Anulada (pagó / sigue)',CANCELADA:'⛔ Cancelada',EN_REVISION:'⏸️ En revisión',FINALIZADO:'✅ Finalizada'}[e]||e; }
   // Auto-genera órdenes PENDIENTE para los clientes a dar de baja (baja ISPcube + bloqueado +30d) que no tengan ya una
+  // ¿qué clientes (de una lista) YA tienen una desconexión que bloquea regenerar otra?
+  // Bloquean: abiertas (PEND/ASIG/PEND_ADMIN) + en revisión + finalizada. NO bloquean: ANULADA_PAGO / CANCELADA
+  // (así el moroso que pagó y volvió a caer en mora vuelve a la cola). Chequea SOLO los candidatos (no toda la tabla).
+  function _dxBloqueados(ids, done){
+    var ya={}, i=0;
+    (function chunk(){
+      if(i>=ids.length){ done(ya); return; }
+      var part=ids.slice(i,i+150); i+=150;
+      sbGet('desconexiones?cliente_id=in.('+part.join(',')+')&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO)&select=cliente_id&limit=2000')
+        .then(function(d){ (Array.isArray(d)?d:[]).forEach(function(x){ ya[x.cliente_id]=1; }); chunk(); })
+        .catch(function(){ chunk(); });
+    })();
+  }
   function _dxAutoGenerar(cb){
     var cut=new Date(Date.now()-30*864e5).toISOString();
     Promise.all([
-      sbGet('desconexiones?select=cliente_id&limit=20000'),
       sbGet('clientes?estado=eq.baja&select=id&limit=3000'),
       sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&select=id&limit=3000')
     ]).then(function(r){
-      var ya={}; (r[0]||[]).forEach(function(x){ ya[x.cliente_id]=1; });
-      var nuevos=[];
-      (r[1]||[]).forEach(function(c){ if(!ya[c.id]) nuevos.push({cliente_id:c.id,estado:'PENDIENTE',origen:'baja_isp',created_by:USER.id}); });
-      (r[2]||[]).forEach(function(c){ if(!ya[c.id]) nuevos.push({cliente_id:c.id,estado:'PENDIENTE',origen:'bloqueado_30d',created_by:USER.id}); });
-      if(!nuevos.length){ cb(0); return; }
-      sbPost('desconexiones',nuevos).then(function(){ cb(nuevos.length); }).catch(function(){ cb(0); });
+      var cands=[];
+      (r[0]||[]).forEach(function(c){ cands.push([c.id,'baja_isp']); });
+      (r[1]||[]).forEach(function(c){ cands.push([c.id,'bloqueado_30d']); });
+      if(!cands.length){ cb(0); return; }
+      _dxBloqueados(cands.map(function(x){return x[0];}), function(ya){
+        var nuevos=cands.filter(function(x){ return !ya[x[0]]; }).map(function(x){ return {cliente_id:x[0],estado:'PENDIENTE',origen:x[1],created_by:USER.id}; });
+        if(!nuevos.length){ cb(0); return; }
+        sbPost('desconexiones',nuevos).then(function(){ cb(nuevos.length); }).catch(function(){ cb(0); });
+      });
     }).catch(function(){ cb(0); });
   }
-  // Auto-anula las bajas PENDIENTE/ASIGNADA cuyo cliente ya volvió a ACTIVO (pagó antes del corte) y sigue al callback
+  // Auto-anula SOLO las bajas automáticas (baja_isp/bloqueado_30d) cuyo cliente volvió a ACTIVO (pagó).
+  // Las bajas MANUALES (origen='manual') NO se tocan: una baja voluntaria es decisión del admin.
   function _dxAutoAnular(cb){
-    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&select=id,cliente_id,clientes!inner(estado)&clientes.estado=eq.activo&limit=1000').then(function(d){
+    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,cliente_id,clientes!inner(estado)&clientes.estado=eq.activo&limit=1000').then(function(d){
       d=Array.isArray(d)?d:[];
       if(!d.length){ cb(); return; }
       Promise.all(d.map(function(o){ return sbPatch('desconexiones?id=eq.'+o.id,{estado:'ANULADA_PAGO',resolucion:'El cliente se rehabilitó (pagó) — anulada automáticamente',resuelto_at:new Date().toISOString()}).catch(function(){}); })).then(function(){ toast('🟢 '+d.length+' baja(s) anulada(s): el cliente se rehabilitó'); cb(); });
