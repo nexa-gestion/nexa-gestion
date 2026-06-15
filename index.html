@@ -234,7 +234,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.00';
+  var VER='v1.01';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2718,9 +2718,10 @@
     }).catch(function(){ cb(); });
   }
   function _dxMaps(lat,lng){ return (lat!=null&&lng!=null)?('<a class="btn btn-2" target="_blank" style="padding:2px 8px;font-size:12px" href="https://www.google.com/maps?q='+lat+','+lng+'">🛰️ GPS del corte</a>'):''; }
+  var _dxData=[];
   function vDesconexiones(){
     if(!_dxEsAdmin()){ view.innerHTML='<h1>Desconexiones</h1><div class="center">Solo disponible para administrativo, gerencial o superadmin.</div>'; return; }
-    if(!window._dxState) window._dxState={ver:'PENDIENTE'};
+    if(!window._dxState) window._dxState={ver:'PENDIENTE',q:'',origen:''};
     var st=window._dxState; loading();
     _dxAutoGenerar(function(gen){
     if(gen>0) toast('➕ '+gen+' desconexión(es) nuevas en Pendientes');
@@ -2729,72 +2730,106 @@
     _dxLimpiarEliminados(function(){
     _dxAutoAnular(function(){
     sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=created_at.desc&limit=2000').then(function(d){
-      d=Array.isArray(d)?d:[];
-      var h='<h1>🔌 Desconexiones / Bajas</h1><p class="sub">El técnico hace el corte/recupero. Después <b>soporte</b> elimina la conexión en ISPcube y <b>comercial</b> hace la nota de crédito (si hay deuda) + borra el cliente. Con las dos firmas, la baja queda finalizada.</p><div id="dx-wrap">'+_dxTabs();
-      if(!d.length){ h+='<div class="center">No hay desconexiones en este estado.</div></div>'; view.innerHTML=h; _dxWire(); return; }
-      h+='<div style="display:flex;flex-direction:column;gap:10px">'+d.map(_dxCard).join('')+'</div></div>';
-      view.innerHTML=h; _dxWire(); _dxBadge();
+      _dxData=Array.isArray(d)?d:[];
+      var h='<h1>🔌 Desconexiones / Bajas</h1><p class="sub">El técnico hace el corte/recupero. Después <b>soporte</b> elimina la conexión en ISPcube y <b>comercial</b> hace la nota de crédito (si hay deuda) + borra el cliente. Con las dos firmas, la baja queda finalizada.</p><div id="dx-wrap">'+_dxTabs()
+        +'<div class="toolbar"><input id="dx-q" placeholder="🔎 Buscar N°, código ISP, cliente, barrio…" value="'+esc(st.q||'')+'" style="min-width:240px;flex:1">'
+        +'<select id="dx-forigen"><option value="">Todos los orígenes</option>'+[['manual','✋ Manual'],['baja_isp','⬇️ Baja ISPcube'],['bloqueado_30d','⛔ Bloqueado +30d']].map(function(o){return '<option value="'+o[0]+'"'+(st.origen===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'
+        +'<button class="btn btn-2" id="dx-csv">⬇️ Exportar CSV</button></div>'
+        +'<div id="dx-tabla"></div></div>';
+      view.innerHTML=h; _dxBadge();
+      document.getElementById('dx-q').addEventListener('input',function(){ st.q=this.value; _dxPinta(); });
+      document.getElementById('dx-forigen').addEventListener('change',function(){ st.origen=this.value; _dxPinta(); });
+      document.getElementById('dx-csv').addEventListener('click',_dxCSV);
+      _dxWire();
+      _dxPinta();
     }).catch(function(){ view.innerHTML='<h1>🔌 Desconexiones</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL v32?</div>'; });
     });
     });
     });
   }
-  function _dxCard(o){
-    var c=o.clientes||{}, cli=((c.nombre||'')+' '+(c.apellido||'')).trim();
-    var deuda=Number(c.deuda||0);
-    var ref=(c.codigo_ispcube?('ISP '+esc(c.codigo_ispcube)+' · '):'')+(c.numero_cliente?('N° '+esc(c.numero_cliente)+' · '):'');
-    var head='<div style="font-weight:800">'+ref+esc(cli||'(cliente)')+(deuda>0?(' <span class="pill" style="background:#fee2e2;color:#991b1b">Deuda $'+deuda.toLocaleString('es-AR')+'</span>'):' <span class="pill" style="background:#dcfce7;color:#166534">Sin deuda</span>')+'</div>'
-      +'<div class="muted" style="font-size:12px">'+esc(c.domicilio_full||'')+(c.barrio?(' · '+esc(c.barrio)):'')+' · 📦 Caja '+esc(c.caja_nap||'—')+' / P '+esc(c.puerto||'—')+' / Prec '+esc(c.precinto||'—')+'</div>'
-      +'<div class="muted" style="font-size:11px;margin-top:2px">'+_dxOrigen(o.origen)+(o.motivo?(' · '+esc(o.motivo)):'')+'</div>';
-    var body='', acc='';
-    if(o.estado==='PENDIENTE'){
-      var cuadOpts='<option value="">— elegí cuadrilla —</option>'+REF.cuadrillas.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('');
-      acc='<select class="dx-cuad" data-id="'+o.id+'" style="margin-bottom:6px">'+cuadOpts+'</select>'
-        +'<input type="date" class="dx-fecha" data-id="'+o.id+'" style="margin-bottom:6px">'
-        +'<button class="btn btn-ok dx-asignar" data-id="'+o.id+'">📍 Asignar</button>'
-        +'<button class="btn btn-2 dx-revisar" data-id="'+o.id+'">⏸️ Pendiente de resolver</button>'
-        +'<button class="btn btn-2 dx-cancelar" data-id="'+o.id+'">Cancelar baja</button>';
-    } else if(o.estado==='ASIGNADA'){
-      body='<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:13px">🔧 Asignada a <b>'+esc(_cuadNombre(o.cuadrilla_id)||'—')+'</b>'+(o.fecha_agendada?(' · 📅 '+fmtFecha(o.fecha_agendada)):'')+' — esperando que el técnico haga el corte/recupero.</div>';
-      acc='<button class="btn btn-2 dx-reasignar" data-id="'+o.id+'">🔄 Reasignar</button><button class="btn btn-2 dx-revisar" data-id="'+o.id+'">⏸️ Pendiente de resolver</button><button class="btn btn-2 dx-cancelar" data-id="'+o.id+'">Cancelar baja</button>';
-    } else if(o.estado==='PENDIENTE_ADMIN'){
-      var rec=(o.recupero_equipo===true)?('✅ Equipo recuperado'+(o.equipo_serial?(' · serial '+esc(o.equipo_serial)):'')) : (o.recupero_equipo===false?'⚠️ Sin recupero de equipo':'—');
-      body='<div style="background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:8px 10px;margin-top:6px;font-size:13px">'
-        +'<div><b>Corte del técnico</b> '+(o.corte_at?('· '+fmtFechaHora(o.corte_at)):'')+'</div>'
-        +'<div>'+rec+'</div>'+(o.obs_tecnico?('<div class="muted">🗣️ '+esc(o.obs_tecnico)+'</div>'):'')
-        +'<div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">'+_dxMaps(o.lat,o.lng)+(o.foto_url?('<a class="btn btn-2" target="_blank" style="padding:2px 8px;font-size:12px" href="'+esc(o.foto_url)+'">📷 Foto</a>'):'')+'</div></div>'
-        +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px">📋 <b>En ISPcube:</b> 1) Soporte: eliminar la conexión. 2) Comercial: '+(deuda>0?('deuda <b>$'+deuda.toLocaleString('es-AR')+'</b> → nota de crédito para dejar en cero, luego'):'sin deuda →')+' eliminar el cliente.</div>'
-        +'<div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">'
-          +(o.soporte_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Soporte</b> — conexión eliminada · '+fmtFechaHora(o.soporte_at)+'</div>'):'<button class="btn btn-2 dx-soporte" data-id="'+o.id+'">☐ Soporte: eliminé la conexión en ISPcube</button>')
-          +(o.comercial_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Comercial</b> — '+(o.tenia_deuda?('NC '+esc(o.nota_credito||'')):'sin deuda')+' + cliente eliminado · '+fmtFechaHora(o.comercial_at)+'</div>'):'<button class="btn btn-2 dx-comercial" data-id="'+o.id+'">☐ Comercial: nota de crédito + eliminé cliente</button>')
-        +'</div>';
-      acc='<button class="btn btn-2 dx-revisar" data-id="'+o.id+'">⏸️ Pendiente de resolver</button><button class="btn btn-2 dx-cancelar" data-id="'+o.id+'">Cancelar baja</button>';
-    } else if(o.estado==='EN_REVISION'){
-      body='<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:13px">⏸️ Aparcada para revisar'+(o.resolucion?(' — '+esc(o.resolucion)):'')+(o.resuelto_at?(' · '+fmtFechaHora(o.resuelto_at)):'')+'</div>';
-      acc='<button class="btn btn-ok dx-volver" data-id="'+o.id+'">↩️ Volver a pendientes</button><button class="btn btn-2 dx-anular" data-id="'+o.id+'">🟢 Pagó / sigue</button><button class="btn btn-2 dx-cancelar" data-id="'+o.id+'">Cancelar baja</button>';
-    } else if(o.estado==='FINALIZADO'){
-      body='<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px">✅ Baja finalizada '+(o.finalizado_at?('· '+fmtFechaHora(o.finalizado_at)):'')+'<br>Soporte: '+(o.soporte_at?fmtFechaHora(o.soporte_at):'—')+' · Comercial: '+(o.comercial_at?fmtFechaHora(o.comercial_at):'—')+(o.tenia_deuda?(' · NC '+esc(o.nota_credito||'')):'')+'</div>';
-    } else if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA'){
-      body='<div style="background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px">'+_dxEstadoTxt(o.estado)+(o.resolucion?(' — '+esc(o.resolucion)):'')+(o.resuelto_at?(' · '+fmtFechaHora(o.resuelto_at)):'')+'</div>';
-      if(o.estado!=='FINALIZADO') acc='<button class="btn btn-2 dx-volver" data-id="'+o.id+'">↩️ Reabrir (a pendientes)</button>';
-    }
-    return '<div class="ocard" style="margin:0;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">'
-      +'<div style="flex:1;min-width:240px">'+head+body+'</div>'
-      +(acc?('<div style="display:flex;flex-direction:column;gap:6px;min-width:180px">'+acc+'</div>'):'')+'</div></div>';
+  function _dxFiltrados(){
+    var st=window._dxState, q=(st.q||'').toLowerCase().trim(), org=st.origen||'';
+    return _dxData.filter(function(o){
+      if(org && o.origen!==org) return false;
+      if(!q) return true;
+      var c=o.clientes||{}, hay=((c.numero_cliente||'')+' '+(c.codigo_ispcube||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.domicilio_full||'')).toLowerCase();
+      return hay.indexOf(q)>=0;
+    });
+  }
+  function _dxInfo(o){
+    if(o.estado==='ASIGNADA') return '🔧 '+esc(_cuadNombre(o.cuadrilla_id)||'—')+(o.fecha_agendada?('<br><span class="muted">📅 '+fmtFecha(o.fecha_agendada)+'</span>'):'');
+    if(o.estado==='PENDIENTE_ADMIN'){ var rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':'—'); return rec+'<br><span style="font-size:11px">'+(o.soporte_hecho?'<span style="color:#166534">✓Soporte</span>':'<span class="muted">☐Soporte</span>')+' '+(o.comercial_hecho?'<span style="color:#166534">✓Comercial</span>':'<span class="muted">☐Comercial</span>')+'</span>'; }
+    if(o.estado==='EN_REVISION') return '⏸️ '+esc(o.resolucion||'a revisar');
+    if(o.estado==='FINALIZADO') return '✅ '+(o.finalizado_at?fmtFecha(o.finalizado_at):'')+(o.tenia_deuda?('<br><span class="muted">NC '+esc(o.nota_credito||'')+'</span>'):'');
+    if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA') return '<span class="muted" style="font-size:12px">'+_dxEstadoTxt(o.estado)+(o.resolucion?('<br>'+esc(o.resolucion)):'')+'</span>';
+    var c=o.clientes||{}; return '<span class="muted" style="font-size:12px">'+esc(_domLimpio?(_domLimpio(c.domicilio_full)||''):(c.domicilio_full||''))+'</span>';
+  }
+  function _bx(cls,id,txt){ return '<button class="'+cls+'" data-id="'+id+'" style="padding:3px 8px;font-size:12px;width:auto;display:inline-block;margin:1px">'+txt+'</button>'; }
+  function _dxAcc(o){
+    if(o.estado==='PENDIENTE') return _bx('btn btn-ok dx-asignar',o.id,'📍 Asignar')+_bx('btn btn-2 dx-revisar',o.id,'⏸️')+_bx('btn btn-2 dx-cancelar',o.id,'✗');
+    if(o.estado==='ASIGNADA') return _bx('btn btn-2 dx-reasignar',o.id,'🔄')+_bx('btn btn-2 dx-revisar',o.id,'⏸️')+_bx('btn btn-2 dx-cancelar',o.id,'✗');
+    if(o.estado==='PENDIENTE_ADMIN') return _bx('btn btn-ok dx-gestionar',o.id,'🔧 Gestionar')+_bx('btn btn-2 dx-cancelar',o.id,'✗');
+    if(o.estado==='EN_REVISION') return _bx('btn btn-ok dx-volver',o.id,'↩️')+_bx('btn btn-2 dx-anular',o.id,'🟢')+_bx('btn btn-2 dx-cancelar',o.id,'✗');
+    if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA') return _bx('btn btn-2 dx-volver',o.id,'↩️ Reabrir');
+    return '';
+  }
+  function _dxPinta(){
+    var cont=document.getElementById('dx-tabla'); if(!cont) return;
+    var rows=_dxFiltrados();
+    var cols=[
+      {k:'num',t:'N°',sort:function(o){return (o.clientes&&o.clientes.numero_cliente)||0;},r:function(o){return '<b>'+esc((o.clientes&&o.clientes.numero_cliente)||'')+'</b>';}},
+      {k:'isp',t:'Cód ISP',sort:function(o){return (o.clientes&&o.clientes.codigo_ispcube)||'';},r:function(o){return esc((o.clientes&&o.clientes.codigo_ispcube)||'—');}},
+      {k:'cliente',t:'Cliente',sort:function(o){var c=o.clientes||{};return ((c.nombre||'')+' '+(c.apellido||'')).trim().toLowerCase();},r:function(o){var c=o.clientes||{};return esc(((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)');}},
+      {k:'barrio',t:'Barrio',sort:function(o){return ((o.clientes&&o.clientes.barrio)||'').toLowerCase();},r:function(o){return esc((o.clientes&&o.clientes.barrio)||'—');}},
+      {k:'deuda',t:'Deuda',sort:function(o){return Number((o.clientes&&o.clientes.deuda)||0);},r:function(o){var d=Number((o.clientes&&o.clientes.deuda)||0);return d>0?('<span style="color:#991b1b;font-weight:700">$'+d.toLocaleString('es-AR')+'</span>'):'<span class="muted">—</span>';}},
+      {k:'origen',t:'Origen',sort:function(o){return o.origen||'';},r:function(o){return '<span style="font-size:12px">'+esc(_dxOrigen(o.origen))+'</span>';}},
+      {k:'info',t:'Detalle',sort:null,r:_dxInfo},
+      {k:'acc',t:'Acciones',sort:null,fixed:true,r:_dxAcc}
+    ];
+    gridRender(cont,cols,rows,{key:'dx',note:rows.length+' de '+_dxData.length+' desconexión(es)'});
+  }
+  function _dxCSV(){
+    var rows=_dxFiltrados();
+    var head=['N°','Cod ISP','Cliente','Barrio','Deuda','Origen','Estado','Cuadrilla','Domicilio','Detalle'];
+    var lines=[head.join(';')];
+    rows.forEach(function(o){ var c=o.clientes||{}; var fila=[c.numero_cliente||'',c.codigo_ispcube||'',((c.nombre||'')+' '+(c.apellido||'')).trim(),c.barrio||'',Number(c.deuda||0),_dxOrigen(o.origen),o.estado,_cuadNombre(o.cuadrilla_id)||'',c.domicilio_full||'',(o.resolucion||'')];
+      lines.push(fila.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(';')); });
+    var blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='desconexiones_'+window._dxState.ver+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+    toast('CSV exportado ('+rows.length+' filas)');
   }
   function _dxWire(){
     var w=document.getElementById('dx-wrap'); if(!w) return;
     w.addEventListener('click',function(e){
       var tb=e.target.closest('.dx-tab'); if(tb){ window._dxState.ver=tb.getAttribute('data-ver'); vDesconexiones(); return; }
-      var as=e.target.closest('.dx-asignar'); if(as){ var id=as.getAttribute('data-id'); var sel=w.querySelector('.dx-cuad[data-id="'+id+'"]'), fe=w.querySelector('.dx-fecha[data-id="'+id+'"]'); var cu=sel?sel.value:'', fc=fe?fe.value:''; if(!cu){ toast('Elegí una cuadrilla.'); return; } as.disabled=true; sbPatch('desconexiones?id=eq.'+id,{estado:'ASIGNADA',cuadrilla_id:Number(cu),fecha_agendada:fc||null,asignada_at:new Date().toISOString(),asignada_por:USER.id}).then(function(){ logAct('Asignó desconexión',{entidad:'DESCONEXION',entidad_id:id,cuadId:Number(cu)}); toast('Asignada ✓'); vDesconexiones(); }); return; }
+      var as=e.target.closest('.dx-asignar'); if(as){ _dxAsignar(as.getAttribute('data-id')); return; }
+      var ge=e.target.closest('.dx-gestionar'); if(ge){ _dxGestionar(ge.getAttribute('data-id')); return; }
       var rs=e.target.closest('.dx-reasignar'); if(rs){ _dxReasignar(rs.getAttribute('data-id')); return; }
-      var ca=e.target.closest('.dx-cancelar'); if(ca){ if(ca.getAttribute('data-ok')!=='1'){ ca.setAttribute('data-ok','1'); ca.textContent='¿Cancelar la baja?'; return; } var id2=ca.getAttribute('data-id'); sbPatch('desconexiones?id=eq.'+id2,{estado:'CANCELADA',updated_at:new Date().toISOString()}).then(function(){ logAct('Canceló desconexión',{entidad:'DESCONEXION',entidad_id:id2}); toast('Cancelada'); vDesconexiones(); }); return; }
-      var sp=e.target.closest('.dx-soporte'); if(sp){ var id3=sp.getAttribute('data-id'); sp.disabled=true; sbPatch('desconexiones?id=eq.'+id3+'&select=*',{soporte_hecho:true,soporte_at:new Date().toISOString(),soporte_por:USER.id}).then(function(r){ logAct('Soporte: eliminó conexión ISPcube',{entidad:'DESCONEXION',entidad_id:id3}); _dxQuizaFinalizar(Array.isArray(r)?r[0]:null); }); return; }
-      var co=e.target.closest('.dx-comercial'); if(co){ _dxComercial(co.getAttribute('data-id')); return; }
+      var ca=e.target.closest('.dx-cancelar'); if(ca){ if(ca.getAttribute('data-ok')!=='1'){ ca.setAttribute('data-ok','1'); ca.textContent='¿Seguro?'; return; } var id2=ca.getAttribute('data-id'); sbPatch('desconexiones?id=eq.'+id2,{estado:'CANCELADA',resolucion:'Cancelada por el admin',resuelto_at:new Date().toISOString(),updated_at:new Date().toISOString()}).then(function(){ logAct('Canceló desconexión',{entidad:'DESCONEXION',entidad_id:id2}); toast('Cancelada'); vDesconexiones(); }); return; }
       var rv=e.target.closest('.dx-revisar'); if(rv){ var idr=rv.getAttribute('data-id'); var nota=prompt('¿Por qué la dejás pendiente de resolver? (opcional)','')||null; sbPatch('desconexiones?id=eq.'+idr,{estado:'EN_REVISION',resolucion:nota,resuelto_at:new Date().toISOString(),resuelto_por:USER.id}).then(function(){ logAct('Desconexión a revisión',{entidad:'DESCONEXION',entidad_id:idr,detalle:nota||''}); toast('⏸️ Pasada a pendiente de resolver'); vDesconexiones(); }); return; }
       var vo=e.target.closest('.dx-volver'); if(vo){ var idv=vo.getAttribute('data-id'); sbPatch('desconexiones?id=eq.'+idv,{estado:'PENDIENTE',cuadrilla_id:null,fecha_agendada:null,asignada_at:null,resolucion:null,resuelto_at:null,updated_at:new Date().toISOString()}).then(function(){ logAct('Reabrió desconexión',{entidad:'DESCONEXION',entidad_id:idv}); toast('↩️ Vuelta a pendientes'); vDesconexiones(); }); return; }
       var an=e.target.closest('.dx-anular'); if(an){ var ida=an.getAttribute('data-id'); sbPatch('desconexiones?id=eq.'+ida,{estado:'ANULADA_PAGO',resolucion:'El cliente pagó / sigue con servicio',resuelto_at:new Date().toISOString(),resuelto_por:USER.id}).then(function(){ logAct('Anuló desconexión (pagó)',{entidad:'DESCONEXION',entidad_id:ida}); toast('🟢 Anulada — el cliente sigue'); vDesconexiones(); }); return; }
     });
+  }
+  function _dxAsignar(id){
+    var cuadOpts='<option value="">— elegí —</option>'+REF.cuadrillas.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('');
+    modal('<h2>📍 Asignar desconexión</h2><label class="l">Cuadrilla</label><select id="dxa-cuad">'+cuadOpts+'</select><label class="l">Fecha (opcional)</label><input type="date" id="dxa-fecha"><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="dxa-go">Asignar</button><button class="btn btn-2" id="dxa-x">Cancelar</button></div>');
+    document.getElementById('dxa-x').addEventListener('click',cerrarModal);
+    document.getElementById('dxa-go').addEventListener('click',function(){ var cu=document.getElementById('dxa-cuad').value; if(!cu){ toast('Elegí cuadrilla.'); return; } var fc=document.getElementById('dxa-fecha').value; sbPatch('desconexiones?id=eq.'+id,{estado:'ASIGNADA',cuadrilla_id:Number(cu),fecha_agendada:fc||null,asignada_at:new Date().toISOString(),asignada_por:USER.id}).then(function(){ logAct('Asignó desconexión',{entidad:'DESCONEXION',entidad_id:id,cuadId:Number(cu)}); cerrarModal(); toast('Asignada ✓'); vDesconexiones(); }); });
+  }
+  function _dxGestionar(id){
+    var o=_dxData.filter(function(x){return String(x.id)===String(id);})[0]; if(!o) return;
+    var c=o.clientes||{}, deuda=Number(c.deuda||0), rec=(o.recupero_equipo===true)?('✅ Equipo recuperado'+(o.equipo_serial?(' · serial '+esc(o.equipo_serial)):'')):(o.recupero_equipo===false?'⚠️ Sin recupero de equipo':'—');
+    modal('<h2>🔧 Baja administrativa</h2><p class="muted">'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+' · N° '+esc(c.numero_cliente||'')+(c.codigo_ispcube?(' · ISP '+esc(c.codigo_ispcube)):'')+'</p>'
+      +'<div style="background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:8px 10px;font-size:13px"><b>Corte del técnico</b> '+(o.corte_at?('· '+fmtFechaHora(o.corte_at)):'')+'<br>'+rec+(o.obs_tecnico?('<br><span class="muted">🗣️ '+esc(o.obs_tecnico)+'</span>'):'')+'<div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">'+_dxMaps(o.lat,o.lng)+(o.foto_url?('<a class="btn btn-2" target="_blank" style="padding:2px 8px;font-size:12px" href="'+esc(o.foto_url)+'">📷 Foto</a>'):'')+'</div></div>'
+      +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px">📋 <b>En ISPcube:</b> 1) Soporte: eliminar la conexión. 2) Comercial: '+(deuda>0?('deuda <b>$'+deuda.toLocaleString('es-AR')+'</b> → nota de crédito, luego'):'sin deuda →')+' eliminar el cliente.</div>'
+      +'<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">'
+        +(o.soporte_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Soporte</b> — conexión eliminada · '+fmtFechaHora(o.soporte_at)+'</div>'):'<button class="btn btn-2" id="dxg-sop">☐ Soporte: eliminé la conexión en ISPcube</button>')
+        +(o.comercial_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Comercial</b> — '+(o.tenia_deuda?('NC '+esc(o.nota_credito||'')):'sin deuda')+' + cliente eliminado · '+fmtFechaHora(o.comercial_at)+'</div>'):'<button class="btn btn-2" id="dxg-com">☐ Comercial: nota de crédito + eliminé cliente</button>')
+      +'</div><div style="margin-top:10px"><button class="btn btn-2" id="dxg-x">Cerrar</button></div>');
+    document.getElementById('dxg-x').addEventListener('click',cerrarModal);
+    var sop=document.getElementById('dxg-sop'); if(sop) sop.addEventListener('click',function(){ sop.disabled=true; sbPatch('desconexiones?id=eq.'+id+'&select=*',{soporte_hecho:true,soporte_at:new Date().toISOString(),soporte_por:USER.id}).then(function(r){ logAct('Soporte: eliminó conexión ISPcube',{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); _dxQuizaFinalizar(Array.isArray(r)?r[0]:null); }); });
+    var com=document.getElementById('dxg-com'); if(com) com.addEventListener('click',function(){ cerrarModal(); _dxComercial(id); });
   }
   function _dxReasignar(id){
     var cuadOpts='<option value="">— elegí —</option>'+REF.cuadrillas.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('');
