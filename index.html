@@ -234,7 +234,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.02';
+  var VER='v1.03';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2764,14 +2764,12 @@
     if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA') return '<span class="muted" style="font-size:12px">'+_dxEstadoTxt(o.estado)+(o.resolucion?('<br>'+esc(o.resolucion)):'')+'</span>';
     var c=o.clientes||{}; return '<span class="muted" style="font-size:12px">📦 '+esc(c.caja_nap||'—')+(c.puerto?(' · P'+esc(c.puerto)):'')+(c.precinto?(' · Prec '+esc(c.precinto)):'')+'</span>';
   }
-  function _bx(cls,id,txt){ return '<button class="'+cls+'" data-id="'+id+'" style="padding:3px 8px;font-size:12px;width:auto;display:inline-block;margin:1px">'+txt+'</button>'; }
+  function _bx(cls,id,txt){ return '<button class="'+cls+'" data-id="'+id+'" style="padding:4px 10px;font-size:12px;width:auto;display:inline-block;margin:1px">'+txt+'</button>'; }
   function _dxAcc(o){
-    if(o.estado==='PENDIENTE') return _bx('btn btn-ok dx-asignar',o.id,'📍 Asignar')+_bx('btn btn-2 dx-revisar',o.id,'⏸️')+_bx('btn btn-2 dx-cancelar',o.id,'✗');
-    if(o.estado==='ASIGNADA') return _bx('btn btn-2 dx-reasignar',o.id,'🔄')+_bx('btn btn-2 dx-revisar',o.id,'⏸️')+_bx('btn btn-2 dx-cancelar',o.id,'✗');
-    if(o.estado==='PENDIENTE_ADMIN') return _bx('btn btn-ok dx-gestionar',o.id,'🔧 Gestionar')+_bx('btn btn-2 dx-cancelar',o.id,'✗');
-    if(o.estado==='EN_REVISION') return _bx('btn btn-ok dx-volver',o.id,'↩️')+_bx('btn btn-2 dx-anular',o.id,'🟢')+_bx('btn btn-2 dx-cancelar',o.id,'✗');
-    if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA') return _bx('btn btn-2 dx-volver',o.id,'↩️ Reabrir');
-    return '';
+    if(o.estado==='PENDIENTE') return _bx('btn btn-ok dx-asignar',o.id,'📍 Asignar')+_bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
+    if(o.estado==='ASIGNADA') return _bx('btn btn-ok dx-reasignar',o.id,'🔄 Reasignar')+_bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
+    if(o.estado==='PENDIENTE_ADMIN') return _bx('btn btn-ok dx-ver',o.id,'🔧 Gestionar');
+    return _bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
   }
   function _dxPinta(){
     var cont=document.getElementById('dx-tabla'); if(!cont) return;
@@ -2787,7 +2785,7 @@
       {k:'info',t:'Detalle',sort:null,r:_dxInfo},
       {k:'acc',t:'Acciones',sort:null,fixed:true,r:_dxAcc}
     ];
-    gridRender(cont,cols,rows,{key:'dx',note:rows.length+' de '+_dxData.length+' desconexión(es)'});
+    gridRender(cont,cols,rows,{key:'dx',note:rows.length+' de '+_dxData.length+' desconexión(es) · tocá una fila para ver el detalle',onRow:function(o){ _dxDetalle(o); }});
   }
   function _dxCSV(){
     var rows=_dxFiltrados();
@@ -2804,6 +2802,7 @@
     w.addEventListener('click',function(e){
       var tb=e.target.closest('.dx-tab'); if(tb){ window._dxState.ver=tb.getAttribute('data-ver'); vDesconexiones(); return; }
       var as=e.target.closest('.dx-asignar'); if(as){ _dxAsignar(as.getAttribute('data-id')); return; }
+      var vr=e.target.closest('.dx-ver'); if(vr){ var ov=_dxData.filter(function(x){return String(x.id)===String(vr.getAttribute('data-id'));})[0]; if(ov) _dxDetalle(ov); return; }
       var ge=e.target.closest('.dx-gestionar'); if(ge){ _dxGestionar(ge.getAttribute('data-id')); return; }
       var rs=e.target.closest('.dx-reasignar'); if(rs){ _dxReasignar(rs.getAttribute('data-id')); return; }
       var ca=e.target.closest('.dx-cancelar'); if(ca){ if(ca.getAttribute('data-ok')!=='1'){ ca.setAttribute('data-ok','1'); ca.textContent='¿Seguro?'; return; } var id2=ca.getAttribute('data-id'); sbPatch('desconexiones?id=eq.'+id2,{estado:'CANCELADA',resolucion:'Cancelada por el admin',resuelto_at:new Date().toISOString(),updated_at:new Date().toISOString()}).then(function(){ logAct('Canceló desconexión',{entidad:'DESCONEXION',entidad_id:id2}); toast('Cancelada'); vDesconexiones(); }); return; }
@@ -2811,6 +2810,42 @@
       var vo=e.target.closest('.dx-volver'); if(vo){ var idv=vo.getAttribute('data-id'); sbPatch('desconexiones?id=eq.'+idv,{estado:'PENDIENTE',cuadrilla_id:null,fecha_agendada:null,asignada_at:null,resolucion:null,resuelto_at:null,updated_at:new Date().toISOString()}).then(function(){ logAct('Reabrió desconexión',{entidad:'DESCONEXION',entidad_id:idv}); toast('↩️ Vuelta a pendientes'); vDesconexiones(); }); return; }
       var an=e.target.closest('.dx-anular'); if(an){ var ida=an.getAttribute('data-id'); sbPatch('desconexiones?id=eq.'+ida,{estado:'ANULADA_PAGO',resolucion:'El cliente pagó / sigue con servicio',resuelto_at:new Date().toISOString(),resuelto_por:USER.id}).then(function(){ logAct('Anuló desconexión (pagó)',{entidad:'DESCONEXION',entidad_id:ida}); toast('🟢 Anulada — el cliente sigue'); vDesconexiones(); }); return; }
     });
+  }
+  function _dxDetalle(o){
+    var c=o.clientes||{}, cli=((c.nombre||'')+' '+(c.apellido||'')).trim(), deuda=Number(c.deuda||0), id=o.id;
+    var h='<h2>🔌 '+esc(cli||'(cliente)')+'</h2>'
+      +'<div class="muted" style="margin-top:-6px">N° '+esc(c.numero_cliente||'')+(c.codigo_ispcube?(' · ISP '+esc(c.codigo_ispcube)):'')+' · '+esc(_dxEstadoTxt(o.estado))+'</div>'
+      +'<div style="background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:10px;font-size:13px;margin-top:10px">'
+        +'<div>📍 <b>'+esc(c.domicilio_full||'—')+'</b>'+(c.barrio?(' · '+esc(c.barrio)):'')+'</div>'
+        +'<div>📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
+        +(c.telefono?('<div>📞 '+esc(c.telefono)+'</div>'):'')
+        +'<div>'+(deuda>0?('💲 Deuda <b style="color:#991b1b">$'+deuda.toLocaleString('es-AR')+'</b>'):'💲 Sin deuda')+' · origen: '+esc(_dxOrigen(o.origen))+'</div>'
+        +((c.lat!=null&&c.lng!=null)?('<div style="margin-top:4px"><a class="btn btn-2" target="_blank" style="padding:3px 10px;font-size:12px;width:auto;display:inline-block" href="https://www.google.com/maps?q='+c.lat+','+c.lng+'">🗺️ Ver en el mapa</a></div>'):'')
+      +'</div>';
+    if(o.estado==='PENDIENTE_ADMIN'){
+      var rec=(o.recupero_equipo===true)?('✅ Equipo recuperado'+(o.equipo_serial?(' · serial '+esc(o.equipo_serial)):'')):(o.recupero_equipo===false?'⚠️ Sin recupero de equipo':'—');
+      h+='<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:13px"><b>Corte del técnico</b> '+(o.corte_at?('· '+fmtFechaHora(o.corte_at)):'')+'<br>'+rec+(o.obs_tecnico?('<br><span class="muted">🗣️ '+esc(o.obs_tecnico)+'</span>'):'')+'</div>';
+    }
+    if(o.estado==='ASIGNADA') h+='<div class="muted" style="margin-top:8px">🔧 Asignada a <b>'+esc(_cuadNombre(o.cuadrilla_id)||'—')+'</b>'+(o.fecha_agendada?(' · 📅 '+fmtFecha(o.fecha_agendada)):'')+'</div>';
+    if(o.resolucion) h+='<div class="muted" style="margin-top:8px">📝 '+esc(o.resolucion)+'</div>';
+    var btns='';
+    if(o.estado==='PENDIENTE'){ btns=_bx('btn btn-ok','d-asig','📍 Asignar a cuadrilla')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else if(o.estado==='ASIGNADA'){ btns=_bx('btn btn-ok','d-reasig','🔄 Reasignar cuadrilla')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else if(o.estado==='PENDIENTE_ADMIN'){ btns=(o.soporte_hecho?'<div style="color:#166534;font-size:13px">✅ Soporte: conexión eliminada</div>':_bx('btn btn-2','d-sop','☐ Soporte: eliminé la conexión en ISPcube'))+(o.comercial_hecho?'<div style="color:#166534;font-size:13px">✅ Comercial: cliente eliminado</div>':_bx('btn btn-2','d-com','☐ Comercial: nota de crédito + eliminé cliente'))+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else if(o.estado==='EN_REVISION'){ btns=_bx('btn btn-ok','d-volv','↩️ Volver a pendientes')+_bx('btn btn-2','d-anul','🟢 Pagó / sigue con servicio')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else { btns=_bx('btn btn-2','d-volv','↩️ Reabrir (a pendientes)'); }
+    modal(h+'<div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">'+btns+'</div><div style="margin-top:10px"><button class="btn btn-2" id="d-x">Cerrar</button></div>');
+    function run(body,msg,act){ sbPatch('desconexiones?id=eq.'+id,body).then(function(){ if(act) logAct(act,{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); toast(msg); vDesconexiones(); }); }
+    var g=function(x){return document.getElementById(x);};
+    g('d-x').addEventListener('click',cerrarModal);
+    if(g('d-asig')) g('d-asig').addEventListener('click',function(){ cerrarModal(); _dxAsignar(id); });
+    if(g('d-reasig')) g('d-reasig').addEventListener('click',function(){ cerrarModal(); _dxReasignar(id); });
+    if(g('d-rev')) g('d-rev').addEventListener('click',function(){ var n=prompt('¿Por qué la dejás pendiente de resolver? (opcional)','')||null; run({estado:'EN_REVISION',resolucion:n,resuelto_at:new Date().toISOString(),resuelto_por:USER.id},'⏸️ Pendiente de resolver','Desconexión a revisión'); });
+    if(g('d-can')) g('d-can').addEventListener('click',function(){ if(!confirm('¿Cancelar esta baja?')) return; run({estado:'CANCELADA',resolucion:'Cancelada por el admin',resuelto_at:new Date().toISOString()},'Cancelada','Canceló desconexión'); });
+    if(g('d-volv')) g('d-volv').addEventListener('click',function(){ run({estado:'PENDIENTE',cuadrilla_id:null,fecha_agendada:null,asignada_at:null,resolucion:null,resuelto_at:null},'↩️ Vuelta a pendientes','Reabrió desconexión'); });
+    if(g('d-anul')) g('d-anul').addEventListener('click',function(){ run({estado:'ANULADA_PAGO',resolucion:'El cliente pagó / sigue con servicio',resuelto_at:new Date().toISOString(),resuelto_por:USER.id},'🟢 Anulada — el cliente sigue','Anuló desconexión (pagó)'); });
+    if(g('d-sop')) g('d-sop').addEventListener('click',function(){ g('d-sop').disabled=true; sbPatch('desconexiones?id=eq.'+id+'&select=*',{soporte_hecho:true,soporte_at:new Date().toISOString(),soporte_por:USER.id}).then(function(r){ logAct('Soporte: eliminó conexión ISPcube',{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); _dxQuizaFinalizar(Array.isArray(r)?r[0]:null); }); });
+    if(g('d-com')) g('d-com').addEventListener('click',function(){ cerrarModal(); _dxComercial(id); });
   }
   function _dxAsignar(id){
     var cuadOpts='<option value="">— elegí —</option>'+REF.cuadrillas.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('');

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.18</title>
+<title>Nexa · Técnico — v0.19</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.18';
+  var VER='v0.19';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -418,22 +418,32 @@
   // ════════ DESCONEXIONES (TODOS los cortes pendientes, por cercanía) ════════
   var desconState={ q:'', list:null, gps:null };
   function vDescon(){
-    app.innerHTML=topBar('Desconexiones','cortes pendientes por cercanía')+'<div class="wrap">'
-      +'<div class="card"><div class="muted" style="font-size:13px">TODOS los cortes pendientes, ordenados por cercanía a vos. Si tenés uno cerca (aunque no sea de tu cuadrilla), lo podés hacer.</div>'
+    app.innerHTML=topBar('Desconexiones','cortes pendientes')+'<div class="wrap">'
+      +'<div class="card"><div class="muted" style="font-size:13px">TODOS los cortes pendientes. Tocá «Ordenar por cercanía» para ver primero los más cerca tuyo (aunque no sean de tu cuadrilla).</div>'
+      +'<button class="btn btn-2 btn-sm" id="dx-cerca" style="margin-top:8px">📍 Ordenar por cercanía</button>'
       +'<input id="dx-q" placeholder="Filtrar por nombre o barrio" value="'+esc(desconState.q)+'" style="margin-top:8px"></div>'
       +'<div id="dx-res"><div class="center"><div class="spin"></div></div></div></div>';
     wireTop();
     document.getElementById('dx-q').addEventListener('input',function(){ desconState.q=this.value; renderDescon(); });
+    document.getElementById('dx-cerca').addEventListener('click',function(){ _dxOrdenarGPS(false); });
     if(desconState.list) renderDescon(); else cargarDescon();
   }
   function cargarDescon(){
-    getGPS().then(function(g){ desconState.gps=g;
-      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
-        d=Array.isArray(d)?d:[];
-        d.forEach(function(o){ var c=o.clientes||{}; o._dist=(g&&c.lat!=null&&c.lng!=null)?haversine(g.lat,g.lng,c.lat,c.lng):(g?1e9:null); });
-        if(g) d.sort(function(a,b){ return a._dist-b._dist; });
-        desconState.list=d; renderDescon();
-      }).catch(function(){ var r=document.getElementById('dx-res'); if(r)r.innerHTML='<div class="center">Error al cargar.</div>'; });
+    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      desconState.list=d; renderDescon();
+      _dxOrdenarGPS(true);   // intento automático de ordenar por cercanía (no bloquea la lista)
+    }).catch(function(){ var r=document.getElementById('dx-res'); if(r)r.innerHTML='<div class="center">Error al cargar.</div>'; });
+  }
+  function _dxOrdenarGPS(silent){
+    var btn=document.getElementById('dx-cerca'); if(btn&&!silent){ btn.disabled=true; btn.textContent='📍 Buscando tu ubicación…'; }
+    getGPS().then(function(g){
+      if(btn){ btn.disabled=false; btn.textContent=(g?'📍 Reordenar por cercanía':'📍 Ordenar por cercanía'); }
+      if(!g){ if(!silent) toast('No pude obtener tu ubicación. Activá el GPS y el permiso de ubicación.'); return; }
+      desconState.gps=g;
+      (desconState.list||[]).forEach(function(o){ var c=o.clientes||{}; o._dist=(c.lat!=null&&c.lng!=null)?haversine(g.lat,g.lng,c.lat,c.lng):1e9; });
+      desconState.list.sort(function(a,b){ return (a._dist==null?1e9:a._dist)-(b._dist==null?1e9:b._dist); });
+      renderDescon();
     });
   }
   function desconCard(o){
