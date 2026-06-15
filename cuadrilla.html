@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.15</title>
+<title>Nexa · Técnico — v0.16</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.15';
+  var VER='v0.16';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -470,11 +470,13 @@
       +'<div class="card"><div class="label">Observación</div><textarea id="co-obs" rows="2" style="width:100%"></textarea></div>'
       +'<div class="err" id="co-err"></div>'
       +'<button class="btn btn-ok" id="co-confirmar" style="background:var(--rojo)">✂️ Confirmar corte</button>'
+      +'<button class="btn btn-2" id="co-pago" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">🟢 El cliente va a abonar — no cortar</button>'
       +'<button class="btn btn-2" id="co-volver" style="margin-top:10px">← Cancelar</button></div>';
     wireTop();
     document.getElementById('co-volver').addEventListener('click',vDescon);
     document.getElementById('co-rec-si').addEventListener('click',function(){ CORTE.recupero=true; renderCortar(); });
     document.getElementById('co-rec-no').addEventListener('click',function(){ CORTE.recupero=false; renderCortar(); });
+    document.getElementById('co-pago').addEventListener('click',cortePago);
     var fin=document.getElementById('co-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirCorteFotos(e.target.files); });
     Array.prototype.forEach.call(document.querySelectorAll('.cofoto-del'),function(b){ b.onclick=function(){ CORTE.fotos.splice(+b.getAttribute('data-i'),1); renderCortar(); }; });
     document.getElementById('co-confirmar').addEventListener('click',confirmarCorte);
@@ -507,6 +509,18 @@
       if(CORTE.recupero&&serial) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial),{estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}));
       Promise.all(jobs).then(function(){ toast('Corte registrado ✓ — pasa a administrativo'); if(desconState.list) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); }).catch(function(){ err.textContent='Error al registrar el corte.'; btn.disabled=false; btn.textContent='✂️ Confirmar corte'; });
     });
+  }
+  // El cliente dice que va a pagar → no se corta, se anula la orden y se deja el servicio
+  function cortePago(){
+    var c=CORTE.c, err=document.getElementById('co-err'); err.textContent='';
+    var nota=document.getElementById('co-obs').value.trim();
+    if(!confirm('El cliente va a abonar: NO se corta y se deja el servicio. ¿Confirmás?')) return;
+    var btn=document.getElementById('co-pago'); btn.disabled=true; btn.textContent='Registrando…';
+    var dxId=CORTE.dx&&CORTE.dx.id;
+    var cuerpo={ estado:'ANULADA_PAGO', resolucion:'El cliente dice que va a abonar (en la visita)'+(nota?(' — '+nota):''), resuelto_at:new Date().toISOString(), cerrado_por:CUAD.id, updated_at:new Date().toISOString() };
+    var main = dxId ? sbPatch('desconexiones?id=eq.'+dxId,cuerpo)
+                    : sbPost('desconexiones',Object.assign({cliente_id:c.id,cuadrilla_id:CUAD.id,origen:'manual'},cuerpo));
+    main.then(function(){ toast('🟢 Registrado — el cliente sigue con servicio'); if(desconState.list&&dxId) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); }).catch(function(){ err.textContent='No se pudo registrar.'; btn.disabled=false; btn.textContent='🟢 El cliente va a abonar — no cortar'; });
   }
 
   iniciar();
