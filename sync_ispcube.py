@@ -376,6 +376,27 @@ def anular_desconexiones_rehabilitados():
         except Exception as e: print(f"  ERROR anular desconexion {o['id']}: {e}")
     return n
 
+def limpiar_desconexiones_eliminados():
+    # Bajas abiertas cuyo cliente ya fue ELIMINADO de ISPcube (corte/baja hecho fuera del sistema) → se cierran.
+    try:
+        d = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&select=id,clientes!inner(estado)&clientes.estado=eq.eliminado&limit=2000")
+    except Exception as e:
+        print("WARN limpiar_desconexiones_eliminados:", e); return 0
+    d = d if isinstance(d, list) else []
+    if not d: return 0
+    if DRY:
+        print(f"🗑️ Desconexiones a cerrar por cliente eliminado (DRY): {len(d)}"); return len(d)
+    n = 0
+    for o in d:
+        try:
+            sb_patch("desconexiones?id=eq." + str(o["id"]),
+                     {"estado": "CANCELADA",
+                      "resolucion": "Cliente ya eliminado de ISPcube (baja hecha fuera del sistema)",
+                      "resuelto_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            n += 1
+        except Exception as e: print(f"  ERROR cerrar desconexion eliminado {o['id']}: {e}")
+    return n
+
 def main():
     t0 = time.time()
     # MODO DIAGNÓSTICO: DIAG=001906 -> imprime todos los campos de ese cliente
@@ -500,11 +521,12 @@ def main():
             except Exception as e: print(f"  ERROR eliminar {cid}: {e}")
         if eliminados: print(f"\n🗑️ Marcados 'eliminado' (borrados de ISPcube): {eliminados}")
 
-    # Desconexiones: auto-generar las pendientes (baja + bloqueado +30d) y auto-anular las de clientes rehabilitados
+    # Desconexiones: limpiar las de clientes eliminados, auto-generar las pendientes y auto-anular las de rehabilitados
+    limpiadas = limpiar_desconexiones_eliminados()
     generadas = generar_desconexiones_pendientes()
     anuladas = anular_desconexiones_rehabilitados()
 
-    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados, {generadas} desconexiones generadas, {anuladas} anuladas (rehabilitados). {round(time.time()-t0)}s")
+    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados, {generadas} desconexiones generadas, {anuladas} anuladas, {limpiadas} cerradas por eliminado. {round(time.time()-t0)}s")
     if log_id:
         try: sb_patch("sync_log?id=eq." + str(log_id),
                       {"estado": "ok", "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
