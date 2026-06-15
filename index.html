@@ -234,7 +234,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.01';
+  var VER='v1.02';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2762,7 +2762,7 @@
     if(o.estado==='EN_REVISION') return '⏸️ '+esc(o.resolucion||'a revisar');
     if(o.estado==='FINALIZADO') return '✅ '+(o.finalizado_at?fmtFecha(o.finalizado_at):'')+(o.tenia_deuda?('<br><span class="muted">NC '+esc(o.nota_credito||'')+'</span>'):'');
     if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA') return '<span class="muted" style="font-size:12px">'+_dxEstadoTxt(o.estado)+(o.resolucion?('<br>'+esc(o.resolucion)):'')+'</span>';
-    var c=o.clientes||{}; return '<span class="muted" style="font-size:12px">'+esc(_domLimpio?(_domLimpio(c.domicilio_full)||''):(c.domicilio_full||''))+'</span>';
+    var c=o.clientes||{}; return '<span class="muted" style="font-size:12px">📦 '+esc(c.caja_nap||'—')+(c.puerto?(' · P'+esc(c.puerto)):'')+(c.precinto?(' · Prec '+esc(c.precinto)):'')+'</span>';
   }
   function _bx(cls,id,txt){ return '<button class="'+cls+'" data-id="'+id+'" style="padding:3px 8px;font-size:12px;width:auto;display:inline-block;margin:1px">'+txt+'</button>'; }
   function _dxAcc(o){
@@ -2781,6 +2781,7 @@
       {k:'isp',t:'Cód ISP',sort:function(o){return (o.clientes&&o.clientes.codigo_ispcube)||'';},r:function(o){return esc((o.clientes&&o.clientes.codigo_ispcube)||'—');}},
       {k:'cliente',t:'Cliente',sort:function(o){var c=o.clientes||{};return ((c.nombre||'')+' '+(c.apellido||'')).trim().toLowerCase();},r:function(o){var c=o.clientes||{};return esc(((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)');}},
       {k:'barrio',t:'Barrio',sort:function(o){return ((o.clientes&&o.clientes.barrio)||'').toLowerCase();},r:function(o){return esc((o.clientes&&o.clientes.barrio)||'—');}},
+      {k:'dir',t:'Dirección',sort:function(o){return ((o.clientes&&o.clientes.domicilio_full)||'').toLowerCase();},r:function(o){var dm=(o.clientes&&o.clientes.domicilio_full)||'';return dm?('<span style="font-size:12px">'+esc((typeof _domLimpio==='function')?(_domLimpio(dm)||dm):dm)+'</span>'):'<span class="muted">—</span>';}},
       {k:'deuda',t:'Deuda',sort:function(o){return Number((o.clientes&&o.clientes.deuda)||0);},r:function(o){var d=Number((o.clientes&&o.clientes.deuda)||0);return d>0?('<span style="color:#991b1b;font-weight:700">$'+d.toLocaleString('es-AR')+'</span>'):'<span class="muted">—</span>';}},
       {k:'origen',t:'Origen',sort:function(o){return o.origen||'';},r:function(o){return '<span style="font-size:12px">'+esc(_dxOrigen(o.origen))+'</span>';}},
       {k:'info',t:'Detalle',sort:null,r:_dxInfo},
