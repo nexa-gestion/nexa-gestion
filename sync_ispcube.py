@@ -122,7 +122,7 @@ def fetch_nexa():
     out, page = {}, 0
     while True:
         r = urllib.request.Request(
-            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto&codigo_ispcube=not.is.null&order=id.asc",
+            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,bloqueado_desde&codigo_ispcube=not.is.null&order=id.asc",
             headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
         chunk = json.load(urllib.request.urlopen(r, timeout=60))
         for c in chunk: out[c["codigo_ispcube"]] = c
@@ -437,11 +437,14 @@ def main():
         deu = _f(c.get("duedebt"))
         if code in nexa:
             cur = nexa[code]; upd = {}
-            if est and est != cur["estado"]:
-                upd["estado"] = est
-                # marca/limpia desde cuándo está bloqueado (para la vía "bloqueado +30d" de desconexiones)
-                if est == "bloqueado": upd["bloqueado_desde"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                elif est == "activo": upd["bloqueado_desde"] = None
+            if est and est != cur["estado"]: upd["estado"] = est
+            # fecha REAL de bloqueo desde ISPcube (block_date) → vía "bloqueado +30d" de desconexiones
+            if est == "bloqueado":
+                bd = c.get("block_date")
+                bd_iso = (str(bd)[:19].replace(" ", "T") + "Z") if bd else None
+                if bd_iso and bd_iso != (cur.get("bloqueado_desde") or ""): upd["bloqueado_desde"] = bd_iso
+            elif est == "activo" and cur.get("bloqueado_desde"):
+                upd["bloqueado_desde"] = None
             if cur["estado"] == "eliminado": upd["eliminado_isp_at"] = None   # reapareció en ISPcube → revivir
             if deu is not None and float(deu) != float(cur.get("deuda") or 0): upd["deuda"] = deu
             cx = conex(c, portmap)
