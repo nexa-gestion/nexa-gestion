@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.16</title>
+<title>Nexa · Técnico — v0.17</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.16';
+  var VER='v0.17';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -415,11 +415,11 @@
     var ct=document.getElementById('cl-cortar'); if(ct) ct.addEventListener('click',function(){ vCortar(c); });
   }
 
-  // ════════ DESCONEXIONES (órdenes asignadas a tu cuadrilla) ════════
+  // ════════ DESCONEXIONES (TODOS los cortes pendientes, por cercanía) ════════
   var desconState={ q:'', list:null, gps:null };
   function vDescon(){
-    app.innerHTML=topBar('Desconexiones','asignadas a tu cuadrilla')+'<div class="wrap">'
-      +'<div class="card"><div class="muted" style="font-size:13px">Bajas asignadas a tu cuadrilla, ordenadas por cercanía. Hacé el corte/recupero y registralo.</div>'
+    app.innerHTML=topBar('Desconexiones','cortes pendientes por cercanía')+'<div class="wrap">'
+      +'<div class="card"><div class="muted" style="font-size:13px">TODOS los cortes pendientes, ordenados por cercanía a vos. Si tenés uno cerca (aunque no sea de tu cuadrilla), lo podés hacer.</div>'
       +'<input id="dx-q" placeholder="Filtrar por nombre o barrio" value="'+esc(desconState.q)+'" style="margin-top:8px"></div>'
       +'<div id="dx-res"><div class="center"><div class="spin"></div></div></div></div>';
     wireTop();
@@ -428,7 +428,7 @@
   }
   function cargarDescon(){
     getGPS().then(function(g){ desconState.gps=g;
-      sbGet('desconexiones?estado=eq.ASIGNADA&cuadrilla_id=eq.'+CUAD.id+'&select=id,cliente_id,fecha_agendada,clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=1000').then(function(d){
+      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
         d=Array.isArray(d)?d:[];
         d.forEach(function(o){ var c=o.clientes||{}; o._dist=(g&&c.lat!=null&&c.lng!=null)?haversine(g.lat,g.lng,c.lat,c.lng):(g?1e9:null); });
         if(g) d.sort(function(a,b){ return a._dist-b._dist; });
@@ -439,7 +439,8 @@
   function desconCard(o){
     var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
     var dist=(o._dist!=null&&o._dist<1e8)?('<span class="badge-tt">'+(o._dist<1?(Math.round(o._dist*1000)+' m'):(o._dist.toFixed(1)+' km'))+'</span>'):'';
-    return '<div class="ot cli-card" data-id="'+o.id+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+'</div></div>'
+    var sinUbic=(c.lat==null||c.lng==null)?'<span class="badge-tt" style="background:#fee2e2;color:#991b1b">sin ubicación</span>':'';
+    return '<div class="ot cli-card" data-id="'+o.id+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+' '+sinUbic+'</div></div>'
       +'<div class="cli">'+esc(nom)+'</div>'+(c.domicilio_full?'<div class="dir">📍 '+esc(c.domicilio_full)+'</div>':'')+(c.barrio?'<div class="dir">'+esc(c.barrio)+'</div>':'')
       +'<div class="dir" style="margin-top:4px">📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
       +'<div class="acc">'+((c.lat!=null||c.domicilio_full)?'<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(c)+'">🚗 Ir</a>':'')
@@ -450,8 +451,8 @@
     var res=document.getElementById('dx-res'); if(!res||!desconState.list) return;
     var q=desconState.q.toLowerCase();
     var list=desconState.list.filter(function(o){ if(!q)return true; var c=o.clientes||{}; return (((c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.numero_cliente||'')).toLowerCase()).indexOf(q)>=0; });
-    if(!list.length){ res.innerHTML='<div class="center" style="padding:24px 0">No tenés desconexiones asignadas. 🎉</div>'; return; }
-    res.innerHTML='<div class="muted" style="margin:6px 0">'+list.length+' asignada(s)'+(desconState.gps?' · por cercanía':' · (sin GPS)')+'</div>'+list.slice(0,150).map(desconCard).join('');
+    if(!list.length){ res.innerHTML='<div class="center" style="padding:24px 0">No hay cortes pendientes. 🎉</div>'; return; }
+    res.innerHTML='<div class="muted" style="margin:6px 0">'+list.length+' corte(s) pendiente(s)'+(desconState.gps?' · por cercanía':' · (activá el GPS para ordenar por cercanía)')+'</div>'+list.slice(0,150).map(desconCard).join('');
     Array.prototype.forEach.call(res.querySelectorAll('.cli-card'),function(el){ el.addEventListener('click',function(ev){ if(ev.target.closest('a'))return; var o=desconState.list.filter(function(x){return x.id==el.getAttribute('data-id');})[0]; if(o) vCortar(o); }); });
   }
 
@@ -499,7 +500,7 @@
     var serial=document.getElementById('co-serial').value.trim(), obs=document.getElementById('co-obs').value.trim();
     if(CORTE.recupero&&!serial){ err.textContent='Poné el serial/MAC del equipo recuperado (o marcá «No» en recupero).'; btn.disabled=false; btn.textContent='✂️ Confirmar corte'; return; }
     getGPS().then(function(g){
-      var cierre={ estado:'PENDIENTE_ADMIN', recupero_equipo:!!CORTE.recupero, equipo_serial:serial||null, caja_nap:c.caja_nap||null, puerto:c.puerto||null, precinto:c.precinto||null, obs_tecnico:obs||null, foto_url:(CORTE.fotos[0]?CORTE.fotos[0].url:null), corte_at:new Date().toISOString(), cerrado_por:CUAD.id, updated_at:new Date().toISOString() };
+      var cierre={ estado:'PENDIENTE_ADMIN', cuadrilla_id:CUAD.id, recupero_equipo:!!CORTE.recupero, equipo_serial:serial||null, caja_nap:c.caja_nap||null, puerto:c.puerto||null, precinto:c.precinto||null, obs_tecnico:obs||null, foto_url:(CORTE.fotos[0]?CORTE.fotos[0].url:null), corte_at:new Date().toISOString(), cerrado_por:CUAD.id, updated_at:new Date().toISOString() };
       if(g){ cierre.lat=g.lat; cierre.lng=g.lng; }
       var dxId=CORTE.dx&&CORTE.dx.id;
       // si vino de una orden asignada → cierra esa orden; si no, crea una ya cerrada (compat)

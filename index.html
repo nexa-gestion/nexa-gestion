@@ -234,7 +234,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v0.98';
+  var VER='v0.99';
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
   var SYNC_KEY='nexa-sync-7h2k';   // la misma TRIGGER_KEY del Worker
@@ -2685,6 +2685,22 @@
   function _dxTabs(){ var v=window._dxState.ver; return '<div class="toolbar">'+DX_TABS.map(function(t){return '<button class="btn '+(v===t[0]?'btn-pri':'btn-2')+' dx-tab" data-ver="'+t[0]+'">'+t[1]+'</button>';}).join('')+'</div>'; }
   function _dxOrigen(o){ return {manual:'✋ manual',baja_isp:'⬇️ baja ISPcube',bloqueado_30d:'⛔ bloqueado +30d'}[o]||o||''; }
   function _dxEstadoTxt(e){ return {ANULADA_PAGO:'🟢 Anulada (pagó / sigue)',CANCELADA:'⛔ Cancelada',EN_REVISION:'⏸️ En revisión',FINALIZADO:'✅ Finalizada'}[e]||e; }
+  // Auto-genera órdenes PENDIENTE para los clientes a dar de baja (baja ISPcube + bloqueado +30d) que no tengan ya una
+  function _dxAutoGenerar(cb){
+    var cut=new Date(Date.now()-30*864e5).toISOString();
+    Promise.all([
+      sbGet('desconexiones?select=cliente_id&limit=20000'),
+      sbGet('clientes?estado=eq.baja&select=id&limit=3000'),
+      sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&select=id&limit=3000')
+    ]).then(function(r){
+      var ya={}; (r[0]||[]).forEach(function(x){ ya[x.cliente_id]=1; });
+      var nuevos=[];
+      (r[1]||[]).forEach(function(c){ if(!ya[c.id]) nuevos.push({cliente_id:c.id,estado:'PENDIENTE',origen:'baja_isp',created_by:USER.id}); });
+      (r[2]||[]).forEach(function(c){ if(!ya[c.id]) nuevos.push({cliente_id:c.id,estado:'PENDIENTE',origen:'bloqueado_30d',created_by:USER.id}); });
+      if(!nuevos.length){ cb(0); return; }
+      sbPost('desconexiones',nuevos).then(function(){ cb(nuevos.length); }).catch(function(){ cb(0); });
+    }).catch(function(){ cb(0); });
+  }
   // Auto-anula las bajas PENDIENTE/ASIGNADA cuyo cliente ya volvió a ACTIVO (pagó antes del corte) y sigue al callback
   function _dxAutoAnular(cb){
     sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&select=id,cliente_id,clientes!inner(estado)&clientes.estado=eq.activo&limit=1000').then(function(d){
@@ -2698,7 +2714,9 @@
     if(!_dxEsAdmin()){ view.innerHTML='<h1>Desconexiones</h1><div class="center">Solo disponible para administrativo, gerencial o superadmin.</div>'; return; }
     if(!window._dxState) window._dxState={ver:'PENDIENTE'};
     var st=window._dxState; loading();
-    if(st.ver==='cand') return _dxCandidatos();
+    _dxAutoGenerar(function(gen){
+    if(gen>0) toast('➕ '+gen+' desconexión(es) nuevas en Pendientes');
+    if(st.ver==='cand'){ _dxCandidatos(); return; }
     var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':'estado=eq.'+st.ver;
     _dxAutoAnular(function(){
     sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=created_at.desc&limit=2000').then(function(d){
@@ -2708,6 +2726,7 @@
       h+='<div style="display:flex;flex-direction:column;gap:10px">'+d.map(_dxCard).join('')+'</div></div>';
       view.innerHTML=h; _dxWire(); _dxBadge();
     }).catch(function(){ view.innerHTML='<h1>🔌 Desconexiones</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL v32?</div>'; });
+    });
     });
   }
   function _dxCard(o){
