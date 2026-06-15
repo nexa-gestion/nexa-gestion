@@ -234,7 +234,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.04';
+  var VER='v1.05';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -274,7 +274,21 @@
   }
 
   // ── REST helpers ──
-  function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){return r.json();}); }
+  function sbGet(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:H}).then(function(r){
+    if(!r.ok){ return r.text().then(function(t){ var e; try{ e=JSON.parse(t); }catch(x){ e={message:(t||('HTTP '+r.status))}; } e._http=r.status; throw e; }); }
+    return r.json();
+  }); }
+  // Trae TODAS las filas paginando con Range (evita el tope de 1000 de PostgREST). Usar en cuentas/sumatorias.
+  function sbGetAll(path){
+    var all=[], page=0, PG=1000;
+    function next(){
+      return fetch(SB_URL+'/rest/v1/'+path,{headers:Object.assign({},H,{'Range':(page*PG)+'-'+(page*PG+PG-1)})}).then(function(r){
+        if(!r.ok){ return r.text().then(function(t){ var e; try{ e=JSON.parse(t); }catch(x){ e={message:t}; } throw e; }); }
+        return r.json();
+      }).then(function(d){ d=Array.isArray(d)?d:[]; all=all.concat(d); if(d.length<PG) return all; page++; return next(); });
+    }
+    return next();
+  }
   function sbCountEst(path){ return fetch(SB_URL+'/rest/v1/'+path,{headers:Object.assign({},H,{'Prefer':'count=estimated','Range':'0-0'})}).then(function(r){ var cr=r.headers.get('content-range')||'/0'; return parseInt(cr.split('/')[1])||0; }); }
   var _leafletLoading=false, _leafletCbs=[];
   function ensureLeaflet(cb){
@@ -541,9 +555,9 @@
     var cont=document.getElementById('dash-vend'); if(!cont) return;
     Promise.all([
       sbGet('vendedores?select=id,comision_tipo,comision_valor&limit=2000'),
-      sbGet('solicitudes_alta?vendedor_id=not.is.null&select=id,vendedor_id,comision_monto,plan_id,planes(precio,comision_monto)&limit=5000'),
-      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&solicitud_id=not.is.null&select=solicitud_id&limit=5000'),
-      sbGet('vendedor_pagos?select=vendedor_id,monto&limit=5000')
+      sbGetAll('solicitudes_alta?vendedor_id=not.is.null&select=id,vendedor_id,comision_monto,plan_id,planes(precio,comision_monto)'),
+      sbGetAll('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&solicitud_id=not.is.null&select=solicitud_id'),
+      sbGetAll('vendedor_pagos?select=vendedor_id,monto')
     ]).then(function(r){
       var vends=r[0]||[], ventas=r[1]||[], inst=r[2]||[], pagos=r[3]||[];
       var instSet={}; inst.forEach(function(o){ instSet[o.solicitud_id]=true; });
@@ -2280,7 +2294,7 @@
   function _infPeriodo(){ return 'período '+fmtFecha(infState.desde)+' a '+fmtFecha(infState.hasta)+(infState.cuad?(' · '+(REF.cuadrillas.filter(function(c){return c.id==infState.cuad;})[0]||{}).nombre):''); }
   function infRendimiento(cont){
     var cuad=infState.cuad?('&cuadrilla_id=eq.'+infState.cuad):'';
-    sbGet('ordenes_trabajo?select=estado,cuadrilla_id,inicio_tec_at,fin_tec_at,cuadrillas(nombre)&created_at=gte.'+infState.desde+'&created_at=lte.'+infState.hasta+'T23:59:59'+cuad+'&limit=5000').then(function(d){
+    sbGetAll('ordenes_trabajo?select=estado,cuadrilla_id,inicio_tec_at,fin_tec_at,cuadrillas(nombre)&created_at=gte.'+infState.desde+'&created_at=lte.'+infState.hasta+'T23:59:59'+cuad+'').then(function(d){
       d=Array.isArray(d)?d:[];
       function bucket(e){ if(e==='FINALIZADA'||e==='CERRADA_TECNICO')return 'fin'; if(e==='NO_REALIZADA'||e==='CANCELADA')return 'nr'; return 'pend'; }
       var byC={}, tot={fin:0,pend:0,nr:0,total:0,durSum:0,durN:0};
@@ -2308,7 +2322,7 @@
   }
   function infMateriales(cont){
     var cuad=infState.cuad?('&ordenes_trabajo.cuadrilla_id=eq.'+infState.cuad):'';
-    sbGet('ot_materiales?select=cantidad,serial,material_id,catalogo_materiales(nombre,unidad),ordenes_trabajo!inner(estado,fin_tec_at,cuadrilla_id)&ordenes_trabajo.estado=eq.FINALIZADA&ordenes_trabajo.fin_tec_at=gte.'+infState.desde+'&ordenes_trabajo.fin_tec_at=lte.'+infState.hasta+'T23:59:59'+cuad+'&limit=10000').then(function(d){
+    sbGetAll('ot_materiales?select=cantidad,serial,material_id,catalogo_materiales(nombre,unidad),ordenes_trabajo!inner(estado,fin_tec_at,cuadrilla_id)&ordenes_trabajo.estado=eq.FINALIZADA&ordenes_trabajo.fin_tec_at=gte.'+infState.desde+'&ordenes_trabajo.fin_tec_at=lte.'+infState.hasta+'T23:59:59'+cuad+'').then(function(d){
       d=Array.isArray(d)?d:[];
       var byM={};
       d.forEach(function(r){ var k=r.material_id, nom=r.catalogo_materiales?r.catalogo_materiales.nombre:('Mat '+k); var m=byM[k]||(byM[k]={nombre:nom,unidad:r.catalogo_materiales?r.catalogo_materiales.unidad:'',cant:0,seriales:0}); m.cant+=Number(r.cantidad)||0; if(r.serial)m.seriales++; });
@@ -2325,7 +2339,7 @@
   }
   function infManoObra(cont){
     var cuad=infState.cuad?('&ordenes_trabajo.cuadrilla_id=eq.'+infState.cuad):'';
-    sbGet('ot_mano_obra?select=cantidad,nombre,ordenes_trabajo!inner(estado,fin_tec_at,cuadrilla_id)&ordenes_trabajo.estado=eq.FINALIZADA&ordenes_trabajo.fin_tec_at=gte.'+infState.desde+'&ordenes_trabajo.fin_tec_at=lte.'+infState.hasta+'T23:59:59'+cuad+'&limit=10000').then(function(d){
+    sbGetAll('ot_mano_obra?select=cantidad,nombre,ordenes_trabajo!inner(estado,fin_tec_at,cuadrilla_id)&ordenes_trabajo.estado=eq.FINALIZADA&ordenes_trabajo.fin_tec_at=gte.'+infState.desde+'&ordenes_trabajo.fin_tec_at=lte.'+infState.hasta+'T23:59:59'+cuad+'').then(function(d){
       d=Array.isArray(d)?d:[];
       var byN={};
       d.forEach(function(r){ var k=r.nombre||'(s/n)'; var m=byN[k]||(byN[k]={nombre:k,cant:0}); m.cant+=Number(r.cantidad)||0; });
@@ -3035,9 +3049,9 @@
     loading();
     Promise.all([
       sbGet('vendedores?select=id,nombre,comision_tipo,comision_valor,activo&order=nombre'),
-      sbGet('solicitudes_alta?vendedor_id=not.is.null&select=id,cliente_id,vendedor_id,comision_monto,plan_id,planes(precio,comision_monto)&limit=5000'),
-      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&solicitud_id=not.is.null&select=solicitud_id&limit=5000'),
-      sbGet('vendedor_pagos?select=vendedor_id,monto&limit=5000')
+      sbGetAll('solicitudes_alta?vendedor_id=not.is.null&select=id,cliente_id,vendedor_id,comision_monto,plan_id,planes(precio,comision_monto)'),
+      sbGetAll('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&solicitud_id=not.is.null&select=solicitud_id'),
+      sbGetAll('vendedor_pagos?select=vendedor_id,monto')
     ]).then(function(r){
       var vends=r[0]||[], ventas=r[1]||[], inst=r[2]||[], pagos=r[3]||[];
       // "instalada" = la instalación de ESA solicitud puntual está finalizada (por solicitud_id, no por cliente)
@@ -3065,8 +3079,8 @@
     loading();
     Promise.all([
       sbGet('vendedores?id=eq.'+vId+'&select=*&limit=1'),
-      sbGet('solicitudes_alta?vendedor_id=eq.'+vId+'&select=id,nombre,apellido,cliente_id,comision_monto,plan_id,planes(nombre,precio,comision_monto),clientes(numero_cliente)&order=created_at.desc&limit=5000'),
-      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&solicitud_id=not.is.null&select=solicitud_id,validado_admin_at,fin_tec_at&limit=5000'),
+      sbGetAll('solicitudes_alta?vendedor_id=eq.'+vId+'&select=id,nombre,apellido,cliente_id,comision_monto,plan_id,planes(nombre,precio,comision_monto),clientes(numero_cliente)&order=created_at.desc'),
+      sbGetAll('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&solicitud_id=not.is.null&select=solicitud_id,validado_admin_at,fin_tec_at'),
       sbGet('vendedor_pagos?vendedor_id=eq.'+vId+'&select=*&order=fecha.desc&limit=2000')
     ]).then(function(r){
       var v=(r[0]||[])[0]; if(!v){ vComisiones(); return; }
