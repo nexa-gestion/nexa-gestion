@@ -235,7 +235,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.07';
+  var VER='v1.08';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4048,7 +4048,7 @@
     view.innerHTML='<h1>Cuentas TV (Espacio Giga)</h1><p class="sub">Pool de cuentas de TV online. Reemplaza la planilla.</p>'
       +'<div class="kpis" id="tv-kpis"></div>'
       +'<div class="toolbar" style="margin-top:14px"><input id="tv-q" placeholder="Buscar usuario / mail / abonado" style="min-width:240px" value="'+esc(tvState.q)+'">'
-      +'<select id="tv-estado"><option value="">Todos</option>'+opt(['DISPONIBLE','EN_USO','BAJA_PENDIENTE'],tvState.estado)+'</select>'
+      +'<select id="tv-estado"><option value="">Todos</option>'+opt(['DISPONIBLE','EN_USO','BAJA_PENDIENTE'],tvState.estado)+'<option value="__BLOQ__"'+(tvState.estado==='__BLOQ__'?' selected':'')+'>⚠️ Cliente bloqueado</option></select>'
       +'<button class="btn btn-pri" id="tv-buscar">Buscar</button>'
       +'<button class="btn btn-ok" id="tv-nueva" style="margin-left:auto">+ Nueva cuenta</button></div>'
       +'<div id="tv-tabla"></div>';
@@ -4056,15 +4056,17 @@
     document.getElementById('tv-buscar').addEventListener('click',function(){ leer(); cargarTV(); });
     document.getElementById('tv-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leer(); cargarTV(); } });
     document.getElementById('tv-nueva').addEventListener('click',function(){ fichaTV(null); });
-    Promise.all([ sbCount('cuentas_tv?estado=eq.DISPONIBLE&select=id'), sbCount('cuentas_tv?estado=eq.EN_USO&select=id'), sbCount('cuentas_tv?estado=eq.BAJA_PENDIENTE&select=id'), sbCount('cuentas_tv?select=id') ]).then(function(c){
-      var k=document.getElementById('tv-kpis'); if(k) k.innerHTML=kpi(c[0],'Disponibles','g')+kpi(c[1],'En uso','b')+kpi(c[2],'A cambiar clave','w')+kpi(c[3],'Total','');
+    Promise.all([ sbCount('cuentas_tv?estado=eq.DISPONIBLE&select=id'), sbCount('cuentas_tv?estado=eq.EN_USO&select=id'), sbCount('cuentas_tv?estado=eq.BAJA_PENDIENTE&select=id'), sbCount('cuentas_tv?select=id'), sbCount('cuentas_tv?estado=eq.EN_USO&select=id,clientes!inner(estado)&clientes.estado=eq.bloqueado').catch(function(){return 0;}) ]).then(function(c){
+      var k=document.getElementById('tv-kpis'); if(k) k.innerHTML=kpi(c[0],'Disponibles','g')+kpi(c[1],'En uso','b')+kpi(c[2],'A cambiar clave','w')+kpi(c[3],'Total','')+(c[4]?kpi(c[4],'⚠️ Cliente bloqueado','r'):'');
     });
     cargarTV();
   }
   function cargarTV(){
     var cont=document.getElementById('tv-tabla'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    var p='cuentas_tv?select=*,clientes(numero_cliente,nombre,apellido)&order=mail&limit=1000';
-    if(tvState.estado) p+='&estado=eq.'+tvState.estado;
+    var bloq=tvState.estado==='__BLOQ__';
+    var p='cuentas_tv?select=*,clientes'+(bloq?'!inner':'')+'(numero_cliente,nombre,apellido,estado)&order=mail&limit=1000';
+    if(bloq) p+='&estado=eq.EN_USO&clientes.estado=eq.bloqueado';
+    else if(tvState.estado) p+='&estado=eq.'+tvState.estado;
     if(tvState.q){ var q=tvState.q.replace(/[(),]/g,' '); p+='&or=(usuario.ilike.*'+q+'*,mail.ilike.*'+q+'*,abonado_numero.ilike.*'+q+'*,cic.ilike.*'+q+'*)'; }
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">Sin cuentas.</div>'; return; }
@@ -4075,7 +4077,7 @@
         {k:'cic',t:'CIC',def:false,sort:function(t){return t.cic||'';},r:function(t){return esc(t.cic||'');}},
         {k:'nro_isp',t:'N° ISP',def:false,sort:function(t){return t.nro_isp||'';},r:function(t){return esc(t.nro_isp||'');}},
         {k:'futbol',t:'Fútbol',sort:function(t){return t.pack_futbol?1:0;},r:function(t){return t.pack_futbol?'⚽':'—';}},
-        {k:'cliente',t:'Cliente Nexa',sort:function(t){return t.clientes?t.clientes.numero_cliente:0;},r:function(t){ if(t.clientes)return 'N°'+esc(t.clientes.numero_cliente)+' '+esc(t.clientes.nombre||''); if(t.nro_isp)return '<span class="muted">ISP '+esc(t.nro_isp)+' · sin vincular</span>'; return '<span class="muted">—</span>'; }},
+        {k:'cliente',t:'Cliente Nexa',sort:function(t){return t.clientes?t.clientes.numero_cliente:0;},r:function(t){ var blo=t.clientes&&t.clientes.estado==='bloqueado'; var base; if(t.clientes) base='N°'+esc(t.clientes.numero_cliente)+' '+esc(t.clientes.nombre||''); else if(t.nro_isp) base='<span class="muted">ISP '+esc(t.nro_isp)+' · sin vincular</span>'; else base='<span class="muted">—</span>'; return base+(blo?' <span class="pill p-baja" title="Cliente bloqueado en ISP — cambiá la clave y liberá la cuenta">⚠️ BLOQUEADO</span>':''); }},
         {k:'estado',t:'Estado',sort:function(t){return t.estado||'';},r:function(t){return tvPill(t.estado);}}
       ];
       gridRender(cont,cols,d,{key:'tv',note:d.length+' cuentas',onRow:function(t){ fichaTV(t); }});
@@ -4088,7 +4090,9 @@
     t=t||{};
     // cliente vinculado (resuelto por nro_isp = numero_cliente); arranca con el que ya tiene
     var linkedCli=t.clientes?{ id:t.cliente_id, numero_cliente:t.clientes.numero_cliente, nombre:t.clientes.nombre, apellido:t.clientes.apellido }:null;
+    var _cliBlo=t.clientes&&t.clientes.estado==='bloqueado';
     modal('<h2>'+(t.id?'Cuenta TV':'Nueva cuenta TV')+'</h2>'
+      +(_cliBlo?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;margin:8px 0;color:#991b1b;font-size:13px">⚠️ <b>El cliente está BLOQUEADO en ISP.</b> Cambiá la clave en Gigared y liberá esta cuenta («Dar de baja TV» → queda «a cambiar clave») para poder reusarla en otro pedido.</div>':'')
       +'<div class="row"><div><label class="l">Usuario</label><input id="tv-usuario" value="'+esc(t.usuario||'')+'"></div>'
       +'<div><label class="l">Contraseña</label><div style="display:flex;gap:6px"><input id="tv-pass" value="'+esc(t.contrasena||'')+'" style="flex:1"><button type="button" class="btn btn-2" id="tv-genpass" title="Generar clave de 8 caracteres (7 dígitos + 1 letra)" style="white-space:nowrap">🎲 Generar</button></div></div></div>'
       +'<label class="l">Mail</label><input id="tv-mail" value="'+esc(t.mail||'')+'">'
