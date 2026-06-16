@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.22</title>
+<title>Nexa · Técnico — v0.23</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.22';
+  var VER='v0.23';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -238,8 +238,29 @@
     ]).then(function(r){
       var ot=(r[0]&&r[0][0])||o, tipos=_cieArr(r[1]), tec=ot.clientes?ot.clientes.tecnologia:'';
       CIE={ o:ot, accion:(modoRechazo?'NO_REALIZADA':'REALIZADA'), modoRechazo:!!modoRechazo, tipos:tipos, ttId:(ot.tipo_trabajo_id||_ttPorTec(tipos,tec)||null), kitMat:[], kitMo:[], seriales:_cieArr(r[2]), motivos:_cieArr(r[3]), datosAdmin:_cieArr(r[4]), mats:{}, mos:{}, datos:{}, fotos:[] };
+      if(!modoRechazo && _cieRestaurar()) toast('📋 Recuperé un cierre sin terminar de esta OT');
       cieCargarKit();
     });
+  }
+  // ── Borrador persistente del cierre (sobrevive corte de señal / cierre de la app) ──
+  function _cieBkey(){ return (CIE&&CIE.o)?('nexa_cie_'+CIE.o.id):null; }
+  function _cieGuardar(){
+    if(!CIE||!CIE.o||CIE.modoRechazo) return;   // los rechazos son rápidos, no se persisten
+    try{ localStorage.setItem(_cieBkey(), JSON.stringify({ accion:CIE.accion, ttId:CIE.ttId, mats:CIE.mats, mos:CIE.mos, datos:CIE.datos,
+      fotos:(CIE.fotos||[]).filter(function(f){return f.url;}).map(function(f){return {url:f.url,preview:f.url}; }), t:Date.now() })); }catch(e){}
+  }
+  function _cieBorrar(){ try{ var k=_cieBkey(); if(k) localStorage.removeItem(k); }catch(e){} }
+  function _cieRestaurar(){
+    try{ var k=_cieBkey(), raw=k&&localStorage.getItem(k); if(!raw) return false;
+      var b=JSON.parse(raw); if(!b||(b.t&&Date.now()-b.t>86400000)){ _cieBorrar(); return false; }
+      if(b.accion) CIE.accion=b.accion;
+      if(b.ttId) CIE.ttId=b.ttId;
+      if(b.mats&&Object.keys(b.mats).length) CIE.mats=b.mats;
+      if(b.mos&&Object.keys(b.mos).length) CIE.mos=b.mos;
+      if(b.datos) CIE.datos=b.datos;
+      if(b.fotos&&b.fotos.length) CIE.fotos=b.fotos;
+      return true;
+    }catch(e){ return false; }
   }
   // Trae materiales + mano de obra del tipo de trabajo elegido y re-renderiza (el técnico elige primero, después aparece el kit)
   function cieCargarKit(){
@@ -315,15 +336,16 @@
     if(ano) ano.addEventListener('click',function(){ CIE.accion='NO_REALIZADA'; renderCierre(); });
     var ctt=document.getElementById('cie-tt'); if(ctt) ctt.addEventListener('change',function(){ CIE.ttId=ctt.value?Number(ctt.value):null; CIE.mats={}; CIE.mos={}; cieCargarKit(); });
     // Cantidad editable (se escribe directo, arranca vacío) — guarda sin re-renderizar para no perder el foco
-    each('.mat-cant',function(inp){ inp.oninput=function(){ cieMat(inp.getAttribute('data-m')).cant=Math.max(0,parseInt(inp.value,10)||0); }; });
-    each('.mo-cant',function(inp){ inp.oninput=function(){ CIE.mos[inp.getAttribute('data-m')]=Math.max(0,parseInt(inp.value,10)||0); }; });
+    each('.mat-cant',function(inp){ inp.oninput=function(){ cieMat(inp.getAttribute('data-m')).cant=Math.max(0,parseInt(inp.value,10)||0); _cieGuardar(); }; });
+    each('.mo-cant',function(inp){ inp.oninput=function(){ CIE.mos[inp.getAttribute('data-m')]=Math.max(0,parseInt(inp.value,10)||0); _cieGuardar(); }; });
     // Serial: tildar/destildar (sin tope) o escanear/escribir; la cantidad la dan los seriales elegidos
     each('.ser-chip',function(b){ b.onclick=function(){ var s=cieMat(b.getAttribute('data-m')),v=b.getAttribute('data-s'),i=s.sel.indexOf(v); if(i>=0)s.sel.splice(i,1); else s.sel.push(v); renderCierre(); }; });
     each('.ser-man',function(inp){ var add=function(){ var s=cieMat(inp.getAttribute('data-m')),v=(inp.value||'').trim().toUpperCase().replace(/[:\-.\s]/g,''); if(v&&s.sel.indexOf(v)<0){ s.sel.push(v); renderCierre(); } }; inp.onchange=add; inp.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } }; });
-    each('.cie-dato',function(inp){ inp.oninput=function(){ if(!CIE.datos)CIE.datos={}; CIE.datos[inp.getAttribute('data-k')]=inp.value; }; });
+    each('.cie-dato',function(inp){ inp.oninput=function(){ if(!CIE.datos)CIE.datos={}; CIE.datos[inp.getAttribute('data-k')]=inp.value; _cieGuardar(); }; });
     each('.foto-del',function(b){ b.onclick=function(){ CIE.fotos.splice(+b.getAttribute('data-i'),1); renderCierre(); }; });
     var fin=document.getElementById('cie-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirFotos(e.target.files); });
     document.getElementById('cie-confirmar').addEventListener('click',confirmarCierre);
+    _cieGuardar();   // guarda el borrador tras cada render (cambios de tipo, seriales, fotos, accion)
   }
   function comprimir(file){ return new Promise(function(res){ var img=new Image(); img.onload=function(){ var c=document.createElement('canvas'),mx=1280,w=img.width,hh=img.height; if(w>hh&&w>mx){hh=hh*mx/w;w=mx;} else if(hh>mx){w=w*mx/hh;hh=mx;} c.width=w;c.height=hh; c.getContext('2d').drawImage(img,0,0,w,hh); c.toBlob(function(b){res(b);},'image/jpeg',0.7); }; img.src=URL.createObjectURL(file); }); }
   function subirFotos(files){
@@ -369,7 +391,7 @@
         CIE.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'NO_REALIZADA'})); });
       }
       var eraRechazo=(CIE.accion==='NO_REALIZADA');
-      Promise.all(jobs).then(function(){ toast(eraRechazo?'Visita rechazada ✓':'Cierre guardado ✓'); CIE=null; listState.filtro='cerradas'; vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent=eraRechazo?'✕ Confirmar rechazo':'✔️ Confirmar cierre'; });
+      Promise.all(jobs).then(function(){ _cieBorrar(); toast(eraRechazo?'Visita rechazada ✓':'Cierre guardado ✓'); CIE=null; listState.filtro='cerradas'; vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent=eraRechazo?'✕ Confirmar rechazo':'✔️ Confirmar cierre'; });
     });
   }
 
