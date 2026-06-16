@@ -235,7 +235,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.09';
+  var VER='v1.10';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4148,7 +4148,7 @@
     });
     // Baja / Liberar: guardan el form completo + el cambio de estado (no pisan la clave/usuario nuevos)
     var bj=document.getElementById('tv-baja'); if(bj) bj.addEventListener('click',function(){ var body=leerBodyTV(); body.estado='BAJA_PENDIENTE'; body.fecha_baja=new Date().toISOString().substring(0,10); sbPatch('cuentas_tv?id=eq.'+t.id,body).then(function(){ cerrarModal(); toast('Cuenta en baja · cambiá la clave en Gigared'); vCuentasTV(); }); });
-    var li=document.getElementById('tv-lista'); if(li) li.addEventListener('click',function(){ var body=leerBodyTV(); body.estado='DISPONIBLE'; body.cliente_id=null; body.fecha_baja=null; sbPatch('cuentas_tv?id=eq.'+t.id,body).then(function(){ cerrarModal(); toast('Cuenta liberada ✓ → Disponible (clave/usuario guardados)'); vCuentasTV(); }); });
+    var li=document.getElementById('tv-lista'); if(li) li.addEventListener('click',function(){ var body=leerBodyTV(); body.estado='DISPONIBLE'; body.cliente_id=null; body.nro_isp=null; body.cargado_isp=false; body.fecha_baja=null; sbPatch('cuentas_tv?id=eq.'+t.id,body).then(function(){ cerrarModal(); toast('Cuenta liberada ✓ → Disponible · cliente desvinculado y destildada de ISP (usuario/clave nueva guardados)'); vCuentasTV(); }); });
   }
 
   // ── PRECIOS / PLANES ── (planes vigentes, aumento %, promos, instalación)
