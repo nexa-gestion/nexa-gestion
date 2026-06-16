@@ -235,7 +235,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.06';
+  var VER='v1.07';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -812,11 +812,13 @@
       +'<button class="btn btn-pri" id="cl-buscar">Buscar</button>'
       +'<button class="btn '+(clState.pend?'btn-x':'btn-2')+'" id="cl-pend" title="Solo clientes que faltan cargar en ISPcube">⚠️ Falta en ISPcube'+(clState.pend?' ✓':'')+'</button>'
       +'<button class="btn btn-2" id="cl-sync" title="Traer estado/deuda/caja/puerto/precinto de ISPcube ahora">🔄 Actualizar de ISPcube</button>'
+      +'<button class="btn btn-2" id="cl-export" title="Exportar a Excel la lista filtrada">⬇️ Excel</button>'
       +'</div><div id="cl-syncinfo" class="muted" style="font-size:12px;margin:-4px 0 10px;min-height:16px"></div><div id="cl-tabla"></div>';
     document.getElementById('cl-buscar').addEventListener('click',function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); });
     document.getElementById('cl-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leerFiltrosCl(); clState.page=0; cargarClientes(); } });
     document.getElementById('cl-pend').addEventListener('click',function(){ leerFiltrosCl(); clState.pend=!clState.pend; clState.page=0; vClientes(); });
     document.getElementById('cl-sync').addEventListener('click',function(){ pedirSyncISP(this); });
+    document.getElementById('cl-export').addEventListener('click',function(){ leerFiltrosCl(); _clExport(this); });
     cargarStatsCl(); cargarClientes(); cargarSyncInfo();
   }
   function leerFiltrosCl(){
@@ -843,6 +845,18 @@
       p.push('or=('+ors.join(',')+')');
     }
     return p.join('&');
+  }
+  function _clExport(btn){
+    if(btn){ btn.disabled=true; btn.textContent='Generando…'; }
+    sbGetAll('clientes?'+clQuery()).then(function(d){
+      d=Array.isArray(d)?d:[];
+      var head=['N°','Cód ISP','Nombre','Apellido','DNI','Teléfono','Estado','Empresa','Barrio','Domicilio','Plan','Caja','Puerto','Precinto'];
+      var rows=[head];
+      d.forEach(function(c){ rows.push([c.numero_cliente,c.codigo_ispcube,c.nombre,c.apellido,c.doc_numero,c.telefono,c.estado,c.empresa,c.barrio,c.domicilio_full,(c.planes&&c.planes.nombre)||'',c.caja_nap,c.puerto,c.precinto]); });
+      _csvDownload('clientes_'+_hoyISO(), rows);
+      toast('Excel exportado ('+d.length+' clientes)');
+    }).catch(function(){ toast('No se pudo exportar.'); })
+      .then(function(){ if(btn){ btn.disabled=false; btn.textContent='⬇️ Excel'; } });
   }
   function cargarClientes(){
     var cont=document.getElementById('cl-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
