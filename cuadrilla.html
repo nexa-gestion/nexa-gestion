@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.21</title>
+<title>Nexa · Técnico — v0.22</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.21';
+  var VER='v0.22';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -160,7 +160,9 @@
           +(o.tipos_trabajo?'<span class="badge-tt">'+esc(o.tipos_trabajo.nombre)+'</span>':'')
           +(o.motivos_ot?' <span class="badge-tt">'+esc(o.motivos_ot.nombre)+'</span>':'')
           +(o.descripcion?'<div class="dir" style="margin-top:6px">'+esc(o.descripcion)+'</div>':'')
-          +'<div class="acc">'+irBtn+'<button class="btn btn-pri btn-sm ot-abrir" data-id="'+o.id+'">Abrir</button></div></div>';
+          +'<div class="acc">'+irBtn
+          +(cli&&cli.telefono?'<a class="btn btn-2 btn-sm" href="tel:'+esc(String(cli.telefono).replace(/[^\d+]/g,''))+'">📞 Llamar</a><a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(cli.telefono)+'">💬</a>':'')
+          +'<button class="btn btn-pri btn-sm ot-abrir" data-id="'+o.id+'">Abrir</button></div></div>';
       }
       if(agrupa){
         // agrupar por fecha coordinada: Hoy, Mañana, días siguientes, y Sin fecha al final
@@ -199,6 +201,7 @@
           if(gps) h+='<a class="btn btn-pri" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+cli.lat+','+cli.lng+'" style="margin-bottom:8px">🛰️ '+(medida?'Ir al GPS de la última visita':'Ir a la ubicación (aprox.)')+'</a>';
           if(cli.domicilio_full) h+='<a class="btn btn-2" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(cli.domicilio_full+(cli.barrio?(' '+cli.barrio):''))+'" style="margin-bottom:10px">🏠 Ir por la dirección</a>';
           return h; })()
+      +(cli.telefono?'<div class="row2" style="margin-bottom:10px"><a class="btn btn-2" href="tel:'+esc(String(cli.telefono).replace(/[^\d+]/g,''))+'">📞 Llamar</a><a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(cli.telefono)+'">💬 WhatsApp</a></div>':'')
       +(o.estado==='EN_CURSO' ? '' : '<button class="btn btn-pri" id="dt-iniciar" style="margin-bottom:10px">▶ Iniciar tarea</button>')
       +(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA' ? '<div class="card" style="text-align:center;color:var(--cyan)">✅ Tarea cerrada por el técnico</div>' : '<button class="btn btn-ok" id="dt-cerrar">✅ Cerrar tarea</button>')
       +(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA' ? '' : '<button class="btn" id="dt-rechazar" style="background:var(--rojo);color:#fff;margin-top:10px">✕ Rechazar (no se pudo hacer)</button>')
@@ -465,7 +468,7 @@
       +'<div class="cli">'+esc(nom)+'</div>'+(c.domicilio_full?'<div class="dir">📍 '+esc(c.domicilio_full)+'</div>':'')+(c.barrio?'<div class="dir">'+esc(c.barrio)+'</div>':'')
       +'<div class="dir" style="margin-top:4px">📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
       +'<div class="acc">'+((c.lat!=null||c.domicilio_full)?'<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(c)+'">🚗 Ir</a>':'')
-      +(c.telefono?'<a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(c.telefono)+'">💬</a>':'')
+      +(c.telefono?'<a class="btn btn-2 btn-sm" href="tel:'+esc(String(c.telefono).replace(/[^\d+]/g,''))+'">📞</a><a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(c.telefono)+'">💬</a>':'')
       +'<button class="btn btn-ok btn-sm dx-cortar">✂️ Cortar</button></div></div>';
   }
   function renderDescon(){
