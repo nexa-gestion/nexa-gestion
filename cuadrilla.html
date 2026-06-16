@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.25</title>
+<title>Nexa · Técnico — v0.26</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.25';
+  var VER='v0.26';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -147,7 +147,7 @@
     else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO)';
     var agrupa=(listState.filtro==='activas');
     var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
-    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
+    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
       function cardOT(o){
@@ -189,6 +189,8 @@
     app.innerHTML=topBar('OT N° '+o.numero, o.tipo)+'<div class="wrap">'
       +'<div class="card"><div style="margin-bottom:8px">'+pillEstado(o.estado)+' · prioridad '+esc(o.prioridad||'NORMAL')+'</div>'
       +fila('Cliente',nom)
+      +(cli.numero_cliente?fila('N° Cliente Nexa',cli.numero_cliente):'')
+      +fila('N° Cliente ISP',cli.codigo_ispcube||'— (todavía sin cargar en ISP)')
       +(cli.domicilio_full?fila('Domicilio',cli.domicilio_full):'')
       +(cli.telefono?fila('Teléfono',cli.telefono):'')
       +(cli.caja_nap?fila('Caja (NAP)',cli.caja_nap):'')
