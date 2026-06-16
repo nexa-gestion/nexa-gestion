@@ -131,7 +131,7 @@ def fetch_nexa():
     out, page = {}, 0
     while True:
         r = urllib.request.Request(
-            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,bloqueado_desde&codigo_ispcube=not.is.null&order=id.asc",
+            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde&codigo_ispcube=not.is.null&order=id.asc",
             headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
         chunk = json.load(urllib.request.urlopen(r, timeout=60))
         for c in chunk: out[c["codigo_ispcube"]] = c
@@ -196,6 +196,7 @@ def nuevo_cliente(c, planes, bemap, portmap=None):
         "deuda": _f(c.get("duedebt")),
         "lat": _f(c.get("lat")), "lng": _f(c.get("lng")),
         "fecha_alta": (c.get("start_date") or "")[:10] or None,
+        "portal_password": c.get("portal_password"),
         **conex(c, portmap),
     }
 
@@ -467,6 +468,8 @@ def main():
             cx = conex(c, portmap)
             for f in ("caja_nap", "puerto", "precinto"):
                 if cx[f] and cx[f] != (cur.get(f) or None): upd[f] = cx[f]
+            pp = c.get("portal_password")
+            if pp and pp != (cur.get("portal_password") or None): upd["portal_password"] = pp
             if upd: updates.append((cur["id"], upd))
         else:
             # ¿hay un prospecto en Nexa con el mismo DNI? → graduarlo (vincular), no duplicar
@@ -478,6 +481,7 @@ def main():
                 if deu is not None: upd["deuda"] = deu
                 for f in ("caja_nap", "puerto", "precinto"):
                     if cx[f]: upd[f] = cx[f]
+                if c.get("portal_password"): upd["portal_password"] = c.get("portal_password")
                 # completa sólo lo que el prospecto tenga vacío (no pisa lo cargado a mano)
                 if not pros.get("nombre"): upd["nombre"] = c.get("name")
                 if not pros.get("domicilio_full"): upd["domicilio_full"] = c.get("address") or c.get("tax_residence")
