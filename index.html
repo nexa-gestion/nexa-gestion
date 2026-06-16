@@ -235,7 +235,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.10';
+  var VER='v1.11';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1357,7 +1357,7 @@
     });
   }
   function detalleOT(id){
-    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,domicilio_full,barrio,lat,lng,caja_nap,puerto,precinto,tv_online,pack_futbol),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
+    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,domicilio_full,barrio,lat,lng,caja_nap,puerto,precinto,portal_password,tv_online,pack_futbol),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
       var o=d[0]; if(!o)return;
       function fr(k,v){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+esc(v||'—')+'</span></div>'; }
       function frHtml(k,vh){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+vh+'</span></div>'; }
@@ -1375,6 +1375,7 @@
         +'<div class="fichagrid">'+fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+(o.clientes?fr('DNI',(o.clientes.tipo_doc||'DNI')+' '+(o.clientes.doc_numero||'—')):'')+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(oTel||'—')+' '+waLink(oTel,cli,o.tipo,oDom)+'</span></div>'+fr('Domicilio',oDom)+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(o.clientes.lat,o.clientes.lng)+'</span></div>':'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
+        +(o.clientes&&o.clientes.portal_password?fr('🔑 Clave del portal',o.clientes.portal_password):'')
         +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+'</div>'+obsTecHtml
         +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Cuenta de TV</div><div id="ot-tv-cont" style="margin-top:6px"></div></div>':'')
         +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;margin-top:4px">'

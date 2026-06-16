@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.23</title>
+<title>Nexa · Técnico — v0.25</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.23';
+  var VER='v0.25';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -147,7 +147,7 @@
     else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO)';
     var agrupa=(listState.filtro==='activas');
     var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
-    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
+    var p='ordenes_trabajo?select=id,numero,tipo,estado,prioridad,descripcion,fecha_agendada,clientes(nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
       function cardOT(o){
@@ -192,6 +192,9 @@
       +(cli.domicilio_full?fila('Domicilio',cli.domicilio_full):'')
       +(cli.telefono?fila('Teléfono',cli.telefono):'')
       +(cli.caja_nap?fila('Caja (NAP)',cli.caja_nap):'')
+      +(cli.puerto?fila('Puerto de fibra',cli.puerto):'')
+      +(cli.precinto?fila('Precinto',cli.precinto):'')
+      +(cli.portal_password?fila('🔑 Clave del portal',cli.portal_password):'')
       +(o.tipos_trabajo?fila('Tipo de trabajo',o.tipos_trabajo.nombre):'')
       +(o.motivos_ot?fila('Motivo',o.motivos_ot.nombre):'')
       +(o.descripcion?fila('Descripción',o.descripcion):'')
@@ -305,7 +308,7 @@
           h+='<div style="border-bottom:1px solid var(--bord);padding:9px 0"><div style="font-weight:600">'+esc(m.nombre)+' <span class="badge-tt">serial</span> <span class="muted" style="font-size:12px">· '+st.sel.length+' usados</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px">';
           disp.forEach(function(s){ var on=st.sel.indexOf(s.serial)>=0; h+='<button class="btn ser-chip" data-m="'+m.id+'" data-s="'+esc(s.serial)+'" style="width:auto;padding:6px 11px;font-size:13px;'+(on?'background:var(--azul2);color:#fff':'background:#fff;color:var(--azul2);border:1.5px solid var(--azul2)')+'">'+esc(s.serial)+'</button>'; });
           st.sel.forEach(function(v){ if(!disp.some(function(s){return s.serial===v;})) h+='<button class="btn ser-chip" data-m="'+m.id+'" data-s="'+esc(v)+'" style="width:auto;padding:6px 11px;font-size:13px;background:var(--azul2);color:#fff">'+esc(v)+' ✕</button>'; });
-          h+='<input class="ser-man" data-m="'+m.id+'" placeholder="Escaneá / otro serial…" autocomplete="off" style="width:auto;flex:1;min-width:140px;padding:9px"></div></div>';
+          h+='<button class="btn btn-2 ser-scan" data-m="'+m.id+'" title="Escanear con la cámara" style="width:auto;padding:9px 13px;font-size:16px">📷</button><input class="ser-man" data-m="'+m.id+'" placeholder="Escaneá 📷 o escribí el serial…" autocomplete="off" style="width:auto;flex:1;min-width:120px;padding:9px"></div></div>';
         } else {
           h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><input type="number" inputmode="numeric" min="0" class="mat-cant" data-m="'+m.id+'" value="'+(st.cant>0?st.cant:'')+'" placeholder="0" style="width:92px;text-align:center;font-weight:700"></div>';
         }
@@ -341,6 +344,7 @@
     // Serial: tildar/destildar (sin tope) o escanear/escribir; la cantidad la dan los seriales elegidos
     each('.ser-chip',function(b){ b.onclick=function(){ var s=cieMat(b.getAttribute('data-m')),v=b.getAttribute('data-s'),i=s.sel.indexOf(v); if(i>=0)s.sel.splice(i,1); else s.sel.push(v); renderCierre(); }; });
     each('.ser-man',function(inp){ var add=function(){ var s=cieMat(inp.getAttribute('data-m')),v=(inp.value||'').trim().toUpperCase().replace(/[:\-.\s]/g,''); if(v&&s.sel.indexOf(v)<0){ s.sel.push(v); renderCierre(); } }; inp.onchange=add; inp.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } }; });
+    each('.ser-scan',function(b){ b.onclick=function(){ _scanSerial(b.getAttribute('data-m')); }; });
     each('.cie-dato',function(inp){ inp.oninput=function(){ if(!CIE.datos)CIE.datos={}; CIE.datos[inp.getAttribute('data-k')]=inp.value; _cieGuardar(); }; });
     each('.foto-del',function(b){ b.onclick=function(){ CIE.fotos.splice(+b.getAttribute('data-i'),1); renderCierre(); }; });
     var fin=document.getElementById('cie-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirFotos(e.target.files); });
@@ -358,6 +362,36 @@
           .catch(function(){ toast('No se pudo subir una foto (¿falta el bucket ot-fotos?)'); });
       });
     });
+  }
+  // Escanear serial/MAC con la cámara (código de barras o QR). Requiere Chrome en Android (BarcodeDetector).
+  function _scanSerial(matId){
+    if(!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      toast('Tu celular no soporta el escáner. Escribí el serial a mano (anda con Chrome en Android).'); return;
+    }
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:#000;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px';
+    ov.innerHTML='<video id="scan-vid" playsinline muted style="max-width:100%;max-height:74vh;border-radius:12px;border:2px solid #fff"></video>'
+      +'<div style="color:#fff;margin-top:12px;font-size:14px;text-align:center">📷 Apuntá al código de barras o QR del equipo</div>'
+      +'<button id="scan-x" class="btn btn-2" style="margin-top:16px;width:auto;padding:11px 24px">Cancelar</button>';
+    document.body.appendChild(ov);
+    var vid=ov.querySelector('#scan-vid'), stream=null, stop=false;
+    var det=new BarcodeDetector({formats:['code_128','code_39','ean_13','ean_8','codabar','itf','qr_code','data_matrix','upc_a','upc_e']});
+    function cerrar(){ stop=true; try{ if(stream) stream.getTracks().forEach(function(t){t.stop();}); }catch(e){} try{ ov.remove(); }catch(e){} }
+    ov.querySelector('#scan-x').addEventListener('click',cerrar);
+    navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(s){
+      stream=s; vid.srcObject=s; vid.play();
+      (function loop(){
+        if(stop) return;
+        det.detect(vid).then(function(codes){
+          if(stop) return;
+          if(codes&&codes.length){
+            var val=(codes[0].rawValue||'').trim().toUpperCase().replace(/[:\-.\s]/g,'');
+            if(val){ var st=cieMat(matId); if(st.sel.indexOf(val)<0){ st.sel.push(val); } cerrar(); renderCierre(); toast('Serial escaneado: '+val); return; }
+          }
+          setTimeout(loop,250);
+        }).catch(function(){ setTimeout(loop,400); });
+      })();
+    }).catch(function(){ toast('No pude abrir la cámara. ¿Diste el permiso?'); cerrar(); });
   }
   function confirmarCierre(){
     var err=document.getElementById('cie-err'); err.textContent='';
