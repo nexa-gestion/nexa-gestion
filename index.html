@@ -235,7 +235,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.11';
+  var VER='v1.13';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -589,25 +589,31 @@
       document.getElementById('dia-pick').addEventListener('change',function(){ if(this.value) _dashRenderDia(this.value); });
     }
     wireNav();
-    sbGet('ordenes_trabajo?fecha_agendada=eq.'+dia+'&select=id,numero,tipo,estado,cuadrilla_id,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000').then(function(d){
+    // El día se mide por PRODUCCIÓN REAL: finalizadas = las cerradas ESE día (fin_tec_at), aunque fueran agendadas otro día.
+    // Pendientes = las agendadas para ese día que siguen sin cerrar. Día ART = [03:00Z, 03:00Z del día siguiente).
+    var _nx=_addDias(dia,1), _desde=Date.parse(dia+'T03:00:00Z'), _hasta=Date.parse(_nx+'T03:00:00Z');
+    function _finEnDia(o){ if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
+    function _esFin(o){ return (o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO') && _finEnDia(o); }
+    function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
+    sbGet('ordenes_trabajo?or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+_nx+'T03:00:00Z))&select=id,numero,tipo,estado,cuadrilla_id,fecha_agendada,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
-      var sinAsig=d.filter(function(o){ return !o.cuadrilla_id; });
-      var act=d.filter(function(o){ return o.cuadrilla_id && _act[o.cuadrilla_id]; });
-      function clase(o){ if(o.estado==='FINALIZADA') return o.validado_admin_at?'val':'fval'; if(o.estado==='CERRADA_TECNICO') return 'fval'; if(o.estado==='EN_CURSO') return 'enc'; return 'sin'; }
+      var sinAsig=d.filter(function(o){ return !o.cuadrilla_id && o.fecha_agendada===dia && o.estado!=='FINALIZADA' && o.estado!=='CERRADA_TECNICO'; });
+      var act=d.filter(function(o){ return o.cuadrilla_id && _act[o.cuadrilla_id] && (_esFin(o)||_esPend(o)); });
+      function clase(o){ if(_esFin(o)) return o.validado_admin_at?'val':'fval'; if(o.estado==='EN_CURSO') return 'enc'; return 'sin'; }
       var G={val:0,fval:0,enc:0,sin:0}; act.forEach(function(o){ G[clase(o)]++; });
       var total=act.length, fin=G.val+G.fval, pc=total?Math.round(fin/total*100):0;
-      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,durSum:0,durN:0}); p.total++; var cl=clase(o); if(cl==='val'||cl==='fval')p.fin++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
+      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
       var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return (b.total-a.total)||(b.fin-a.fin); });
       var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar']];
       var compBar=seg.filter(function(s){return s[1]>0;}).map(function(s){ return '<div style="width:'+(s[1]/(total||1)*100)+'%;background:'+s[2]+'"></div>'; }).join('');
       var compLeg=seg.map(function(s){ var p=Math.round(s[1]/(total||1)*100); return '<div><span class="dot" style="background:'+s[2]+'"></span>'+s[3]+' <b style="color:#0f172a">'+s[1]+'</b> <span style="color:#94a3b8">('+p+'%)</span></div>'; }).join('');
-      var perfHead='<div class="perf-head"><div></div><div>Cuadrilla</div><div style="text-align:center">Asignadas</div><div style="text-align:center">Finalizadas</div><div style="text-align:center">% Avance</div><div>Progreso</div></div>';
+      var perfHead='<div class="perf-head"><div></div><div>Cuadrilla</div><div style="text-align:center">Del día</div><div style="text-align:center">Finalizadas</div><div style="text-align:center">% Avance</div><div>Progreso</div></div>';
       var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr);
         return '<div class="perf-row clk" data-cuad="'+p.id+'">'
           +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
           +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+'</div></div>'
-          +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">asignadas</div></div>'
+          +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">del día</div></div>'
           +'<div><div class="perf-big" style="color:#16a34a">'+p.fin+'</div><div class="perf-cap">finalizadas</div></div>'
           +'<div><div class="perf-big" style="color:'+pcc+'">'+pcr+'%</div><div class="perf-cap">avance</div></div>'
           +'<div><div style="height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pcr+'%;background:'+pcc+';transition:width .4s"></div></div><div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right">'+p.fin+' / '+p.total+'</div></div>'
@@ -627,15 +633,18 @@
     var det=document.getElementById('perf-det-'+cuadId); if(!det) return;
     if(det.style.display!=='none'){ det.style.display='none'; return; }
     det.style.display=''; det.innerHTML='<div class="muted" style="font-size:12px">Cargando…</div>';
-    var dia=window._dashDia||_hoyISO();
-    sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&fecha_agendada=eq.'+dia+'&select=id,numero,tipo,estado,clientes(nombre,apellido,barrio)&limit=500').then(function(arr){
-      arr=Array.isArray(arr)?arr:[];
-      var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3};
+    var dia=window._dashDia||_hoyISO(), nextDia=_addDias(dia,1);
+    var _desde=Date.parse(dia+'T03:00:00Z'), _hasta=Date.parse(nextDia+'T03:00:00Z');
+    function _esFin(o){ if(o.estado!=='FINALIZADA'&&o.estado!=='CERRADA_TECNICO') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
+    function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
+    sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500').then(function(arr){
+      arr=(Array.isArray(arr)?arr:[]).filter(function(o){ return _esFin(o)||_esPend(o); });
+      var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3,PENDIENTE:4};
       arr.sort(function(a,b){ return (ord[a.estado]==null?9:ord[a.estado])-(ord[b.estado]==null?9:ord[b.estado]); });
       if(!arr.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin OTs.</div>'; return; }
-      var pend=arr.filter(function(o){ return o.estado==='ASIGNADA'||o.estado==='EN_CURSO'; }), nextDia=_addDias(dia,1);
+      var pend=arr.filter(_esPend);
       var btnHtml=pend.length?'<div style="margin-bottom:8px"><button class="btn btn-2" style="padding:7px 12px;font-size:12.5px" id="rp-pend-'+cuadId+'">📅 Pasar '+pend.length+' pendiente'+(pend.length===1?'':'s')+' al '+esc(fmtFecha(nextDia))+'</button></div>':'';
-      det.innerHTML=btnHtml+arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; return '<div class="pd-row"><span><b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+'</span>'+pill(o.estado)+'</div>'; }).join('');
+      det.innerHTML=btnHtml+arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; var fhoy=_esFin(o)&&o.fecha_agendada!==dia?' <span class="muted">· cerrada hoy (era de '+esc(fmtFecha(o.fecha_agendada))+')</span>':''; return '<div class="pd-row"><span><b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+fhoy+'</span>'+pill(o.estado)+'</div>'; }).join('');
       var rb=document.getElementById('rp-pend-'+cuadId); if(rb) rb.addEventListener('click',function(e){ e.stopPropagation(); reprogramarOTs(pend.map(function(o){return o.id;}),{ fecha:nextDia }); });
     }).catch(function(){ det.innerHTML='<div class="muted" style="font-size:12px;color:var(--rojo)">No se pudo cargar.</div>'; });
   }
