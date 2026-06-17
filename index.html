@@ -235,7 +235,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.13';
+  var VER='v1.14';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -595,24 +595,25 @@
     function _finEnDia(o){ if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
     function _esFin(o){ return (o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO') && _finEnDia(o); }
     function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
+    function _esRech(o){ return (o.estado==='NO_REALIZADA'||o.estado==='CANCELADA') && _finEnDia(o); }
     sbGet('ordenes_trabajo?or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+_nx+'T03:00:00Z))&select=id,numero,tipo,estado,cuadrilla_id,fecha_agendada,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var sinAsig=d.filter(function(o){ return !o.cuadrilla_id && o.fecha_agendada===dia && o.estado!=='FINALIZADA' && o.estado!=='CERRADA_TECNICO'; });
-      var act=d.filter(function(o){ return o.cuadrilla_id && _act[o.cuadrilla_id] && (_esFin(o)||_esPend(o)); });
-      function clase(o){ if(_esFin(o)) return o.validado_admin_at?'val':'fval'; if(o.estado==='EN_CURSO') return 'enc'; return 'sin'; }
-      var G={val:0,fval:0,enc:0,sin:0}; act.forEach(function(o){ G[clase(o)]++; });
+      var act=d.filter(function(o){ return o.cuadrilla_id && _act[o.cuadrilla_id] && (_esFin(o)||_esPend(o)||_esRech(o)); });
+      function clase(o){ if(_esFin(o)) return o.validado_admin_at?'val':'fval'; if(_esRech(o)) return 'nr'; if(o.estado==='EN_CURSO') return 'enc'; return 'sin'; }
+      var G={val:0,fval:0,enc:0,sin:0,nr:0}; act.forEach(function(o){ G[clase(o)]++; });
       var total=act.length, fin=G.val+G.fval, pc=total?Math.round(fin/total*100):0;
-      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
+      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,rech:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(_esRech(o))p.rech++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
       var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return (b.total-a.total)||(b.fin-a.fin); });
-      var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar']];
+      var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar'],['nr',G.nr,'#b45309','Rechazadas']];
       var compBar=seg.filter(function(s){return s[1]>0;}).map(function(s){ return '<div style="width:'+(s[1]/(total||1)*100)+'%;background:'+s[2]+'"></div>'; }).join('');
       var compLeg=seg.map(function(s){ var p=Math.round(s[1]/(total||1)*100); return '<div><span class="dot" style="background:'+s[2]+'"></span>'+s[3]+' <b style="color:#0f172a">'+s[1]+'</b> <span style="color:#94a3b8">('+p+'%)</span></div>'; }).join('');
       var perfHead='<div class="perf-head"><div></div><div>Cuadrilla</div><div style="text-align:center">Del día</div><div style="text-align:center">Finalizadas</div><div style="text-align:center">% Avance</div><div>Progreso</div></div>';
       var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr);
         return '<div class="perf-row clk" data-cuad="'+p.id+'">'
           +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
-          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+'</div></div>'
+          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+'</div></div>'
           +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">del día</div></div>'
           +'<div><div class="perf-big" style="color:#16a34a">'+p.fin+'</div><div class="perf-cap">finalizadas</div></div>'
           +'<div><div class="perf-big" style="color:'+pcc+'">'+pcr+'%</div><div class="perf-cap">avance</div></div>'
@@ -637,8 +638,9 @@
     var _desde=Date.parse(dia+'T03:00:00Z'), _hasta=Date.parse(nextDia+'T03:00:00Z');
     function _esFin(o){ if(o.estado!=='FINALIZADA'&&o.estado!=='CERRADA_TECNICO') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
     function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
+    function _esRech(o){ if(o.estado!=='NO_REALIZADA'&&o.estado!=='CANCELADA') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
     sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500').then(function(arr){
-      arr=(Array.isArray(arr)?arr:[]).filter(function(o){ return _esFin(o)||_esPend(o); });
+      arr=(Array.isArray(arr)?arr:[]).filter(function(o){ return _esFin(o)||_esPend(o)||_esRech(o); });
       var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3,PENDIENTE:4};
       arr.sort(function(a,b){ return (ord[a.estado]==null?9:ord[a.estado])-(ord[b.estado]==null?9:ord[b.estado]); });
       if(!arr.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin OTs.</div>'; return; }
@@ -658,13 +660,14 @@
   // ── VALIDACIÓN ── (módulo propio: OTs cerradas por el técnico, a aprobar)
   function vValidacion(){
     loading();
-    sbGet('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id,numero,tipo,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(numero_cliente,nombre,apellido,barrio),tipos_trabajo(nombre)&order=fin_tec_at.asc').then(function(d){
+    sbGet('ordenes_trabajo?estado=in.(CERRADA_TECNICO,NO_REALIZADA)&validado_admin_at=is.null&select=id,numero,tipo,estado,motivo_cancelacion,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(numero_cliente,nombre,apellido,barrio),tipos_trabajo(nombre)&order=fin_tec_at.asc').then(function(d){
       d=Array.isArray(d)?d:[];
-      var h='<h1>✅ Validación</h1><p class="sub">Cierres de los técnicos pendientes de aprobar. Tocá una OT para revisar el cierre y validar.</p>';
-      if(!d.length){ view.innerHTML=h+'<div class="center">No hay cierres pendientes de validar. 🎉</div>'; return; }
+      var h='<h1>✅ Validación</h1><p class="sub">Cierres y <b>rechazos</b> de los técnicos pendientes de gestionar. Tocá una OT para validar el cierre, o resolver una no realizada (dar de baja o reasignar) — así no quedan en el aire.</p>';
+      if(!d.length){ view.innerHTML=h+'<div class="center">No hay cierres ni rechazos pendientes. 🎉</div>'; return; }
       view.innerHTML=h+'<div class="toolbar"><input id="val-q" placeholder="🔎 Buscar N° OT, cliente, barrio, cuadrilla…" style="min-width:280px;flex:1"></div><div id="val-tabla"></div>';
       var cols=[
         {k:'numero',t:'N° OT',sort:function(o){return o.numero;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
+        {k:'estadoc',t:'',sort:function(o){return o.estado==='NO_REALIZADA'?0:1;},r:function(o){return o.estado==='NO_REALIZADA'?('<span class="pill p-NO_REALIZADA" title="'+esc(o.motivo_cancelacion||'')+'">✕ No realizada</span>'):'<span class="pill p-CERRADA_TECNICO">📥 Cierre</span>';}},
         {k:'tipo',t:'Tipo',sort:function(o){return o.tipo;},r:function(o){return esc(o.tipo);}},
         {k:'cliente',t:'Cliente',sort:function(o){return o.clientes?(o.clientes.nombre||''):'';},r:function(o){return esc(o.clientes?('N°'+o.clientes.numero_cliente+' · '+(o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)');}},
         {k:'barrio',t:'Barrio',sort:function(o){return o.clientes?(o.clientes.barrio||''):'';},r:function(o){return esc(o.clientes?o.clientes.barrio||'':'');}},
@@ -731,7 +734,11 @@
         h+='<div id="vd-addmo-p" style="display:none;margin-top:6px;padding:7px;background:#f0fdf4;border:1px dashed #86efac;border-radius:8px"><select id="vd-mo-sel" style="margin-bottom:5px"><option value="">— mano de obra —</option>'+moCat.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('')+'</select><div style="display:flex;gap:5px"><input id="vd-mo-qty" type="number" min="1" value="1" style="width:54px;text-align:center"><button class="btn btn-ok" id="vd-mo-ok" style="flex:1;padding:5px">Agregar</button></div></div></div>';
         h+='</div>';
         // barra de acciones
-        h+='<div class="toolbar" style="margin-top:12px;flex-wrap:wrap"><button class="btn btn-ok" id="vd-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>'
+        var esRech=(o.estado==='NO_REALIZADA');
+        h+='<div class="toolbar" style="margin-top:12px;flex-wrap:wrap">'
+          +(esRech
+             ? '<button class="btn btn-x" id="vd-baja" style="font-size:15px;padding:11px 26px">🚫 Dar de baja el pedido</button>'
+             : '<button class="btn btn-ok" id="vd-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>')
           +'<button class="btn btn-2" id="vd-reasig">🔄 Reasignar</button><button class="btn btn-2" id="vd-devolver">↩️ Devolver al pool</button><button class="btn btn-ok" id="vd-print">🖨️ Imprimir OT</button></div>';
         view.innerHTML=h;
         document.getElementById('val-back').addEventListener('click',vValidacion);
@@ -758,10 +765,15 @@
         document.getElementById('vd-print').addEventListener('click',function(){ imprimirOT(o.id); });
         document.getElementById('vd-reasig').addEventListener('click',function(){ reasignarOT(o); });
         document.getElementById('vd-devolver').addEventListener('click',function(){ devolverOTpoolUI([o.id],o); });
-        document.getElementById('vd-validar').addEventListener('click',function(){
+        var vv=document.getElementById('vd-validar'); if(vv) vv.addEventListener('click',function(){
           var b=this; if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Seguro? Tocá de nuevo para validar y descontar stock'; return; }
           b.disabled=true; b.textContent='Validando…';
           sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=material_id,cantidad,serial').then(function(fresh){ _validarYvolver(o, Array.isArray(fresh)?fresh:mats); });
+        });
+        var vb=document.getElementById('vd-baja'); if(vb) vb.addEventListener('click',function(){
+          var b=this; if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Dar de baja el pedido? Tocá de nuevo'; return; }
+          b.disabled=true; b.textContent='Dando de baja…';
+          sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'CANCELADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id }).then(function(){ logOT(o.id,'CAMBIO_ESTADO',{de:o.estado,a:'CANCELADA',cuadId:o.cuadrilla_id,detalle:'Pedido dado de baja desde validación (no realizada · '+(o.motivo_cancelacion||'sin motivo')+')'}); toast('Pedido dado de baja ✓'); vValidacion(); }).catch(function(){ b.disabled=false; b.textContent='🚫 Dar de baja el pedido'; toast('No se pudo dar de baja.'); });
         });
       });
     });
@@ -1489,6 +1501,8 @@
       var nc=document.getElementById('rea-cuad').value; if(!nc){ toast('Elegí una cuadrilla.'); return; }
       var fecha=document.getElementById('rea-fecha').value, mot=document.getElementById('rea-mot').value.trim(), btn=this; btn.disabled=true; btn.textContent='Reasignando…';
       var upd={ cuadrilla_id:Number(nc), estado:'ASIGNADA', asignada_at:new Date().toISOString() }; if(fecha)upd.fecha_agendada=fecha;
+      // Si venía de una visita fallida (NO_REALIZADA), limpio los datos de esa visita para que arranque limpia
+      if(o.estado==='NO_REALIZADA'){ upd.fin_tec_at=null; upd.motivo_cancelacion=null; upd.observaciones_tec=null; upd.inicio_tec_at=null; upd.lat_fin=null; upd.lng_fin=null; upd.lat_inicio=null; upd.lng_inicio=null; upd.validado_admin_at=null; }
       sbPatch('ordenes_trabajo?id=eq.'+o.id,upd).then(function(){ logOT(o.id,'REASIGNADA',{ de:o.estado, a:'ASIGNADA', cuadId:Number(nc), detalle:'De '+(_cuadNombre(o.cuadrilla_id)||'—')+' a '+_cuadNombre(Number(nc))+(mot?(' · '+mot):'') }); cerrarModal(); toast('OT reasignada ✓'); refrescarOT(); })
         .catch(function(){ btn.disabled=false; btn.textContent='🔄 Reasignar'; toast('No se pudo reasignar.'); });
     });
