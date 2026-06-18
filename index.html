@@ -237,7 +237,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.22';
+  var VER='v1.24';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4474,7 +4474,7 @@
   function _svOts(){
     var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
     Promise.all([
-      sbGet('ordenes_trabajo?area=eq.SERVICIOS&select=id,numero,estado,prioridad,descripcion,fecha_agendada,acompanante,cuadrilla_id,cliente_servicio_id,tipo_trabajo_id,created_at,clientes_servicios(nombre),cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=2000'),
+      sbGet('ordenes_trabajo?area=eq.SERVICIOS&select=id,numero,estado,prioridad,titulo,descripcion,fecha_agendada,acompanante,cuadrilla_id,cliente_servicio_id,tipo_trabajo_id,created_at,clientes_servicios(nombre),cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=2000'),
       sbGet('clientes_servicios?select=id,nombre&order=nombre')
     ]).then(function(r){
       var d=Array.isArray(r[0])?r[0]:[], clis=r[1]||[], tecs=(REF.cuadrillas||[]), f=_svOtFilt;
@@ -4493,7 +4493,7 @@
         {k:'numero',t:'N°',sort:function(o){return o.numero;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
         {k:'cliente',t:'Cliente',sort:function(o){return o.clientes_servicios?o.clientes_servicios.nombre:'';},r:function(o){return esc(o.clientes_servicios?o.clientes_servicios.nombre:'—');}},
         {k:'tipo',t:'Tipo',sort:function(o){return o.tipos_trabajo?o.tipos_trabajo.nombre:'';},r:function(o){return esc(o.tipos_trabajo?o.tipos_trabajo.nombre:'—');}},
-        {k:'desc',t:'Descripción',sort:null,r:function(o){return '<span class="muted">'+esc((o.descripcion||'').slice(0,60))+'</span>';}},
+        {k:'desc',t:'Trabajo',sort:function(o){return o.titulo||o.descripcion||'';},r:function(o){return (o.titulo?'<b>'+esc(o.titulo)+'</b> ':'')+'<span class="muted">'+esc((o.descripcion||'').slice(0,o.titulo?40:60))+'</span>';}},
         {k:'tecnico',t:'Técnico',sort:function(o){return o.cuadrillas?o.cuadrillas.nombre:'';},r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
         {k:'fecha',t:'Fecha',sort:function(o){return o.fecha_agendada||'';},r:function(o){return o.fecha_agendada?esc(fmtFecha(o.fecha_agendada)):'<span class="muted">—</span>';}},
         {k:'estado',t:'Estado',sort:function(o){return o.estado||'';},r:function(o){return pill(o.estado);}}
@@ -4505,7 +4505,7 @@
           if(f.est && o.estado!==f.est) return false;
           if(f.desde && (!o.fecha_agendada || String(o.fecha_agendada).substring(0,10)<f.desde)) return false;
           if(f.hasta && (!o.fecha_agendada || String(o.fecha_agendada).substring(0,10)>f.hasta)) return false;
-          if(f.q){ var q=f.q.toLowerCase().trim(); var hay=((o.numero||'')+' '+(o.clientes_servicios?o.clientes_servicios.nombre:'')+' '+(o.tipos_trabajo?o.tipos_trabajo.nombre:'')+' '+(o.descripcion||'')+' '+(o.cuadrillas?o.cuadrillas.nombre:'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+          if(f.q){ var q=f.q.toLowerCase().trim(); var hay=((o.numero||'')+' '+(o.clientes_servicios?o.clientes_servicios.nombre:'')+' '+(o.tipos_trabajo?o.tipos_trabajo.nombre:'')+' '+(o.titulo||'')+' '+(o.descripcion||'')+' '+(o.cuadrillas?o.cuadrillas.nombre:'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
           return true;
         });
         gridRender(document.getElementById('svo-tabla'),cols,rs,{key:'svo',note:rs.length+' servicio(s)',onRow:function(o){ _svOtForm(o); }});
@@ -4540,6 +4540,7 @@
         +'<div><label class="l">Fecha <span class="muted">(opcional)</span></label><input type="date" id="svof-fecha" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'"></div>'
         +'<div><label class="l">Técnico <span class="muted">(opcional)</span></label><select id="svof-tec">'+selOpts(tecs,o.cuadrilla_id,'— sin asignar —')+'</select></div>'
         +'<div><label class="l">Acompañante <span class="muted">(opcional — cuadrilla o técnico que va con él)</span></label><select id="svof-acomp">'+selNoms(tecs,o.acompanante,'— nadie —')+'</select></div>'
+        +'<div style="grid-column:1/-1">'+_svInput('svof-titulo','Título / nombre del trabajo',o.titulo,'ej: Cambio de focos / Cableado oficina',true)+'</div>'
         +'<div style="grid-column:1/-1"><label class="l">Descripción de la tarea</label><textarea id="svof-desc" style="min-height:60px" placeholder="Qué hay que hacer…">'+esc(o.descripcion||'')+'</textarea></div>'
         +'</div><div id="svof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
         +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+(ed?'<button class="btn btn-2" id="svof-print">🖨️ Imprimir</button>':'')+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
@@ -4551,7 +4552,7 @@
         if(!cli){ document.getElementById('svof-err').textContent='Elegí un cliente.'; return; }
         if(!desc){ document.getElementById('svof-err').textContent='Poné una descripción de la tarea.'; return; }
         var tec=document.getElementById('svof-tec').value, tipo=document.getElementById('svof-tipo').value, fecha=document.getElementById('svof-fecha').value;
-        var body={ area:'SERVICIOS', tipo:'SERVICIO', cliente_servicio_id:Number(cli), tipo_trabajo_id:(tipo?Number(tipo):null), descripcion:desc, prioridad:document.getElementById('svof-prio').value, fecha_agendada:fecha||null, acompanante:document.getElementById('svof-acomp').value.trim()||null, cuadrilla_id:(tec?Number(tec):null) };
+        var body={ area:'SERVICIOS', tipo:'SERVICIO', cliente_servicio_id:Number(cli), tipo_trabajo_id:(tipo?Number(tipo):null), titulo:document.getElementById('svof-titulo').value.trim()||null, descripcion:desc, prioridad:document.getElementById('svof-prio').value, fecha_agendada:fecha||null, acompanante:document.getElementById('svof-acomp').value.trim()||null, cuadrilla_id:(tec?Number(tec):null) };
         if(!ed){ body.estado=(tec?'ASIGNADA':'PENDIENTE'); if(tec) body.asignada_at=new Date().toISOString(); body.created_by=USER.id; }
         else if(tec && o.estado==='PENDIENTE'){ body.estado='ASIGNADA'; body.asignada_at=new Date().toISOString(); }
         var btn=this; btn.disabled=true; var prom=ed? sbPatch('ordenes_trabajo?id=eq.'+o.id,body) : sbPost('ordenes_trabajo',body);
@@ -4588,10 +4589,10 @@
           +'<tr><td>Dirección</td><td colspan="3">'+esc(cli.direccion||'')+'</td></tr>'
           +'<tr><td>Técnico</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'________________')+'</td><td>Acompañante</td><td>'+esc(o.acompanante||'—')+'</td></tr>'
           +'<tr><td>Horario</td><td colspan="3">Inicio __:__   Fin __:__</td></tr></table>'
-        +'<div style="border:1px solid #000;padding:3px 8px;margin-bottom:4px"><b>Tarea a realizar:</b> '+esc(o.descripcion||tipoLabel)+'</div>'
-        +'<div class="sec">Materiales utilizados</div><div style="display:flex;gap:8px"><div style="flex:1">'+col(mc[0])+'</div><div style="flex:1">'+col(mc[1])+'</div></div>'
-        +'<div class="sec">Mano de obra</div><div style="display:flex;gap:8px"><div style="flex:1">'+col(oc[0])+'</div><div style="flex:1">'+col(oc[1])+'</div></div>'
-        +'<div class="sec">Observaciones</div><div style="border:1px solid #000;height:46px;margin-bottom:12px"></div>'
+        +'<div style="border:1px solid #000;padding:3px 8px;margin-bottom:4px">'+(o.titulo?'<b style="font-size:11px">'+esc(o.titulo)+'</b><br>':'')+'<b>Tarea a realizar:</b> '+esc(o.descripcion||tipoLabel)+'</div>'
+        +'<div class="sec">Materiales utilizados <span style="font-weight:normal;font-size:9px">(completar a mano)</span></div><div style="border:1px solid #000;height:200px;margin-bottom:6px"></div>'
+        +'<div class="sec">Mano de obra <span style="font-weight:normal;font-size:9px">(completar a mano)</span></div><div style="border:1px solid #000;height:150px;margin-bottom:6px"></div>'
+        +'<div class="sec">Observaciones</div><div style="border:1px solid #000;height:60px;margin-bottom:12px"></div>'
         +'<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:8px">'
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Firma del Cliente</div>'
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Firma del Técnico</div>'
