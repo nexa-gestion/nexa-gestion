@@ -237,7 +237,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.21';
+  var VER='v1.22';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4542,9 +4542,10 @@
         +'<div><label class="l">Acompañante <span class="muted">(opcional — cuadrilla o técnico que va con él)</span></label><select id="svof-acomp">'+selNoms(tecs,o.acompanante,'— nadie —')+'</select></div>'
         +'<div style="grid-column:1/-1"><label class="l">Descripción de la tarea</label><textarea id="svof-desc" style="min-height:60px" placeholder="Qué hay que hacer…">'+esc(o.descripcion||'')+'</textarea></div>'
         +'</div><div id="svof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
-        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+(ed?'<button class="btn btn-2" id="svof-print">🖨️ Imprimir</button>':'')+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
       modal(h,'wide');
       document.getElementById('svof-close').addEventListener('click',cerrarModal);
+      var _svpr=document.getElementById('svof-print'); if(_svpr) _svpr.addEventListener('click',function(){ imprimirServicio(o.id); });
       document.getElementById('svof-save').addEventListener('click',function(){
         var cli=document.getElementById('svof-cli').value, desc=document.getElementById('svof-desc').value.trim();
         if(!cli){ document.getElementById('svof-err').textContent='Elegí un cliente.'; return; }
@@ -4560,6 +4561,43 @@
         if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
         fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+o.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Servicio eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar.'); });
       });
+    });
+  }
+  // ── Impresión de la OT de servicios (reusa el armado de impresión de internet) ──
+  function imprimirServicio(id){ _svPrintBody(id).then(function(b){ _otPrintOpen('OT Servicio', [b]); }).catch(function(){ toast('No se pudo armar la impresión.'); }); }
+  function _svPrintBody(id){
+    return Promise.all([
+      sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes_servicios(nombre,direccion,telefono,contacto,cuit,email),cuadrillas(nombre),tipos_trabajo(nombre)&limit=1'),
+      sbGet('catalogo_materiales?area=eq.SERVICIOS&activo=eq.true&select=nombre,unidad&order=nombre'),
+      sbGet('mano_obra_catalogo?area=eq.SERVICIOS&activo=eq.true&select=nombre&order=nombre')
+    ]).then(function(r){
+      var o=(r[0]||[])[0]; if(!o) throw new Error('OT'); var cli=o.clientes_servicios||{}, mats=r[1]||[], mos=r[2]||[];
+      var fecha=new Date().toLocaleDateString('es-AR');
+      var tipoLabel=(o.tipos_trabajo?o.tipos_trabajo.nombre:'Servicio');
+      function box(t){ return '<div style="display:flex;border:1px solid #000;margin-bottom:2px"><span style="flex:1;padding:2px 5px;font-size:9px">'+t+'</span><span style="width:48px;border-left:1px solid #000"></span></div>'; }
+      function half(a){ var h=Math.ceil(a.length/2); return [a.slice(0,h),a.slice(h)]; }
+      function col(a){ return a.length?a.map(function(m){return box(esc(m.nombre+(m.unidad?(' ('+m.unidad+')'):'')));}).join(''):'<div style="font-size:9px;color:#666;padding:2px 0">(cargar a mano)</div>'; }
+      var mc=half(mats), oc=half(mos);
+      var body='<div class="ot-page">'
+        +'<div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:5px">'
+          +'<div><div class="logo">nexa</div><div style="font-size:9px">Nexa SAS · Posadas, Misiones</div></div>'
+          +'<div style="text-align:right"><div style="font-size:13px;font-weight:bold">ORDEN DE TRABAJO · SERVICIOS</div><div style="font-size:10px">N° <b style="font-family:monospace;font-size:13px">'+esc(o.numero)+'</b> · '+fecha+'</div><div style="margin-top:2px"><span class="tg">'+esc(tipoLabel)+'</span> &nbsp; <span class="tg">'+esc(o.prioridad||'NORMAL')+'</span></div></div></div>'
+        +'<table style="width:100%;margin-bottom:4px"><tr><td style="width:78px">Cliente</td><td style="font-weight:bold" colspan="3">'+esc(cli.nombre||'')+'</td></tr>'
+          +'<tr><td>Contacto</td><td>'+esc(cli.contacto||'')+'</td><td style="width:70px">Teléfono</td><td>'+esc(cli.telefono||'')+'</td></tr>'
+          +'<tr><td>CUIT</td><td>'+esc(cli.cuit||'')+'</td><td>Fecha</td><td>'+esc(o.fecha_agendada?fmtFecha(o.fecha_agendada):'____/____/____')+'</td></tr>'
+          +'<tr><td>Dirección</td><td colspan="3">'+esc(cli.direccion||'')+'</td></tr>'
+          +'<tr><td>Técnico</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'________________')+'</td><td>Acompañante</td><td>'+esc(o.acompanante||'—')+'</td></tr>'
+          +'<tr><td>Horario</td><td colspan="3">Inicio __:__   Fin __:__</td></tr></table>'
+        +'<div style="border:1px solid #000;padding:3px 8px;margin-bottom:4px"><b>Tarea a realizar:</b> '+esc(o.descripcion||tipoLabel)+'</div>'
+        +'<div class="sec">Materiales utilizados</div><div style="display:flex;gap:8px"><div style="flex:1">'+col(mc[0])+'</div><div style="flex:1">'+col(mc[1])+'</div></div>'
+        +'<div class="sec">Mano de obra</div><div style="display:flex;gap:8px"><div style="flex:1">'+col(oc[0])+'</div><div style="flex:1">'+col(oc[1])+'</div></div>'
+        +'<div class="sec">Observaciones</div><div style="border:1px solid #000;height:46px;margin-bottom:12px"></div>'
+        +'<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:8px">'
+          +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Firma del Cliente</div>'
+          +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Firma del Técnico</div>'
+          +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Aclaración / Fecha</div></div>'
+        +'</div>';
+      return body;
     });
   }
   // ── Catálogo de servicios (materiales + mano de obra, area=SERVICIOS) — lo que el técnico carga al cerrar ──
