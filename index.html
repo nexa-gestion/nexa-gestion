@@ -237,7 +237,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.17';
+  var VER='v1.18';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4307,11 +4307,11 @@
   var _svState={ tab:'ots' };
   function vServicios(){
     var t=_svState.tab||'ots';
-    var tabs=[['ots','🧰 Servicios'],['clientes','🏢 Clientes'],['tecnicos','👷 Técnicos']];
+    var tabs=[['ots','🧰 Servicios'],['clientes','🏢 Clientes'],['tipos','🏷️ Tipos de trabajo']];
     view.innerHTML='<h1>🧰 Servicios</h1><p class="sub">Tareas fuera del servicio de internet (cableado, cámaras, telemetría…) para clientes externos. Generás la OT, la asignás a un técnico y después sacás reportes por cliente.</p>'
       +'<div class="toolbar" style="gap:6px">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' sv-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="sv-body"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.sv-tab'),function(b){ b.addEventListener('click',function(){ _svState.tab=b.getAttribute('data-t'); vServicios(); }); });
-    if(t==='clientes') _svClientes(); else if(t==='tecnicos') _svTecnicos(); else _svOts();
+    if(t==='clientes') _svClientes(); else if(t==='tipos') _svTipos(); else _svOts();
   }
   function _svInput(id,lbl,val,ph,opc){ return '<div><label class="l">'+lbl+(opc?' <span class="muted">(opcional)</span>':'')+'</label><input id="'+id+'" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'"></div>'; }
   // ── Clientes de servicios ──
@@ -4359,36 +4359,39 @@
       fetch(SB_URL+'/rest/v1/clientes_servicios?id=eq.'+c.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Cliente eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar (¿tiene servicios cargados?).'); });
     });
   }
-  // ── Técnicos de servicios (cuadrillas area=SERVICIOS) ──
-  function _svTecnicos(){
+  // ── Tipos de trabajo de servicios (tipos_trabajo area=SERVICIOS) ──
+  function _svTipos(){
     var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
-    sbGet('cuadrillas?area=eq.SERVICIOS&select=*&order=nombre').then(function(d){
+    sbGet('tipos_trabajo?area=eq.SERVICIOS&select=id,nombre,codigo,activo&order=nombre').then(function(d){
       d=Array.isArray(d)?d:[];
-      b.innerHTML='<p class="muted" style="font-size:12.5px;margin:2px 0 8px">Cada técnico entra a la PWA con su PIN. Puede ser una persona sola o un equipo.</p><div class="toolbar"><button class="btn btn-ok" id="svt-new">➕ Nuevo técnico</button></div><div id="svt-tabla"></div>';
+      b.innerHTML='<p class="muted" style="font-size:12.5px;margin:2px 0 8px">Los tipos de trabajo de servicios (cableado, cámaras, telemetría…). Son opcionales al cargar un servicio.</p><div class="toolbar"><button class="btn btn-ok" id="svtp-new">➕ Nuevo tipo</button></div><div id="svtp-tabla"></div>';
       var cols=[
-        {k:'nombre',t:'Técnico / equipo',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activa===false?' <span class="pill p-baja">inactivo</span>':'');}},
-        {k:'pin',t:'PIN',sort:null,r:function(o){return '<span style="font-family:monospace">'+esc(o.pin_pwa||'—')+'</span>';}}
+        {k:'nombre',t:'Tipo de trabajo',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}}
       ];
-      gridRender(document.getElementById('svt-tabla'),cols,d,{key:'svt',note:d.length+' técnico(s)',onRow:function(o){ _svTecForm(o); }});
-      document.getElementById('svt-new').addEventListener('click',function(){ _svTecForm({}); });
+      gridRender(document.getElementById('svtp-tabla'),cols,d,{key:'svtp',note:d.length+' tipo(s)',onRow:function(o){ _svTipoForm(o); }});
+      document.getElementById('svtp-new').addEventListener('click',function(){ _svTipoForm({}); });
     }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
   }
-  function _svTecForm(c){
+  function _svTipoForm(c){
     var ed=!!c.id;
-    var h='<h2>'+(ed?'Editar':'Nuevo')+' técnico de servicios</h2><div class="fsgrid">'
-      +_svInput('svtf-nombre','Nombre del técnico o equipo',c.nombre,'ej: Juan Pérez')
-      +_svInput('svtf-pin','PIN (para entrar a la PWA)',c.pin_pwa,'ej: 1234')
-      +'<div><label class="l">Estado</label><select id="svtf-act"><option value="1"'+(c.activa!==false?' selected':'')+'>Activo</option><option value="0"'+(c.activa===false?' selected':'')+'>Inactivo</option></select></div>'
-      +'</div><div id="svtf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
-      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="svtf-save">💾 Guardar</button><button class="btn btn-2" id="svtf-close">Cerrar</button></div>';
+    var h='<h2>'+(ed?'Editar':'Nuevo')+' tipo de trabajo</h2><div class="fsgrid">'
+      +_svInput('svtpf-nombre','Nombre',c.nombre,'ej: Cableado estructurado')
+      +'<div><label class="l">Estado</label><select id="svtpf-act"><option value="1"'+(c.activo!==false?' selected':'')+'>Activo</option><option value="0"'+(c.activo===false?' selected':'')+'>Inactivo</option></select></div>'
+      +'</div><div id="svtpf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="svtpf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="svtpf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svtpf-close">Cerrar</button></div>';
     modal(h);
-    document.getElementById('svtf-close').addEventListener('click',cerrarModal);
-    document.getElementById('svtf-save').addEventListener('click',function(){
-      var nombre=document.getElementById('svtf-nombre').value.trim(), pin=document.getElementById('svtf-pin').value.trim();
-      if(!nombre||!pin){ document.getElementById('svtf-err').textContent='Nombre y PIN son obligatorios.'; return; }
-      var body={ nombre:nombre, pin_pwa:pin, area:'SERVICIOS', activa:(document.getElementById('svtf-act').value==='1') };
-      var btn=this; btn.disabled=true; var prom=ed? sbPatch('cuadrillas?id=eq.'+c.id,body) : sbPost('cuadrillas',body);
-      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Técnico guardado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svtf-err').textContent='No se pudo guardar.'; });
+    document.getElementById('svtpf-close').addEventListener('click',cerrarModal);
+    document.getElementById('svtpf-save').addEventListener('click',function(){
+      var nombre=document.getElementById('svtpf-nombre').value.trim();
+      if(!nombre){ document.getElementById('svtpf-err').textContent='El nombre es obligatorio.'; return; }
+      var body={ nombre:nombre, area:'SERVICIOS', activo:(document.getElementById('svtpf-act').value==='1') };
+      if(!ed){ body.codigo='SERV_'+nombre.toUpperCase().replace(/[^A-Z0-9]+/g,'_').slice(0,16); body.orden=90; }
+      var btn=this; btn.disabled=true; var prom=ed? sbPatch('tipos_trabajo?id=eq.'+c.id,body) : sbPost('tipos_trabajo',body);
+      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Tipo guardado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svtpf-err').textContent='No se pudo guardar (¿nombre repetido?).'; });
+    });
+    var del=document.getElementById('svtpf-del'); if(del) del.addEventListener('click',function(){
+      if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
+      fetch(SB_URL+'/rest/v1/tipos_trabajo?id=eq.'+c.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Tipo eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar (¿hay servicios usándolo?).'); });
     });
   }
   // ── Servicios (OT) ──
@@ -4417,12 +4420,12 @@
     var ed=!!o.id;
     Promise.all([
       sbGet('clientes_servicios?activo=eq.true&select=id,nombre&order=nombre'),
-      sbGet('tipos_trabajo?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre'),
-      sbGet('cuadrillas?area=eq.SERVICIOS&activa=eq.true&select=id,nombre&order=nombre')
+      sbGet('tipos_trabajo?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre')
     ]).then(function(r){
-      var clis=r[0]||[], tipos=r[1]||[], tecs=r[2]||[];
+      var clis=r[0]||[], tipos=r[1]||[], tecs=(REF.cuadrillas||[]);   // pool ÚNICO de cuadrillas (internet + servicios), compartido
       if(!clis.length && !ed){ toast('Primero cargá un cliente de servicios (pestaña 🏢 Clientes).'); _svState.tab='clientes'; vServicios(); return; }
       function selOpts(arr,cur,ph){ return '<option value="">'+(ph||'—')+'</option>'+arr.map(function(x){return '<option value="'+x.id+'"'+(String(cur)===String(x.id)?' selected':'')+'>'+esc(x.nombre)+'</option>';}).join(''); }
+      function selNoms(arr,cur,ph){ var has=cur&&!arr.some(function(x){return x.nombre===cur;}); return '<option value="">'+(ph||'—')+'</option>'+(has?'<option selected>'+esc(cur)+'</option>':'')+arr.map(function(x){return '<option'+(cur===x.nombre?' selected':'')+'>'+esc(x.nombre)+'</option>';}).join(''); }
       var prio=['NORMAL','ALTA','URGENTE'];
       var h='<h2>'+(ed?('Servicio N° '+esc(o.numero)):'Nuevo servicio')+'</h2><div class="fsgrid">'
         +'<div><label class="l">Cliente</label><select id="svof-cli">'+selOpts(clis,o.cliente_servicio_id,'— elegí cliente —')+'</select></div>'
@@ -4430,7 +4433,7 @@
         +'<div><label class="l">Prioridad</label><select id="svof-prio">'+prio.map(function(x){return '<option'+((o.prioridad||'NORMAL')===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'
         +'<div><label class="l">Fecha <span class="muted">(opcional)</span></label><input type="date" id="svof-fecha" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'"></div>'
         +'<div><label class="l">Técnico <span class="muted">(opcional)</span></label><select id="svof-tec">'+selOpts(tecs,o.cuadrilla_id,'— sin asignar —')+'</select></div>'
-        +_svInput('svof-acomp','Acompañante',o.acompanante,'si fue con alguien',true)
+        +'<div><label class="l">Acompañante <span class="muted">(opcional — cuadrilla o técnico que va con él)</span></label><select id="svof-acomp">'+selNoms(tecs,o.acompanante,'— nadie —')+'</select></div>'
         +'<div style="grid-column:1/-1"><label class="l">Descripción de la tarea</label><textarea id="svof-desc" style="min-height:60px" placeholder="Qué hay que hacer…">'+esc(o.descripcion||'')+'</textarea></div>'
         +'</div><div id="svof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
         +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
