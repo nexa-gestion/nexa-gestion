@@ -204,6 +204,8 @@
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="tickets">🎫 Tickets ISP</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
+      <div class="sec">Servicios</div>
+      <a data-v="servicios">🧰 Servicios (fuera de internet)</a>
       <div class="sec">Gestión</div>
       <a data-v="clientes">👥 Clientes</a>
       <a data-v="cuadrillas-adm">🔧 Cuadrillas</a>
@@ -235,7 +237,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.16';
+  var VER='v1.17';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -439,7 +441,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -486,14 +488,14 @@
     loading();
     var HOY=_hoyISO();
     Promise.all([
-      sbGet('ordenes_trabajo?estado=eq.PENDIENTE&select=tipo,created_at&limit=2000'),
+      sbGet('ordenes_trabajo?estado=eq.PENDIENTE&area=eq.INTERNET&select=tipo,created_at&limit=2000'),
       sbCount('solicitudes_alta?estado=eq.pendiente&select=id'),
       sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id'),
-      sbCount('ordenes_trabajo?estado=eq.EN_CURSO&select=id'),
+      sbCount('ordenes_trabajo?estado=eq.EN_CURSO&area=eq.INTERNET&select=id'),
       sbCount('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id'),
       sbCount('ordenes_trabajo?estado=in.(CERRADA_TECNICO,FINALIZADA)&fin_tec_at=gte.'+HOY+'T00:00:00&select=id'),
       // OTs abiertas asignadas (para detectar huérfanas de cuadrilla desactivada y las sin fecha coordinada)
-      sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cuadrilla_id=not.is.null&select=id,numero,estado,fecha_agendada,cuadrilla_id&limit=3000'),
+      sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&area=eq.INTERNET&cuadrilla_id=not.is.null&select=id,numero,estado,fecha_agendada,cuadrilla_id&limit=3000'),
       sbCount('ordenes_trabajo?estado=eq.FINALIZADA&isp_datos_cargado_at=is.null&tipo=in.(INSTALACION,REPARACION,RECONEXION)&select=id').catch(function(){return 0;}),
       sbCount('isp_tickets?estado_nexa=eq.nuevo&select=id').catch(function(){return 0;})
     ]).then(function(c){
@@ -596,7 +598,7 @@
     function _esFin(o){ return (o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO') && _finEnDia(o); }
     function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
     function _esRech(o){ return (o.estado==='NO_REALIZADA'||o.estado==='CANCELADA') && _finEnDia(o); }
-    sbGet('ordenes_trabajo?or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+_nx+'T03:00:00Z))&select=id,numero,tipo,estado,cuadrilla_id,fecha_agendada,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000').then(function(d){
+    sbGet('ordenes_trabajo?or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+_nx+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,cuadrilla_id,fecha_agendada,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var sinAsig=d.filter(function(o){ return !o.cuadrilla_id && o.fecha_agendada===dia && o.estado!=='FINALIZADA' && o.estado!=='CERRADA_TECNICO'; });
@@ -639,7 +641,7 @@
     function _esFin(o){ if(o.estado!=='FINALIZADA'&&o.estado!=='CERRADA_TECNICO') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
     function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
     function _esRech(o){ if(o.estado!=='NO_REALIZADA'&&o.estado!=='CANCELADA') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
-    sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500').then(function(arr){
+    sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500').then(function(arr){
       arr=(Array.isArray(arr)?arr:[]).filter(function(o){ return _esFin(o)||_esPend(o)||_esRech(o); });
       var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3,PENDIENTE:4};
       arr.sort(function(a,b){ return (ord[a.estado]==null?9:ord[a.estado])-(ord[b.estado]==null?9:ord[b.estado]); });
@@ -1237,7 +1239,7 @@
   }
   function cargarOT(){
     var cont=document.getElementById('ot-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,doc_numero,nombre,apellido,telefono,domicilio_full,barrio,tv_online,pack_futbol),cuadrillas(nombre)';
+    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,doc_numero,nombre,apellido,telefono,domicilio_full,barrio,tv_online,pack_futbol),cuadrillas(nombre)&area=eq.INTERNET';
     if(otState.estado) base+='&estado=eq.'+otState.estado;
     if(otState.tipo) base+='&tipo=eq.'+otState.tipo;
     // Traemos todas las que matchean el filtro (tope 3000) y ordenamos/paginamos del lado del cliente → se puede ordenar por CUALQUIER columna (barrio incluido)
@@ -1626,7 +1628,7 @@
   }
   function cargarCerrarOT(){
     var cont=document.getElementById('cerr-cont'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO)&select=id,numero,tipo,estado,tipo_trabajo_id,cliente_id,fecha_agendada,asignada_at,cuadrilla_id,clientes(id,numero_cliente,codigo_ispcube,tecnologia,nombre,apellido,domicilio_full,barrio,caja_nap,telefono,precinto,puerto),cuadrillas(nombre)&order=asignada_at.desc&limit=2000').then(function(d){
+    sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO)&area=eq.INTERNET&select=id,numero,tipo,estado,tipo_trabajo_id,cliente_id,fecha_agendada,asignada_at,cuadrilla_id,clientes(id,numero_cliente,codigo_ispcube,tecnologia,nombre,apellido,domicilio_full,barrio,caja_nap,telefono,precinto,puerto),cuadrillas(nombre)&order=asignada_at.desc&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       var q=cerrState.q.toLowerCase();
       d=d.filter(function(o){
@@ -2031,7 +2033,7 @@
     var cuads=[]; Array.prototype.forEach.call(document.querySelectorAll('.ag-cuad-on:checked'),function(ch){ var id=ch.getAttribute('data-id'), cupo=parseFloat((document.querySelector('.ag-cuad-cupo[data-id="'+id+'"]')||{}).value)||6, c=REF.cuadrillas.filter(function(x){return x.id==id;})[0]; cuads.push({id:Number(id),nombre:c?c.nombre:('Cuad '+id),cupo:cupo,wireless:wifiIds.indexOf(Number(id))>=0}); });
     if(!cuads.length){ toast('Elegí al menos una cuadrilla.'); return; }
     var prioFecha=document.getElementById('ag-priofecha').checked, out=document.getElementById('ag-out'); out.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,created_at,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,tecnologia,lat,lng,geo_origen)&limit=2000').then(function(d){
+    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&area=eq.INTERNET&cuadrilla_id=is.null&select=id,numero,tipo,created_at,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,tecnologia,lat,lng,geo_origen)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[]; var byCli={}, sinIsp=0;
       d.forEach(function(o){ var c=o.clientes; if(!c)return; if(!c.codigo_ispcube){ sinIsp++; return; }   // todavía no cargado en ISPcube → no se coordina aún
         var v=byCli[c.id]||(byCli[c.id]={cliId:c.id,nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(),num:c.numero_cliente,dir:c.domicilio_full||'',barrio:c.barrio||'',tel:c.telefono||'',caja_nap:c.caja_nap,wireless:_esWifi(c.tecnologia),lat:c.lat,lng:c.lng,geo_src:(c.lat!=null?(c.geo_origen==='nap'?'nap':'gps'):null),tipos:{},edad:0,peso:0,otIds:[]});
@@ -2218,7 +2220,7 @@
   function mdCargar(){
     var cont=document.getElementById('md-cont'), fecha=(document.getElementById('md-fecha')||{}).value; if(!cont)return; if(!fecha){toast('Elegí un día.');return;}
     cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('ordenes_trabajo?fecha_agendada=eq.'+fecha+'&cuadrilla_id=not.is.null&select=id,numero,tipo,estado,cuadrilla_id,cuadrillas(nombre),clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,lat,lng,geo_origen)&limit=2000').then(function(d){
+    sbGet('ordenes_trabajo?fecha_agendada=eq.'+fecha+'&area=eq.INTERNET&cuadrilla_id=not.is.null&select=id,numero,tipo,estado,cuadrilla_id,cuadrillas(nombre),clientes(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,lat,lng,geo_origen)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay OTs agendadas para ese día.</div>'; return; }
       var byCuad={};
@@ -2268,7 +2270,7 @@
   }
   function cargarAsignar(){
     var cont=document.getElementById('asig-cont'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&cuadrilla_id=is.null&select=id,numero,tipo,prioridad,created_at,clientes(numero_cliente,codigo_ispcube,nombre,apellido,barrio,telefono,domicilio_full),tipos_trabajo(nombre)&order=created_at.asc&limit=1000').then(function(d){
+    sbGet('ordenes_trabajo?estado=eq.PENDIENTE&area=eq.INTERNET&cuadrilla_id=is.null&select=id,numero,tipo,prioridad,created_at,clientes(numero_cliente,codigo_ispcube,nombre,apellido,barrio,telefono,domicilio_full),tipos_trabajo(nombre)&order=created_at.asc&limit=1000').then(function(d){
       d=Array.isArray(d)?d:[];
       // OTs de clientes que todavía no están en ISPcube → no se coordinan aún (se muestran aparte como "en espera")
       var sinIsp=d.filter(function(o){ return o.clientes && !o.clientes.codigo_ispcube; }).length;
@@ -4301,6 +4303,156 @@
   }
 
   // ── util UI ──
+  // ════════════════ MÓDULO SERVICIOS (tareas fuera del servicio de internet) ════════════════
+  var _svState={ tab:'ots' };
+  function vServicios(){
+    var t=_svState.tab||'ots';
+    var tabs=[['ots','🧰 Servicios'],['clientes','🏢 Clientes'],['tecnicos','👷 Técnicos']];
+    view.innerHTML='<h1>🧰 Servicios</h1><p class="sub">Tareas fuera del servicio de internet (cableado, cámaras, telemetría…) para clientes externos. Generás la OT, la asignás a un técnico y después sacás reportes por cliente.</p>'
+      +'<div class="toolbar" style="gap:6px">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' sv-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="sv-body"></div>';
+    Array.prototype.forEach.call(view.querySelectorAll('.sv-tab'),function(b){ b.addEventListener('click',function(){ _svState.tab=b.getAttribute('data-t'); vServicios(); }); });
+    if(t==='clientes') _svClientes(); else if(t==='tecnicos') _svTecnicos(); else _svOts();
+  }
+  function _svInput(id,lbl,val,ph,opc){ return '<div><label class="l">'+lbl+(opc?' <span class="muted">(opcional)</span>':'')+'</label><input id="'+id+'" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'"></div>'; }
+  // ── Clientes de servicios ──
+  function _svClientes(){
+    var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('clientes_servicios?select=*&order=nombre').then(function(d){
+      d=Array.isArray(d)?d:[];
+      b.innerHTML='<div class="toolbar"><input id="svc-q" placeholder="🔎 Buscar nombre, contacto, teléfono…" style="flex:1;min-width:220px"><button class="btn btn-ok" id="svc-new">➕ Nuevo cliente</button></div><div id="svc-tabla"></div>';
+      var cols=[
+        {k:'nombre',t:'Nombre',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}},
+        {k:'tipo',t:'Tipo',sort:function(o){return o.tipo||'';},r:function(o){return esc(o.tipo||'—');}},
+        {k:'contacto',t:'Contacto',sort:function(o){return o.contacto||'';},r:function(o){return esc(o.contacto||'—');}},
+        {k:'telefono',t:'Teléfono',sort:function(o){return o.telefono||'';},r:function(o){return esc(o.telefono||'—');}},
+        {k:'direccion',t:'Dirección',sort:function(o){return o.direccion||'';},r:function(o){return esc(o.direccion||'—');}}
+      ];
+      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q? d.filter(function(o){ return ((o.nombre||'')+' '+(o.contacto||'')+' '+(o.telefono||'')+' '+(o.cuit||'')+' '+(o.direccion||'')).toLowerCase().indexOf(q)>=0; }):d;
+        gridRender(document.getElementById('svc-tabla'),cols,rs,{key:'svc',note:rs.length+' cliente(s)',onRow:function(o){ _svClienteForm(o); }}); }
+      pinta('');
+      document.getElementById('svc-q').addEventListener('input',function(){ pinta(this.value); });
+      document.getElementById('svc-new').addEventListener('click',function(){ _svClienteForm({}); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste la SQL v36?</div>'; });
+  }
+  function _svClienteForm(c){
+    var ed=!!c.id, tipos=['empresa','comercio','institución','particular','otro'];
+    var h='<h2>'+(ed?'Editar':'Nuevo')+' cliente de servicios</h2><div class="fsgrid">'
+      +_svInput('svf-nombre','Nombre',c.nombre,'ej: Farmacia X / Hospital / Armando')
+      +'<div><label class="l">Tipo <span class="muted">(opcional)</span></label><select id="svf-tipo"><option value="">—</option>'+tipos.map(function(x){return '<option'+(c.tipo===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'
+      +_svInput('svf-cuit','CUIT',c.cuit,'',true)+_svInput('svf-contacto','Persona de contacto',c.contacto,'',true)
+      +_svInput('svf-telefono','Teléfono',c.telefono,'',true)+_svInput('svf-email','Email',c.email,'',true)
+      +'<div style="grid-column:1/-1">'+_svInput('svf-direccion','Dirección',c.direccion,'',true)+'</div>'
+      +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="svf-notas" style="min-height:48px">'+esc(c.notas||'')+'</textarea></div>'
+      +'</div><div id="svf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="svf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svf-close">Cerrar</button></div>';
+    modal(h,'wide');
+    document.getElementById('svf-close').addEventListener('click',cerrarModal);
+    document.getElementById('svf-save').addEventListener('click',function(){
+      var nombre=document.getElementById('svf-nombre').value.trim();
+      if(!nombre){ document.getElementById('svf-err').textContent='El nombre es obligatorio.'; return; }
+      var body={ nombre:nombre, tipo:document.getElementById('svf-tipo').value||null, cuit:document.getElementById('svf-cuit').value.trim()||null, contacto:document.getElementById('svf-contacto').value.trim()||null, telefono:document.getElementById('svf-telefono').value.trim()||null, email:document.getElementById('svf-email').value.trim()||null, direccion:document.getElementById('svf-direccion').value.trim()||null, notas:document.getElementById('svf-notas').value.trim()||null };
+      var btn=this; btn.disabled=true; var prom=ed? sbPatch('clientes_servicios?id=eq.'+c.id,body) : sbPost('clientes_servicios',body);
+      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Cliente guardado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svf-err').textContent='No se pudo guardar.'; });
+    });
+    var del=document.getElementById('svf-del'); if(del) del.addEventListener('click',function(){
+      if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
+      fetch(SB_URL+'/rest/v1/clientes_servicios?id=eq.'+c.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Cliente eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar (¿tiene servicios cargados?).'); });
+    });
+  }
+  // ── Técnicos de servicios (cuadrillas area=SERVICIOS) ──
+  function _svTecnicos(){
+    var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('cuadrillas?area=eq.SERVICIOS&select=*&order=nombre').then(function(d){
+      d=Array.isArray(d)?d:[];
+      b.innerHTML='<p class="muted" style="font-size:12.5px;margin:2px 0 8px">Cada técnico entra a la PWA con su PIN. Puede ser una persona sola o un equipo.</p><div class="toolbar"><button class="btn btn-ok" id="svt-new">➕ Nuevo técnico</button></div><div id="svt-tabla"></div>';
+      var cols=[
+        {k:'nombre',t:'Técnico / equipo',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activa===false?' <span class="pill p-baja">inactivo</span>':'');}},
+        {k:'pin',t:'PIN',sort:null,r:function(o){return '<span style="font-family:monospace">'+esc(o.pin_pwa||'—')+'</span>';}}
+      ];
+      gridRender(document.getElementById('svt-tabla'),cols,d,{key:'svt',note:d.length+' técnico(s)',onRow:function(o){ _svTecForm(o); }});
+      document.getElementById('svt-new').addEventListener('click',function(){ _svTecForm({}); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
+  }
+  function _svTecForm(c){
+    var ed=!!c.id;
+    var h='<h2>'+(ed?'Editar':'Nuevo')+' técnico de servicios</h2><div class="fsgrid">'
+      +_svInput('svtf-nombre','Nombre del técnico o equipo',c.nombre,'ej: Juan Pérez')
+      +_svInput('svtf-pin','PIN (para entrar a la PWA)',c.pin_pwa,'ej: 1234')
+      +'<div><label class="l">Estado</label><select id="svtf-act"><option value="1"'+(c.activa!==false?' selected':'')+'>Activo</option><option value="0"'+(c.activa===false?' selected':'')+'>Inactivo</option></select></div>'
+      +'</div><div id="svtf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="svtf-save">💾 Guardar</button><button class="btn btn-2" id="svtf-close">Cerrar</button></div>';
+    modal(h);
+    document.getElementById('svtf-close').addEventListener('click',cerrarModal);
+    document.getElementById('svtf-save').addEventListener('click',function(){
+      var nombre=document.getElementById('svtf-nombre').value.trim(), pin=document.getElementById('svtf-pin').value.trim();
+      if(!nombre||!pin){ document.getElementById('svtf-err').textContent='Nombre y PIN son obligatorios.'; return; }
+      var body={ nombre:nombre, pin_pwa:pin, area:'SERVICIOS', activa:(document.getElementById('svtf-act').value==='1') };
+      var btn=this; btn.disabled=true; var prom=ed? sbPatch('cuadrillas?id=eq.'+c.id,body) : sbPost('cuadrillas',body);
+      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Técnico guardado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svtf-err').textContent='No se pudo guardar.'; });
+    });
+  }
+  // ── Servicios (OT) ──
+  function _svOts(){
+    var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('ordenes_trabajo?area=eq.SERVICIOS&select=id,numero,estado,prioridad,descripcion,fecha_agendada,acompanante,cuadrilla_id,cliente_servicio_id,tipo_trabajo_id,created_at,clientes_servicios(nombre),cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=1000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      b.innerHTML='<div class="toolbar"><input id="svo-q" placeholder="🔎 Buscar N°, cliente, tipo, descripción…" style="flex:1;min-width:220px"><button class="btn btn-ok" id="svo-new">➕ Nuevo servicio</button></div><div id="svo-tabla"></div>';
+      var cols=[
+        {k:'numero',t:'N°',sort:function(o){return o.numero;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
+        {k:'cliente',t:'Cliente',sort:function(o){return o.clientes_servicios?o.clientes_servicios.nombre:'';},r:function(o){return esc(o.clientes_servicios?o.clientes_servicios.nombre:'—');}},
+        {k:'tipo',t:'Tipo',sort:function(o){return o.tipos_trabajo?o.tipos_trabajo.nombre:'';},r:function(o){return esc(o.tipos_trabajo?o.tipos_trabajo.nombre:'—');}},
+        {k:'desc',t:'Descripción',sort:null,r:function(o){return '<span class="muted">'+esc((o.descripcion||'').slice(0,60))+'</span>';}},
+        {k:'tecnico',t:'Técnico',sort:function(o){return o.cuadrillas?o.cuadrillas.nombre:'';},r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
+        {k:'fecha',t:'Fecha',sort:function(o){return o.fecha_agendada||'';},r:function(o){return o.fecha_agendada?esc(fmtFecha(o.fecha_agendada)):'<span class="muted">—</span>';}},
+        {k:'estado',t:'Estado',sort:function(o){return o.estado||'';},r:function(o){return pill(o.estado);}}
+      ];
+      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q? d.filter(function(o){ return ((o.numero||'')+' '+(o.clientes_servicios?o.clientes_servicios.nombre:'')+' '+(o.tipos_trabajo?o.tipos_trabajo.nombre:'')+' '+(o.descripcion||'')+' '+(o.cuadrillas?o.cuadrillas.nombre:'')).toLowerCase().indexOf(q)>=0; }):d;
+        gridRender(document.getElementById('svo-tabla'),cols,rs,{key:'svo',note:rs.length+' servicio(s)',onRow:function(o){ _svOtForm(o); }}); }
+      pinta('');
+      document.getElementById('svo-q').addEventListener('input',function(){ pinta(this.value); });
+      document.getElementById('svo-new').addEventListener('click',function(){ _svOtForm({}); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
+  }
+  function _svOtForm(o){
+    var ed=!!o.id;
+    Promise.all([
+      sbGet('clientes_servicios?activo=eq.true&select=id,nombre&order=nombre'),
+      sbGet('tipos_trabajo?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre'),
+      sbGet('cuadrillas?area=eq.SERVICIOS&activa=eq.true&select=id,nombre&order=nombre')
+    ]).then(function(r){
+      var clis=r[0]||[], tipos=r[1]||[], tecs=r[2]||[];
+      if(!clis.length && !ed){ toast('Primero cargá un cliente de servicios (pestaña 🏢 Clientes).'); _svState.tab='clientes'; vServicios(); return; }
+      function selOpts(arr,cur,ph){ return '<option value="">'+(ph||'—')+'</option>'+arr.map(function(x){return '<option value="'+x.id+'"'+(String(cur)===String(x.id)?' selected':'')+'>'+esc(x.nombre)+'</option>';}).join(''); }
+      var prio=['NORMAL','ALTA','URGENTE'];
+      var h='<h2>'+(ed?('Servicio N° '+esc(o.numero)):'Nuevo servicio')+'</h2><div class="fsgrid">'
+        +'<div><label class="l">Cliente</label><select id="svof-cli">'+selOpts(clis,o.cliente_servicio_id,'— elegí cliente —')+'</select></div>'
+        +'<div><label class="l">Tipo de trabajo <span class="muted">(opcional)</span></label><select id="svof-tipo">'+selOpts(tipos,o.tipo_trabajo_id,'— sin tipo —')+'</select></div>'
+        +'<div><label class="l">Prioridad</label><select id="svof-prio">'+prio.map(function(x){return '<option'+((o.prioridad||'NORMAL')===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'
+        +'<div><label class="l">Fecha <span class="muted">(opcional)</span></label><input type="date" id="svof-fecha" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'"></div>'
+        +'<div><label class="l">Técnico <span class="muted">(opcional)</span></label><select id="svof-tec">'+selOpts(tecs,o.cuadrilla_id,'— sin asignar —')+'</select></div>'
+        +_svInput('svof-acomp','Acompañante',o.acompanante,'si fue con alguien',true)
+        +'<div style="grid-column:1/-1"><label class="l">Descripción de la tarea</label><textarea id="svof-desc" style="min-height:60px" placeholder="Qué hay que hacer…">'+esc(o.descripcion||'')+'</textarea></div>'
+        +'</div><div id="svof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
+      modal(h,'wide');
+      document.getElementById('svof-close').addEventListener('click',cerrarModal);
+      document.getElementById('svof-save').addEventListener('click',function(){
+        var cli=document.getElementById('svof-cli').value, desc=document.getElementById('svof-desc').value.trim();
+        if(!cli){ document.getElementById('svof-err').textContent='Elegí un cliente.'; return; }
+        if(!desc){ document.getElementById('svof-err').textContent='Poné una descripción de la tarea.'; return; }
+        var tec=document.getElementById('svof-tec').value, tipo=document.getElementById('svof-tipo').value, fecha=document.getElementById('svof-fecha').value;
+        var body={ area:'SERVICIOS', tipo:'SERVICIO', cliente_servicio_id:Number(cli), tipo_trabajo_id:(tipo?Number(tipo):null), descripcion:desc, prioridad:document.getElementById('svof-prio').value, fecha_agendada:fecha||null, acompanante:document.getElementById('svof-acomp').value.trim()||null, cuadrilla_id:(tec?Number(tec):null) };
+        if(!ed){ body.estado=(tec?'ASIGNADA':'PENDIENTE'); if(tec) body.asignada_at=new Date().toISOString(); body.created_by=USER.id; }
+        else if(tec && o.estado==='PENDIENTE'){ body.estado='ASIGNADA'; body.asignada_at=new Date().toISOString(); }
+        var btn=this; btn.disabled=true; var prom=ed? sbPatch('ordenes_trabajo?id=eq.'+o.id,body) : sbPost('ordenes_trabajo',body);
+        prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast(ed?'Servicio guardado ✓':'Servicio creado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svof-err').textContent='No se pudo guardar.'; });
+      });
+      var del=document.getElementById('svof-del'); if(del) del.addEventListener('click',function(){
+        if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
+        fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+o.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Servicio eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar.'); });
+      });
+    });
+  }
   function opt(arr,sel){ return arr.map(function(x){return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>';}).join(''); }
   function _modalEsc(e){ if(e.key==='Escape'||e.keyCode===27) cerrarModal(); }
   function modal(html,cls){ var prev=document.getElementById('ov'); if(prev) prev.remove(); /* nunca apilar modales */ var d=document.createElement('div'); d.className='ov'; d.id='ov'; d.innerHTML='<div class="modal '+(cls||'')+'">'+html+'</div>'; d.addEventListener('click',function(e){ if(e.target===d)cerrarModal(); }); document.body.appendChild(d); document.addEventListener('keydown',_modalEsc); }
