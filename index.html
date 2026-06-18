@@ -235,7 +235,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.15';
+  var VER='v1.16';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -826,7 +826,7 @@
       '<h1>Clientes</h1><p class="sub">Base completa de Nexa.</p>'
       +'<div id="cl-stats" class="dkpis" style="margin-bottom:14px"></div>'
       +'<div class="toolbar">'
-      +'<input id="cl-q" placeholder="Buscar nombre, DNI, N° cliente o N° ISPcube…" value="'+esc(clState.q)+'" style="min-width:260px">'
+      +'<input id="cl-q" placeholder="Buscar nombre, DNI, N° cliente, ISP, precinto, caja, teléfono…" value="'+esc(clState.q)+'" style="min-width:260px">'
       +'<select id="cl-estado"><option value="">Todos los estados</option>'+opt(['activo','bloqueado','baja','suspendido','moroso','prospecto','eliminado'],clState.estado)+'</select>'
       +'<select id="cl-empresa"><option value="">Todas las empresas</option>'+opt(REF.empresas.map(function(e){return e.nombre;}),clState.empresa)+'</select>'
       +'<select id="cl-barrio"><option value="">Todos los barrios</option>'+opt(REF.barrios.map(function(b){return b.nombre;}),clState.barrio)+'</select>'
@@ -857,7 +857,7 @@
     if(clState.pend) p.push('codigo_ispcube=is.null');
     if(clState.q){
       var q=clState.q.replace(/[(),]/g,' ').trim();
-      var ors=['nombre.ilike.*'+q+'*','doc_numero.ilike.*'+q+'*'];
+      var ors=['nombre.ilike.*'+q+'*','doc_numero.ilike.*'+q+'*','precinto.ilike.*'+q+'*','caja_nap.ilike.*'+q+'*','telefono.ilike.*'+q+'*'];
       if(/^\d+$/.test(q)){
         ors.push('numero_cliente.eq.'+q);
         ors.push('codigo_ispcube.eq.'+q);                 // por si lo escriben sin ceros
