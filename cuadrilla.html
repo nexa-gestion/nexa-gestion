@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.29</title>
+<title>Nexa · Técnico — v0.30</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.29';
+  var VER='v0.30';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -144,7 +144,7 @@
     var estadoQ;
     if(listState.filtro==='curso') estadoQ='estado=eq.EN_CURSO';
     else if(listState.filtro==='cerradas') estadoQ='estado=in.(CERRADA_TECNICO,FINALIZADA)';
-    else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO)';
+    else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,PARCIAL)';
     var agrupa=(listState.filtro==='activas');
     var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
     var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,estado,prioridad,descripcion,fecha_agendada,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
@@ -181,7 +181,9 @@
       Array.prototype.forEach.call(cont.querySelectorAll('.ot-abrir'),function(b){ b.addEventListener('click',function(){ vDetalle(d.filter(function(x){return x.id==b.getAttribute('data-id');})[0]); }); });
     }).catch(function(){ cont.innerHTML='<div class="center">Error al cargar. Reintentá.</div>'; });
   }
-  function pillEstado(e){ var m={PENDIENTE:'p-pend',ASIGNADA:'p-asig',EN_CURSO:'p-curso',CERRADA_TECNICO:'p-cerr',FINALIZADA:'p-cerr'}; return '<span class="pill '+(m[e]||'p-pend')+'">'+esc((e||'').replace('_',' ').toLowerCase())+'</span>'; }
+  function pillEstado(e){ var m={PENDIENTE:'p-pend',ASIGNADA:'p-asig',EN_CURSO:'p-curso',PARCIAL:'p-curso',CERRADA_TECNICO:'p-cerr',FINALIZADA:'p-cerr'}; return '<span class="pill '+(m[e]||'p-pend')+'">'+esc((e==='PARCIAL'?'parcial (sigue)':(e||'').replace('_',' ').toLowerCase()))+'</span>'; }
+  function _hm(ms){ if(!ms||ms<0)return '0m'; var min=Math.round(ms/60000),h=Math.floor(min/60),m=min%60; return (h?h+'h ':'')+m+'m'; }
+  function _hhmm(iso){ if(!iso)return '--:--'; var d=new Date(iso); if(isNaN(d))return '--:--'; var p=function(n){return (n<10?'0':'')+n;}; return p(d.getHours())+':'+p(d.getMinutes()); }
   function mapsUrl(cli){ var q = (cli.lat!=null&&cli.lng!=null) ? (cli.lat+','+cli.lng) : (cli.domicilio_full||''); return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q); }
 
   // ── DETALLE OT (cierre = próxima tanda) ──
@@ -446,7 +448,15 @@
       +'<button class="btn btn-pri btn-sm ot-abrir" data-id="'+o.id+'">Abrir</button></div></div>';
   }
   function vDetalleServ(o){
-    var cli=o.clientes_servicios||{};
+    app.innerHTML=topBar('OT N° '+o.numero,'Servicio')+'<div class="wrap"><div class="center"><div class="spin"></div></div></div>';
+    sbGet('ot_sesiones?ot_id=eq.'+o.id+'&order=inicio.asc&select=inicio,fin,tipo').then(function(s){ _renderDetalleServ(o,_cieArr(s)); }).catch(function(){ _renderDetalleServ(o,[]); });
+  }
+  function _renderDetalleServ(o,ses){
+    var cli=o.clientes_servicios||{}, cerrada=(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA');
+    var totMs=0; ses.forEach(function(s){ if(s.inicio&&s.fin){ var d=new Date(s.fin)-new Date(s.inicio); if(d>0) totMs+=d; } });
+    var sesCard='';
+    if(ses.length){ sesCard='<div class="card"><div class="label">🕐 Sesiones · total '+_hm(totMs)+'</div>'+ses.map(function(s,i){ var d=(s.inicio&&s.fin)?(new Date(s.fin)-new Date(s.inicio)):0; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--bord);font-size:13px"><span>'+(i+1)+'. '+esc(fmtFecha(s.inicio))+' · '+_hhmm(s.inicio)+'–'+_hhmm(s.fin)+' <span class="pill '+(s.tipo==='FINAL'?'p-cerr':'p-asig')+'" style="font-size:10px">'+(s.tipo==='FINAL'?'final':'parcial')+'</span></span><b>'+_hm(d)+'</b></div>'; }).join('')+'</div>'; }
+    var enCurso=(o.estado==='EN_CURSO');
     app.innerHTML=topBar('OT N° '+o.numero,'Servicio')+'<div class="wrap">'
       +'<div class="card"><div style="margin-bottom:8px">'+pillEstado(o.estado)+' · 🧰 Servicio · prioridad '+esc(o.prioridad||'NORMAL')+'</div>'
       +fila('Cliente',cli.nombre||'—')
@@ -457,11 +467,12 @@
       +(o.descripcion?fila('Descripción',o.descripcion):'')
       +(o.acompanante?fila('Acompañante',o.acompanante):'')
       +(o.fecha_agendada?fila('Agendada',fmtFecha(o.fecha_agendada)):'')
-      +'</div>'
+      +'</div>'+sesCard
       +(cli.direccion?'<a class="btn btn-2" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(cli.direccion)+'" style="margin-bottom:10px">🏠 Ir por la dirección</a>':'')
       +(cli.telefono?'<div class="row2" style="margin-bottom:10px"><a class="btn btn-2" href="tel:'+esc(String(cli.telefono).replace(/[^\d+]/g,''))+'">📞 Llamar</a><a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(cli.telefono)+'">💬 WhatsApp</a></div>':'')
-      +(o.estado==='EN_CURSO' ? '' : '<button class="btn btn-pri" id="dt-iniciar" style="margin-bottom:10px">▶ Iniciar tarea</button>')
-      +(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA' ? '<div class="card" style="text-align:center;color:var(--cyan)">✅ Tarea cerrada por el técnico</div>' : '<button class="btn btn-ok" id="dt-cerrar">✅ Cerrar tarea</button>')
+      +(cerrada ? '<div class="card" style="text-align:center;color:var(--cyan)">✅ Tarea finalizada por el técnico</div>'
+         : (enCurso ? '<button class="btn btn-ok" id="dt-cerrar">✅ Cerrar tarea (parcial o final)</button>'
+             : '<button class="btn btn-pri" id="dt-iniciar">▶ '+(ses.length?'Continuar (nuevo inicio)':'Iniciar tarea')+'</button>'))
       +'<button class="btn btn-2" id="dt-volver" style="margin-top:10px">← Volver</button>'
       +'</div>';
     wireTop();
@@ -479,7 +490,7 @@
       sbGet('catalogo_materiales?area=eq.SERVICIOS&activo=eq.true&select=id,nombre,unidad&order=nombre'),
       sbGet('mano_obra_catalogo?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre')
     ]).then(function(r){
-      SV={ o:o, mats:_cieArr(r[0]), mos:_cieArr(r[1]), matC:{}, moC:{}, fotos:[], _obs:'', _inicio:_toLocalInput(o.inicio_tec_at), _fin:_toLocalInput(new Date().toISOString()) };
+      SV={ o:o, mats:_cieArr(r[0]), mos:_cieArr(r[1]), matC:{}, moC:{}, fotos:[], _obs:'', tipoCierre:'FINAL', _inicio:_toLocalInput(o.inicio_tec_at), _fin:_toLocalInput(new Date().toISOString()) };
       renderCierreServ();
     }).catch(function(){ app.innerHTML=topBar('Cerrar OT N° '+o.numero,'Servicio')+'<div class="wrap"><div class="center">Error al cargar. Reintentá.</div></div>'; });
   }
@@ -487,9 +498,11 @@
   function _renderFotosServ(){ if(!SV.fotos.length) return '<div class="muted" style="font-size:13px">Sin fotos todavía.</div>'; return '<div style="display:flex;gap:8px;flex-wrap:wrap">'+SV.fotos.map(function(f,i){ return '<div style="position:relative"><img src="'+f.preview+'" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)">'+(f.url?'<span style="position:absolute;bottom:2px;right:2px;background:#16a34a;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">✓</span>':'<span style="position:absolute;bottom:2px;right:2px;background:#f59e0b;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">…</span>')+'<button class="sv-foto-del btn" data-i="'+i+'" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--rojo);color:#fff;padding:0;font-size:13px;line-height:1">✕</button></div>'; }).join('')+'</div>'; }
   function renderCierreServ(){
     var o=SV.o, cli=o.clientes_servicios||{};
+    var fin=(SV.tipoCierre==='FINAL');
     var h=topBar('Cerrar OT N° '+o.numero,'Servicio')+'<div class="wrap">'
       +'<div class="card"><div style="font-weight:800">'+esc(cli.nombre||'')+'</div>'+(o.titulo?'<div class="dir" style="font-weight:600">'+esc(o.titulo)+'</div>':'')+(o.descripcion?'<div class="dir muted">'+esc(o.descripcion)+'</div>':'')+'</div>'
-      +'<div class="card"><div class="label">🕐 Horario <span style="color:var(--rojo)">(obligatorio · para facturar)</span></div>'
+      +'<div class="card"><div class="label">¿Terminaste la tarea?</div><div class="row2"><button type="button" class="btn '+(fin?'btn-ok':'btn-2')+'" id="sv-final">✅ Sí, cierre final</button><button type="button" class="btn '+(fin?'btn-2':'btn-x')+'" id="sv-parcial">⏸️ No, sigo otro día</button></div>'+(fin?'':'<div class="muted" style="font-size:12px;margin-top:6px">Cierre <b>parcial</b>: la tarea queda abierta para continuar otro día. Se cuentan las horas de esta visita. Foto y firmas no son obligatorias.</div>')+'</div>'
+      +'<div class="card"><div class="label">🕐 Horario de esta visita <span style="color:var(--rojo)">(obligatorio · para facturar)</span></div>'
         +'<div class="row2"><div><div class="muted" style="font-size:12px;margin-bottom:3px">Hora de inicio</div><input type="datetime-local" id="sv-inicio" value="'+esc(SV._inicio||'')+'" style="width:100%"></div>'
         +'<div><div class="muted" style="font-size:12px;margin-bottom:3px">Hora de fin</div><input type="datetime-local" id="sv-fin" value="'+esc(SV._fin||'')+'" style="width:100%"></div></div></div>'
       +'<div class="card"><div class="label">📦 Materiales utilizados</div>';
@@ -499,10 +512,10 @@
     if(!SV.mos.length) h+='<div class="muted" style="font-size:13px">No hay mano de obra en el catálogo de servicios.</div>';
     SV.mos.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><input type="number" inputmode="numeric" min="0" class="sv-mo" data-m="'+m.id+'" value="'+(SV.moC[m.id]>0?SV.moC[m.id]:'')+'" placeholder="0" style="width:92px;text-align:center;font-weight:700"></div>'; });
     h+='</div><div class="card"><div class="label">📝 Observaciones</div><textarea id="sv-obs" rows="3" style="width:100%" placeholder="Qué se hizo, detalles…">'+esc(SV._obs||'')+'</textarea></div>'
-      +'<div class="card"><div class="label">📷 Fotos <span style="color:var(--rojo)">(obligatorio: al menos 1)</span></div>'+_renderFotosServ()+'<label class="btn btn-2" style="margin-top:8px;display:block;text-align:center">📷 Agregar foto<input id="sv-foto-in" type="file" accept="image/*" capture="environment" multiple style="display:none"></label></div>'
-      +'<div class="card"><div class="label">✍️ Firma del técnico <span class="muted">(opcional)</span></div>'+_firmaPad('tec')+'</div>'
-      +'<div class="card"><div class="label">✍️ Firma del cliente <span class="muted">(opcional)</span></div>'+_firmaPad('cli')+'</div>'
-      +'<div class="err" id="sv-err"></div><button class="btn btn-ok" id="sv-confirmar">✔️ Confirmar cierre</button><button class="btn btn-2" id="sv-volver" style="margin-top:10px">← Cancelar</button></div>';
+      +'<div class="card"><div class="label">📷 Fotos '+(fin?'<span style="color:var(--rojo)">(obligatorio: al menos 1)</span>':'<span class="muted">(opcional)</span>')+'</div>'+_renderFotosServ()+'<label class="btn btn-2" style="margin-top:8px;display:block;text-align:center">📷 Agregar foto<input id="sv-foto-in" type="file" accept="image/*" capture="environment" multiple style="display:none"></label></div>'
+      +(fin?'<div class="card"><div class="label">✍️ Firma del técnico <span class="muted">(opcional)</span></div>'+_firmaPad('tec')+'</div>'
+        +'<div class="card"><div class="label">✍️ Firma del cliente <span class="muted">(opcional)</span></div>'+_firmaPad('cli')+'</div>':'')
+      +'<div class="err" id="sv-err"></div><button class="btn '+(fin?'btn-ok':'btn-pri')+'" id="sv-confirmar">'+(fin?'✔️ Confirmar cierre final':'⏸️ Guardar cierre parcial')+'</button><button class="btn btn-2" id="sv-volver" style="margin-top:10px">← Cancelar</button></div>';
     app.innerHTML=h; wireCierreServ();
   }
   function _svFkey(which){ return 'firma'+(which==='tec'?'Tec':'Cli'); }
@@ -545,34 +558,40 @@
     var sfi=document.getElementById('sv-fin'); if(sfi) sfi.oninput=function(){ SV._fin=this.value; };
     each('.sv-foto-del',function(b){ b.onclick=function(){ SV.fotos.splice(+b.getAttribute('data-i'),1); renderCierreServ(); }; });
     var fin=document.getElementById('sv-foto-in'); if(fin) fin.addEventListener('change',function(e){ _subirFotosServ(e.target.files); });
-    _initFirma('tec'); _initFirma('cli');
-    document.getElementById('fp-clear-tec').addEventListener('click',function(){ _clearFirma('tec'); });
-    document.getElementById('fp-clear-cli').addEventListener('click',function(){ _clearFirma('cli'); });
+    if(SV.tipoCierre==='FINAL'){ _initFirma('tec'); _initFirma('cli');
+      var ct=document.getElementById('fp-clear-tec'); if(ct) ct.addEventListener('click',function(){ _clearFirma('tec'); });
+      var cc=document.getElementById('fp-clear-cli'); if(cc) cc.addEventListener('click',function(){ _clearFirma('cli'); }); }
+    var bf=document.getElementById('sv-final'); if(bf) bf.addEventListener('click',function(){ SV.tipoCierre='FINAL'; renderCierreServ(); });
+    var bp=document.getElementById('sv-parcial'); if(bp) bp.addEventListener('click',function(){ SV.tipoCierre='PARCIAL'; renderCierreServ(); });
     document.getElementById('sv-confirmar').addEventListener('click',confirmarCierreServ);
   }
   function confirmarCierreServ(){
     var err=document.getElementById('sv-err'); err.textContent='';
-    var o=SV.o, btn=document.getElementById('sv-confirmar');
+    var o=SV.o, btn=document.getElementById('sv-confirmar'), esFinal=(SV.tipoCierre==='FINAL');
     var ini=_fromLocalInput(SV._inicio), fin=_fromLocalInput(SV._fin);
     if(!ini||!fin){ err.textContent='Completá hora de inicio y de fin.'; return; }
     if(new Date(fin).getTime()<new Date(ini).getTime()){ err.textContent='La hora de fin no puede ser anterior a la de inicio.'; return; }
-    if(!SV.fotos.length){ err.textContent='Tenés que subir al menos 1 foto.'; return; }
+    if(esFinal && !SV.fotos.length){ err.textContent='Para el cierre final tenés que subir al menos 1 foto.'; return; }
     if(SV.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá a que terminen de subir las fotos.'; return; }
     btn.disabled=true; btn.textContent='Guardando…';
-    Promise.all([_uploadFirma('tec'),_uploadFirma('cli')]).then(function(firmas){
+    Promise.all([esFinal?_uploadFirma('tec'):Promise.resolve(null), esFinal?_uploadFirma('cli'):Promise.resolve(null)]).then(function(firmas){
       getGPS().then(function(g){
-        var jobs=[], upd={ estado:'CERRADA_TECNICO', inicio_tec_at:ini, fin_tec_at:fin, observaciones_tec:SV._obs||null };
-        if(g){ upd.lat_fin=g.lat; upd.lng_fin=g.lng; }
-        if(firmas[0]) upd.firma_tecnico_url=firmas[0];
-        if(firmas[1]) upd.firma_cliente_url=firmas[1];
+        var jobs=[];
+        // Sesión: cuenta las horas de ESTA visita (inicio→fin). El total = suma de sesiones.
+        jobs.push(sbPost('ot_sesiones',{ ot_id:o.id, cuadrilla_id:CUAD.id, inicio:ini, fin:fin, tipo:SV.tipoCierre, observaciones:SV._obs||null }));
+        var upd={ observaciones_tec:SV._obs||null }; if(g){ upd.lat_fin=g.lat; upd.lng_fin=g.lng; }
+        if(esFinal){ upd.estado='CERRADA_TECNICO'; upd.fin_tec_at=fin; if(firmas[0]) upd.firma_tecnico_url=firmas[0]; if(firmas[1]) upd.firma_cliente_url=firmas[1];
+          jobs.push(sbPost('ot_historial',{ ot_id:o.id, evento:'CIERRE_TECNICO', estado_anterior:o.estado||null, estado_nuevo:'CERRADA_TECNICO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:(SV._obs||'Cierre final de servicio') }).catch(function(){}));
+        } else { upd.estado='ASIGNADA';   // queda abierta para continuar otro día (el progreso parcial se ve por las sesiones)
+          jobs.push(sbPost('ot_historial',{ ot_id:o.id, evento:'CAMBIO_ESTADO', estado_anterior:o.estado||null, estado_nuevo:'ASIGNADA', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:'Cierre parcial · '+_hm(new Date(fin)-new Date(ini))+(SV._obs?(' · '+SV._obs):'') }).catch(function(){}));
+        }
         jobs.push(sbPatch('ordenes_trabajo?id=eq.'+o.id,upd));
-        jobs.push(sbPost('ot_historial',{ ot_id:o.id, evento:'CIERRE_TECNICO', estado_anterior:o.estado||null, estado_nuevo:'CERRADA_TECNICO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:(SV._obs||'Cierre de servicio') }).catch(function(){}));
         var mats=[]; SV.mats.forEach(function(m){ var c=SV.matC[m.id]; if(c>0) mats.push({ot_id:o.id,material_id:m.id,cantidad:c,serial:null}); });
         if(mats.length) jobs.push(sbPost('ot_materiales',mats));
         var mos=[]; SV.mos.forEach(function(m){ var c=SV.moC[m.id]; if(c>0) mos.push({ot_id:o.id,mano_obra_id:m.id,nombre:m.nombre,cantidad:c}); });
         if(mos.length) jobs.push(sbPost('ot_mano_obra',mos));
         SV.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'CIERRE'})); });
-        Promise.all(jobs).then(function(){ toast('Cierre guardado ✓'); SV=null; listState.filtro='cerradas'; vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent='✔️ Confirmar cierre'; });
+        Promise.all(jobs).then(function(){ toast(esFinal?'Cierre final guardado ✓':'Cierre parcial guardado ✓ (sigue abierta)'); SV=null; listState.filtro=(esFinal?'cerradas':'activas'); vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent=esFinal?'✔️ Confirmar cierre final':'⏸️ Guardar cierre parcial'; });
       });
     });
   }
