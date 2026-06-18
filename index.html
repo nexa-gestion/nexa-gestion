@@ -237,7 +237,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.20';
+  var VER='v1.21';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1258,7 +1258,7 @@
   }
 
   // ── ORDENES ──
-  var otState={ estado:'', tipo:'', antig:'', q:'', page:0, size:50, total:0, orderBy:'creada', orderDir:'desc', cols:null, sel:{}, rows:[], soloTv:false };
+  var otState={ estado:'', tipo:'', antig:'', cuad:'', desde:'', hasta:'', q:'', page:0, size:50, total:0, orderBy:'creada', orderDir:'desc', cols:null, sel:{}, rows:[], soloTv:false };
   var _PRIO_ORD={BAJA:0,NORMAL:1,ALTA:2,URGENTE:3};
   // ord = orden del lado del cliente (sobre la lista ya traída) → permite ordenar por CUALQUIER columna, barrio incluido
   var OT_COLS=[
@@ -1291,6 +1291,10 @@
       +'<select id="ot-estado"><option value="">Todos los estados</option>'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],otState.estado)+'</select>'
       +'<select id="ot-filtro-tipo"><option value=""'+(otState.tipo?'':' selected')+'>Todos los tipos</option>'+opt(OT_TIPOS,otState.tipo)+'</select>'
       +'<select id="ot-filtro-antig"><option value="">Cualquier antigüedad</option><option value="a"'+(otState.antig==='a'?' selected':'')+'>&lt; 24 hs</option><option value="b"'+(otState.antig==='b'?' selected':'')+'>24 a 72 hs</option><option value="d"'+(otState.antig==='d'?' selected':'')+'>&gt; 72 hs</option></select>'
+      +'<select id="ot-cuad"><option value="">Todas las cuadrillas</option>'+(REF.cuadrillas||[]).map(function(c){return '<option value="'+c.id+'"'+(String(otState.cuad)===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('')+'</select>'
+      +'<input type="date" id="ot-desde" value="'+esc(otState.desde||'')+'" title="Agendada desde" style="width:auto">'
+      +'<input type="date" id="ot-hasta" value="'+esc(otState.hasta||'')+'" title="Agendada hasta" style="width:auto">'
+      +'<button class="btn btn-2" id="ot-hoy">Hoy</button>'
       +'<button class="btn btn-pri" id="ot-filtrar">Filtrar</button>'
       +'<button class="btn '+(otState.soloTv?'btn-x':'btn-2')+'" id="ot-tv" title="Solo clientes que pidieron TV o Pack Fútbol">📺 Con TV/Fútbol'+(otState.soloTv?' ✓':'')+'</button>'
       +'<button class="btn btn-ok" id="ot-nueva" style="margin-left:auto">+ Nueva OT</button>'
@@ -1298,6 +1302,10 @@
     document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.page=0; cargarOT(); });
     document.getElementById('ot-tv').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.soloTv=!otState.soloTv; otState.page=0; vOrdenes(); });
     document.getElementById('ot-nueva').addEventListener('click',function(){ nuevaOT(null); });
+    var _ocu=document.getElementById('ot-cuad'); if(_ocu) _ocu.addEventListener('change',function(){ otState.cuad=this.value; otState.page=0; renderOT(); });
+    var _ode=document.getElementById('ot-desde'); if(_ode) _ode.addEventListener('change',function(){ otState.desde=this.value; otState.page=0; renderOT(); });
+    var _oha=document.getElementById('ot-hasta'); if(_oha) _oha.addEventListener('change',function(){ otState.hasta=this.value; otState.page=0; renderOT(); });
+    var _oho=document.getElementById('ot-hoy'); if(_oho) _oho.addEventListener('click',function(){ otState.desde=_hoyISO(); otState.hasta=_hoyISO(); otState.page=0; vOrdenes(); });
     var qel=document.getElementById('ot-q'); if(qel) qel.addEventListener('input',function(){ otState.q=this.value; otState.page=0; renderOT(); });
     cargarOT();
   }
@@ -1318,6 +1326,9 @@
     if(otState.soloTv) rows=rows.filter(function(o){ return o.clientes&&(o.clientes.tv_online||o.clientes.pack_futbol); });
     if(otState.q){ var _toks=otState.q.toLowerCase().trim().split(/\s+/).filter(Boolean); if(_toks.length) rows=rows.filter(function(o){ var c=o.clientes||{}; var hay=((''+(o.numero||''))+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.doc_numero||'')+' '+(c.numero_cliente||'')+' '+(c.codigo_ispcube||'')+' '+(c.domicilio_full||'')+' '+(c.barrio||'')+' '+(c.telefono||'')+' '+(o.tipo||'')).toLowerCase(); return _toks.every(function(t){ return hay.indexOf(t)>=0; }); }); }
     if(otState.antig){ var _ahora=Date.now(); rows=rows.filter(function(o){ if(!o.created_at)return false; var hs=(_ahora-new Date(o.created_at).getTime())/3600000; return otState.antig==='a'?hs<24:(otState.antig==='b'?(hs>=24&&hs<72):hs>=72); }); }
+    if(otState.cuad){ rows=rows.filter(function(o){ return String(o.cuadrilla_id||'')===String(otState.cuad); }); }
+    if(otState.desde){ rows=rows.filter(function(o){ return o.fecha_agendada && String(o.fecha_agendada).substring(0,10)>=otState.desde; }); }
+    if(otState.hasta){ rows=rows.filter(function(o){ return o.fecha_agendada && String(o.fecha_agendada).substring(0,10)<=otState.hasta; }); }
     var col=OT_COLS.filter(function(c){return c.k===otState.orderBy;})[0]||OT_COLS.filter(function(c){return c.k==='creada';})[0];
     if(col&&col.ord){ var dir=otState.orderDir==='asc'?1:-1; rows.sort(function(a,b){ var va=col.ord(a),vb=col.ord(b); if(va<vb)return -dir; if(va>vb)return dir; return 0; }); }
     otState.total=rows.length;
@@ -4369,9 +4380,10 @@
   // ── util UI ──
   // ════════════════ MÓDULO SERVICIOS (tareas fuera del servicio de internet) ════════════════
   var _svState={ tab:'ots' };
+  var _svOtFilt={ q:'', cli:'', tec:'', est:'', desde:'', hasta:'' };
   function vServicios(){
     var t=_svState.tab||'ots';
-    var tabs=[['ots','🧰 Servicios'],['clientes','🏢 Clientes'],['tipos','🏷️ Tipos de trabajo'],['catalogo','📦 Catálogo']];
+    var tabs=[['ots','📋 Órdenes de trabajo'],['clientes','🏢 Clientes'],['tipos','🏷️ Tipos de trabajo'],['catalogo','📦 Catálogo']];
     view.innerHTML='<h1>🧰 Servicios</h1><p class="sub">Tareas fuera del servicio de internet (cableado, cámaras, telemetría…) para clientes externos. Generás la OT, la asignás a un técnico y después sacás reportes por cliente.</p>'
       +'<div class="toolbar" style="gap:6px">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' sv-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="sv-body"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.sv-tab'),function(b){ b.addEventListener('click',function(){ _svState.tab=b.getAttribute('data-t'); vServicios(); }); });
@@ -4461,9 +4473,22 @@
   // ── Servicios (OT) ──
   function _svOts(){
     var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
-    sbGet('ordenes_trabajo?area=eq.SERVICIOS&select=id,numero,estado,prioridad,descripcion,fecha_agendada,acompanante,cuadrilla_id,cliente_servicio_id,tipo_trabajo_id,created_at,clientes_servicios(nombre),cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=1000').then(function(d){
-      d=Array.isArray(d)?d:[];
-      b.innerHTML='<div class="toolbar"><input id="svo-q" placeholder="🔎 Buscar N°, cliente, tipo, descripción…" style="flex:1;min-width:220px"><button class="btn btn-ok" id="svo-new">➕ Nuevo servicio</button></div><div id="svo-tabla"></div>';
+    Promise.all([
+      sbGet('ordenes_trabajo?area=eq.SERVICIOS&select=id,numero,estado,prioridad,descripcion,fecha_agendada,acompanante,cuadrilla_id,cliente_servicio_id,tipo_trabajo_id,created_at,clientes_servicios(nombre),cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=2000'),
+      sbGet('clientes_servicios?select=id,nombre&order=nombre')
+    ]).then(function(r){
+      var d=Array.isArray(r[0])?r[0]:[], clis=r[1]||[], tecs=(REF.cuadrillas||[]), f=_svOtFilt;
+      var estados=['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','NO_REALIZADA','CANCELADA'];
+      b.innerHTML='<div class="toolbar" style="flex-wrap:wrap;gap:6px">'
+        +'<input id="svo-q" placeholder="🔎 Buscar N°, descripción…" value="'+esc(f.q)+'" style="min-width:160px;flex:1">'
+        +'<select id="svo-cli"><option value="">Todos los clientes</option>'+clis.map(function(x){return '<option value="'+x.id+'"'+(String(f.cli)===String(x.id)?' selected':'')+'>'+esc(x.nombre)+'</option>';}).join('')+'</select>'
+        +'<select id="svo-tec"><option value="">Todos los técnicos</option>'+tecs.map(function(x){return '<option value="'+x.id+'"'+(String(f.tec)===String(x.id)?' selected':'')+'>'+esc(x.nombre)+'</option>';}).join('')+'</select>'
+        +'<select id="svo-est"><option value="">Todos los estados</option>'+estados.map(function(x){return '<option'+(f.est===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select>'
+        +'<input type="date" id="svo-desde" value="'+esc(f.desde)+'" title="Desde" style="width:auto">'
+        +'<input type="date" id="svo-hasta" value="'+esc(f.hasta)+'" title="Hasta" style="width:auto">'
+        +'<button class="btn btn-2" id="svo-hoy">Hoy</button><button class="btn btn-2" id="svo-limp">Limpiar</button>'
+        +'<button class="btn btn-ok" id="svo-new" style="margin-left:auto">➕ Nuevo servicio</button>'
+        +'</div><div id="svo-tabla"></div>';
       var cols=[
         {k:'numero',t:'N°',sort:function(o){return o.numero;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
         {k:'cliente',t:'Cliente',sort:function(o){return o.clientes_servicios?o.clientes_servicios.nombre:'';},r:function(o){return esc(o.clientes_servicios?o.clientes_servicios.nombre:'—');}},
@@ -4473,10 +4498,27 @@
         {k:'fecha',t:'Fecha',sort:function(o){return o.fecha_agendada||'';},r:function(o){return o.fecha_agendada?esc(fmtFecha(o.fecha_agendada)):'<span class="muted">—</span>';}},
         {k:'estado',t:'Estado',sort:function(o){return o.estado||'';},r:function(o){return pill(o.estado);}}
       ];
-      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q? d.filter(function(o){ return ((o.numero||'')+' '+(o.clientes_servicios?o.clientes_servicios.nombre:'')+' '+(o.tipos_trabajo?o.tipos_trabajo.nombre:'')+' '+(o.descripcion||'')+' '+(o.cuadrillas?o.cuadrillas.nombre:'')).toLowerCase().indexOf(q)>=0; }):d;
-        gridRender(document.getElementById('svo-tabla'),cols,rs,{key:'svo',note:rs.length+' servicio(s)',onRow:function(o){ _svOtForm(o); }}); }
-      pinta('');
-      document.getElementById('svo-q').addEventListener('input',function(){ pinta(this.value); });
+      function aplica(){
+        var rs=d.filter(function(o){
+          if(f.cli && String(o.cliente_servicio_id||'')!==String(f.cli)) return false;
+          if(f.tec && String(o.cuadrilla_id||'')!==String(f.tec)) return false;
+          if(f.est && o.estado!==f.est) return false;
+          if(f.desde && (!o.fecha_agendada || String(o.fecha_agendada).substring(0,10)<f.desde)) return false;
+          if(f.hasta && (!o.fecha_agendada || String(o.fecha_agendada).substring(0,10)>f.hasta)) return false;
+          if(f.q){ var q=f.q.toLowerCase().trim(); var hay=((o.numero||'')+' '+(o.clientes_servicios?o.clientes_servicios.nombre:'')+' '+(o.tipos_trabajo?o.tipos_trabajo.nombre:'')+' '+(o.descripcion||'')+' '+(o.cuadrillas?o.cuadrillas.nombre:'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+          return true;
+        });
+        gridRender(document.getElementById('svo-tabla'),cols,rs,{key:'svo',note:rs.length+' servicio(s)',onRow:function(o){ _svOtForm(o); }});
+      }
+      aplica();
+      document.getElementById('svo-q').addEventListener('input',function(){ f.q=this.value; aplica(); });
+      document.getElementById('svo-cli').addEventListener('change',function(){ f.cli=this.value; aplica(); });
+      document.getElementById('svo-tec').addEventListener('change',function(){ f.tec=this.value; aplica(); });
+      document.getElementById('svo-est').addEventListener('change',function(){ f.est=this.value; aplica(); });
+      document.getElementById('svo-desde').addEventListener('change',function(){ f.desde=this.value; aplica(); });
+      document.getElementById('svo-hasta').addEventListener('change',function(){ f.hasta=this.value; aplica(); });
+      document.getElementById('svo-hoy').addEventListener('click',function(){ f.desde=_hoyISO(); f.hasta=_hoyISO(); vServicios(); });
+      document.getElementById('svo-limp').addEventListener('click',function(){ _svOtFilt={ q:'', cli:'', tec:'', est:'', desde:'', hasta:'' }; vServicios(); });
       document.getElementById('svo-new').addEventListener('click',function(){ _svOtForm({}); });
     }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
   }
