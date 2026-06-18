@@ -237,7 +237,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.19';
+  var VER='v1.20';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4371,11 +4371,11 @@
   var _svState={ tab:'ots' };
   function vServicios(){
     var t=_svState.tab||'ots';
-    var tabs=[['ots','🧰 Servicios'],['clientes','🏢 Clientes'],['tipos','🏷️ Tipos de trabajo']];
+    var tabs=[['ots','🧰 Servicios'],['clientes','🏢 Clientes'],['tipos','🏷️ Tipos de trabajo'],['catalogo','📦 Catálogo']];
     view.innerHTML='<h1>🧰 Servicios</h1><p class="sub">Tareas fuera del servicio de internet (cableado, cámaras, telemetría…) para clientes externos. Generás la OT, la asignás a un técnico y después sacás reportes por cliente.</p>'
       +'<div class="toolbar" style="gap:6px">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' sv-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="sv-body"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.sv-tab'),function(b){ b.addEventListener('click',function(){ _svState.tab=b.getAttribute('data-t'); vServicios(); }); });
-    if(t==='clientes') _svClientes(); else if(t==='tipos') _svTipos(); else _svOts();
+    if(t==='clientes') _svClientes(); else if(t==='tipos') _svTipos(); else if(t==='catalogo') _svCatalogo(); else _svOts();
   }
   function _svInput(id,lbl,val,ph,opc){ return '<div><label class="l">'+lbl+(opc?' <span class="muted">(opcional)</span>':'')+'</label><input id="'+id+'" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'"></div>'; }
   // ── Clientes de servicios ──
@@ -4518,6 +4518,70 @@
         if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
         fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+o.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Servicio eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar.'); });
       });
+    });
+  }
+  // ── Catálogo de servicios (materiales + mano de obra, area=SERVICIOS) — lo que el técnico carga al cerrar ──
+  function _svCatalogo(){
+    var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    Promise.all([
+      sbGet('catalogo_materiales?area=eq.SERVICIOS&select=id,nombre,unidad,activo&order=nombre'),
+      sbGet('mano_obra_catalogo?area=eq.SERVICIOS&select=id,nombre,activo&order=nombre')
+    ]).then(function(r){
+      var mats=r[0]||[], mos=r[1]||[];
+      b.innerHTML='<p class="muted" style="font-size:12.5px;margin:2px 0 10px">Materiales y mano de obra que el técnico va a poder cargar al cerrar un servicio en la PWA. Son aparte de los de internet.</p>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start">'
+        +'<div><div class="toolbar" style="align-items:center"><b style="font-size:14px">📦 Materiales</b><button class="btn btn-ok" id="svm-new" style="margin-left:auto">➕ Material</button></div><div id="svm-tabla"></div></div>'
+        +'<div><div class="toolbar" style="align-items:center"><b style="font-size:14px">👷 Mano de obra</b><button class="btn btn-ok" id="svmo-new" style="margin-left:auto">➕ Mano de obra</button></div><div id="svmo-tabla"></div></div>'
+        +'</div>';
+      gridRender(document.getElementById('svm-tabla'),[{k:'nombre',t:'Material',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.unidad?' <span class="muted">('+esc(o.unidad)+')</span>':'')+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}}],mats,{key:'svm',note:mats.length+' material(es)',onRow:function(o){ _svMatForm(o); }});
+      gridRender(document.getElementById('svmo-tabla'),[{k:'nombre',t:'Mano de obra',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}}],mos,{key:'svmo',note:mos.length+' ítem(s)',onRow:function(o){ _svMoForm(o); }});
+      document.getElementById('svm-new').addEventListener('click',function(){ _svMatForm({}); });
+      document.getElementById('svmo-new').addEventListener('click',function(){ _svMoForm({}); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
+  }
+  function _svMatForm(c){
+    var ed=!!c.id;
+    var h='<h2>'+(ed?'Editar':'Nuevo')+' material de servicios</h2><div class="fsgrid">'
+      +_svInput('svmf-nombre','Nombre',c.nombre,'ej: Cable UTP cat6')
+      +_svInput('svmf-unidad','Unidad',c.unidad,'ej: MTS / UNIDAD',true)
+      +'<div><label class="l">Estado</label><select id="svmf-act"><option value="1"'+(c.activo!==false?' selected':'')+'>Activo</option><option value="0"'+(c.activo===false?' selected':'')+'>Inactivo</option></select></div>'
+      +'</div><div id="svmf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="svmf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="svmf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svmf-close">Cerrar</button></div>';
+    modal(h);
+    document.getElementById('svmf-close').addEventListener('click',cerrarModal);
+    document.getElementById('svmf-save').addEventListener('click',function(){
+      var nombre=document.getElementById('svmf-nombre').value.trim();
+      if(!nombre){ document.getElementById('svmf-err').textContent='El nombre es obligatorio.'; return; }
+      var body={ nombre:nombre, unidad:document.getElementById('svmf-unidad').value.trim()||null, area:'SERVICIOS', activo:(document.getElementById('svmf-act').value==='1') };
+      if(!ed){ body.codigo='SRV_'+nombre.toUpperCase().replace(/[^A-Z0-9]+/g,'_').slice(0,14); body.serial_tipo='NINGUNO'; body.requiere_serie=false; body.tecnologia='AMBAS'; body.orden=90; }
+      var btn=this; btn.disabled=true; var prom=ed? sbPatch('catalogo_materiales?id=eq.'+c.id,body) : sbPost('catalogo_materiales',body);
+      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Material guardado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svmf-err').textContent='No se pudo guardar (¿nombre/código repetido?).'; });
+    });
+    var del=document.getElementById('svmf-del'); if(del) del.addEventListener('click',function(){
+      if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
+      fetch(SB_URL+'/rest/v1/catalogo_materiales?id=eq.'+c.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Material eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar (¿ya se usó en un cierre?).'); });
+    });
+  }
+  function _svMoForm(c){
+    var ed=!!c.id;
+    var h='<h2>'+(ed?'Editar':'Nueva')+' mano de obra de servicios</h2><div class="fsgrid">'
+      +_svInput('svmof-nombre','Nombre',c.nombre,'ej: Hora de técnico / Tendido de cable')
+      +'<div><label class="l">Estado</label><select id="svmof-act"><option value="1"'+(c.activo!==false?' selected':'')+'>Activo</option><option value="0"'+(c.activo===false?' selected':'')+'>Inactivo</option></select></div>'
+      +'</div><div id="svmof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="svmof-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="svmof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svmof-close">Cerrar</button></div>';
+    modal(h);
+    document.getElementById('svmof-close').addEventListener('click',cerrarModal);
+    document.getElementById('svmof-save').addEventListener('click',function(){
+      var nombre=document.getElementById('svmof-nombre').value.trim();
+      if(!nombre){ document.getElementById('svmof-err').textContent='El nombre es obligatorio.'; return; }
+      var body={ nombre:nombre, area:'SERVICIOS', activo:(document.getElementById('svmof-act').value==='1') };
+      if(!ed){ body.tecnologia='AMBAS'; body.orden=90; }
+      var btn=this; btn.disabled=true; var prom=ed? sbPatch('mano_obra_catalogo?id=eq.'+c.id,body) : sbPost('mano_obra_catalogo',body);
+      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Mano de obra guardada ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svmof-err').textContent='No se pudo guardar.'; });
+    });
+    var del=document.getElementById('svmof-del'); if(del) del.addEventListener('click',function(){
+      if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
+      fetch(SB_URL+'/rest/v1/mano_obra_catalogo?id=eq.'+c.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Mano de obra eliminada'); vServicios(); }).catch(function(){ toast('No se pudo eliminar (¿ya se usó en un cierre?).'); });
     });
   }
   function opt(arr,sel){ return arr.map(function(x){return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>';}).join(''); }
