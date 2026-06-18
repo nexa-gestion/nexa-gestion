@@ -235,7 +235,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.14';
+  var VER='v1.15';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2874,7 +2874,7 @@
     sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=created_at.desc&limit=2000').then(function(d){
       _dxData=Array.isArray(d)?d:[];
       var h='<h1>🔌 Desconexiones / Bajas</h1><p class="sub">El técnico hace el corte/recupero. Después <b>soporte</b> elimina la conexión en ISPcube y <b>comercial</b> hace la nota de crédito (si hay deuda) + borra el cliente. Con las dos firmas, la baja queda finalizada.</p><div id="dx-wrap">'+_dxTabs()
-        +'<div class="toolbar"><input id="dx-q" placeholder="🔎 Buscar N°, código ISP, cliente, barrio…" value="'+esc(st.q||'')+'" style="min-width:240px;flex:1">'
+        +'<div class="toolbar"><input id="dx-q" placeholder="🔎 Buscar N°, ISP, cliente, barrio, precinto, caja, teléfono…" value="'+esc(st.q||'')+'" style="min-width:240px;flex:1">'
         +'<select id="dx-forigen"><option value="">Todos los orígenes</option>'+[['manual','✋ Manual'],['baja_isp','⬇️ Baja ISPcube'],['bloqueado_30d','⛔ Bloqueado +30d']].map(function(o){return '<option value="'+o[0]+'"'+(st.origen===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'
         +'<button class="btn btn-2" id="dx-csv">⬇️ Exportar CSV</button></div>'
         +'<div id="dx-tabla"></div></div>';
@@ -2894,7 +2894,7 @@
     return _dxData.filter(function(o){
       if(org && o.origen!==org) return false;
       if(!q) return true;
-      var c=o.clientes||{}, hay=((c.numero_cliente||'')+' '+(c.codigo_ispcube||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.domicilio_full||'')).toLowerCase();
+      var c=o.clientes||{}, hay=((c.numero_cliente||'')+' '+(c.codigo_ispcube||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.domicilio_full||'')+' '+(c.precinto||'')+' '+(c.caja_nap||'')+' '+(c.puerto||'')+' '+(c.telefono||'')).toLowerCase();
       return hay.indexOf(q)>=0;
     });
   }

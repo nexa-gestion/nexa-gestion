@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.26</title>
+<title>Nexa · Técnico — v0.27</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.26';
+  var VER='v0.27';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -482,7 +482,7 @@
     app.innerHTML=topBar('Desconexiones','cortes pendientes')+'<div class="wrap">'
       +'<div class="card"><div class="muted" style="font-size:13px">TODOS los cortes pendientes. Tocá «Ordenar por cercanía» para ver primero los más cerca tuyo (aunque no sean de tu cuadrilla).</div>'
       +'<button class="btn btn-2 btn-sm" id="dx-cerca" style="margin-top:8px">📍 Ordenar por cercanía</button>'
-      +'<input id="dx-q" placeholder="Filtrar por nombre o barrio" value="'+esc(desconState.q)+'" style="margin-top:8px"></div>'
+      +'<input id="dx-q" placeholder="Nombre, precinto, caja, N° cliente, barrio…" value="'+esc(desconState.q)+'" style="margin-top:8px"></div>'
       +'<div id="dx-res"><div class="center"><div class="spin"></div></div></div></div>';
     wireTop();
     document.getElementById('dx-q').addEventListener('input',function(){ desconState.q=this.value; renderDescon(); });
@@ -531,8 +531,8 @@
   }
   function renderDescon(){
     var res=document.getElementById('dx-res'); if(!res||!desconState.list) return;
-    var q=desconState.q.toLowerCase();
-    var list=desconState.list.filter(function(o){ if(!q)return true; var c=o.clientes||{}; return (((c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.numero_cliente||'')).toLowerCase()).indexOf(q)>=0; });
+    var q=desconState.q.toLowerCase().trim();
+    var list=desconState.list.filter(function(o){ if(!q)return true; var c=o.clientes||{}; return (((c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.numero_cliente||'')+' '+(c.codigo_ispcube||'')+' '+(c.precinto||'')+' '+(c.caja_nap||'')+' '+(c.puerto||'')+' '+(c.telefono||'')+' '+(c.domicilio_full||'')).toLowerCase()).indexOf(q)>=0; });
     if(!list.length){ res.innerHTML='<div class="center" style="padding:24px 0">No hay cortes pendientes. 🎉</div>'; return; }
     res.innerHTML='<div class="muted" style="margin:6px 0">'+list.length+' corte(s) pendiente(s)'+(desconState.gps?' · por cercanía':' · (activá el GPS para ordenar por cercanía)')+'</div>'+list.slice(0,150).map(desconCard).join('');
     Array.prototype.forEach.call(res.querySelectorAll('.cli-card'),function(el){ el.addEventListener('click',function(ev){ if(ev.target.closest('a'))return; var o=desconState.list.filter(function(x){return x.id==el.getAttribute('data-id');})[0]; if(o) vCortar(o); }); });
