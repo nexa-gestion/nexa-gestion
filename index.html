@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.40';
+  var VER='v1.41';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -870,7 +870,7 @@
       sbGet('catalogo_materiales?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre'),
       sbGet('mano_obra_catalogo?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre'),
       sbGet('stock_serv?activo=eq.true&select=id,descripcion,unidad,cantidad_actual,dueno_tipo,dueno_cliente_id&order=descripcion'),
-      sbGet('clientes_servicios?cliente_padre_id=is.null&select=id,nombre')
+      sbGet('clientes_servicios?select=id,nombre,cliente_padre_id&order=nombre')
     ]).then(function(r){
       var mats=r[0]||[], mos=r[1]||[], ses=r[2]||[], fotos=r[3]||[], catM=r[4]||[], catO=r[5]||[], stkItems=r[6]||[], svClis=r[7]||[];
       var svCliMap={}; svClis.forEach(function(x){ svCliMap[x.id]=x.nombre; });
@@ -880,10 +880,26 @@
       var hh=function(iso){ if(!iso)return '--:--'; var d=new Date(iso); var p=function(n){return (n<10?'0':'')+n;}; return p(d.getHours())+':'+p(d.getMinutes()); };
       var h='<div class="toolbar" style="margin-bottom:10px"><button class="btn btn-2" id="vs-back">← Volver a validación</button><h1 style="margin:0;font-size:18px">🧰 Validar servicio N° '+esc(o.numero)+'</h1></div>';
       h+='<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;margin-bottom:10px">'
-        +'<div style="font-weight:800;font-size:15px;color:#14532d">'+esc(c.nombre||'(cliente)')+(o.titulo?(' · '+esc(o.titulo)):'')+'</div>'
+        +'<div style="font-weight:800;font-size:15px;color:#14532d">'+esc(c.nombre||o.cliente_libre||'(cliente)')+(o.titulo?(' · '+esc(o.titulo)):'')+'</div>'
         +'<div class="muted" style="font-size:12px">'+esc(o.descripcion||'')+'</div>'
         +'<div class="muted" style="font-size:12px;margin-top:3px">'+(c.contacto?('👤 '+esc(c.contacto)+' · '):'')+(c.telefono?('📞 '+esc(c.telefono)+' · '):'')+(c.direccion?('📍 '+esc(c.direccion)):'')+'</div>'
         +'<div style="font-size:12px;margin-top:4px">🔧 '+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'  ·  🕐 <b>'+_minTxt(totMs/60000)+'</b> en '+ses.length+' sesión'+(ses.length===1?'':'es')+'</div></div>';
+      // ── Trabajo no planificado (autogenerado): marca + resolución del cliente libre ──
+      var _esAuto=!!o.autogenerada, sinCli=(_esAuto && !o.cliente_servicio_id);
+      if(_esAuto){ h+='<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:13px;color:#991b1b">🔴 <b>Trabajo no planificado</b> — generado por '+esc(o.cuadrillas?o.cuadrillas.nombre:'la cuadrilla')+'. Revisalo con más atención.</div>'; }
+      if(sinCli){
+        var _princs=svClis.filter(function(x){return !x.cliente_padre_id;}), _subs=svClis.filter(function(x){return x.cliente_padre_id;}), _nameById={}; svClis.forEach(function(x){_nameById[x.id]=x.nombre;});
+        h+='<div style="background:#fff7ed;border:2px solid #fdba74;border-radius:10px;padding:12px 14px;margin-bottom:12px">'
+          +'<div style="font-weight:800;color:#9a3412">🔗 Falta vincular el cliente</div>'
+          +'<div style="font-size:13px;margin:4px 0 8px">El técnico anotó: "<b>'+esc(o.cliente_libre||'(sin texto)')+'</b>". Resolvé a quién corresponde antes de finalizar.</div>'
+          +'<label class="l">¿Cómo lo resolvés?</label><select id="vres-modo"><option value="principal">a) Vincular a un cliente principal existente</option><option value="sub">b) Vincular a un sub-cliente existente</option><option value="nuevo">c) Crear el cliente nuevo</option></select>'
+          +'<div id="vres-principal" style="margin-top:8px"><label class="l">Cliente principal</label><select id="vres-cli-p"><option value="">— elegí —</option>'+_princs.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('')+'</select></div>'
+          +'<div id="vres-sub" style="margin-top:8px;display:none"><label class="l">Sub-cliente</label><select id="vres-cli-s"><option value="">— elegí —</option>'+_subs.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+' (sub de '+esc(_nameById[x.cliente_padre_id]||'—')+')</option>';}).join('')+'</select>'+(_subs.length?'':'<div class="muted" style="font-size:12px;margin-top:3px">No hay sub-clientes cargados todavía.</div>')+'</div>'
+          +'<div id="vres-nuevo" style="margin-top:8px;display:none"><label class="l">Nombre del cliente nuevo</label><input id="vres-nom" placeholder="ej: Kiosco Don Pepe"><label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-top:8px"><input type="checkbox" id="vres-essub" style="width:auto"> Es sub-cliente de un principal</label><div id="vres-padre-box" style="display:none;margin-top:6px"><label class="l">Cliente principal</label><select id="vres-padre"><option value="">— elegí principal —</option>'+_princs.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('')+'</select></div></div>'
+          +'<div id="vres-err" style="color:var(--rojo);font-size:12.5px;min-height:14px;margin-top:6px"></div>'
+          +'<button class="btn btn-ok" id="vres-go" style="margin-top:4px">🔗 Vincular y desbloquear</button>'
+          +'</div>';
+      }
       if(ses.length){ h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:10px;margin-bottom:10px"><div class="l" style="margin:0 0 6px">🕐 Sesiones · total '+_minTxt(totMs/60000)+'</div>'+ses.map(function(s,i){ var d=(s.inicio&&s.fin)?(new Date(s.fin)-new Date(s.inicio)):0; return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f1f5f9"><span>'+(i+1)+'. '+esc(fmtFecha(s.inicio))+' '+hh(s.inicio)+'–'+hh(s.fin)+' '+(s.tipo==='FINAL'?'<b>(final)</b>':'(parcial)')+'</span><b>'+_minTxt(d/60000)+'</b></div>'; }).join('')+'</div>'; }
       h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;align-items:start">';
       h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:11px"><div class="l" style="margin:0 0 6px">🔧 Materiales</div>';
@@ -909,7 +925,7 @@
       if(fotos.length){ h+='<div style="margin-top:10px"><div class="l">📷 Fotos</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+fotos.map(function(f){return '<a href="'+esc(f.url)+'" target="_blank"><img src="'+esc(f.url)+'" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)"></a>';}).join('')+'</div></div>'; }
       var firmas=''; if(o.firma_tecnico_url) firmas+='<div style="text-align:center"><div class="muted" style="font-size:12px">Firma técnico</div><img src="'+esc(o.firma_tecnico_url)+'" style="max-width:200px;border:1px solid var(--bord);border-radius:8px;background:#fff"></div>'; if(o.firma_cliente_url) firmas+='<div style="text-align:center"><div class="muted" style="font-size:12px">Firma cliente</div><img src="'+esc(o.firma_cliente_url)+'" style="max-width:200px;border:1px solid var(--bord);border-radius:8px;background:#fff"></div>';
       if(firmas) h+='<div style="margin-top:10px"><div class="l">✍️ Firmas</div><div style="display:flex;gap:14px;flex-wrap:wrap">'+firmas+'</div></div>';
-      h+='<div class="toolbar" style="margin-top:14px;flex-wrap:wrap"><button class="btn btn-ok" id="vs-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button><button class="btn btn-2" id="vs-print">🖨️ Imprimir</button></div>';
+      h+='<div class="toolbar" style="margin-top:14px;flex-wrap:wrap">'+(sinCli?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;color:#991b1b;font-weight:600">🔒 Falta vincular el cliente "'+esc(o.cliente_libre||'')+'" antes de finalizar.</div>':'<button class="btn btn-ok" id="vs-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>')+'<button class="btn btn-2" id="vs-print">🖨️ Imprimir</button></div>';
       view.innerHTML=h;
       document.getElementById('vs-back').addEventListener('click',function(){ _svState.tab='validacion'; vServicios(); });
       document.getElementById('vs-print').addEventListener('click',function(){ imprimirServicio(o.id); });
@@ -941,7 +957,21 @@
       document.getElementById('vs-mat-ok').addEventListener('click',function(){ var nom=document.getElementById('vs-mat-nom').value.trim(), q=Math.max(1,parseFloat(document.getElementById('vs-mat-qty').value)||1); if(!nom){ toast('Escribí el material.'); return; } var cat=catM.filter(function(x){return x.nombre.toLowerCase()===nom.toLowerCase();})[0]; var body={ot_id:o.id,cantidad:q,serial:null}; if(cat){ body.material_id=cat.id; } else { body.descripcion=nom; } this.disabled=true; sbPost('ot_materiales',body).then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; toast('Material agregado ✓'); reload(); }).catch(function(){ toast('No se pudo agregar el material.'); reload(); }); });
       document.getElementById('vs-mo-ok').addEventListener('click',function(){ var nom=document.getElementById('vs-mo-nom').value.trim(), q=Math.max(1,parseInt(document.getElementById('vs-mo-qty').value,10)||1); if(!nom){ toast('Escribí la mano de obra.'); return; } var cat=catO.filter(function(x){return x.nombre.toLowerCase()===nom.toLowerCase();})[0]; var body={ot_id:o.id,nombre:nom,cantidad:q}; if(cat) body.mano_obra_id=cat.id; this.disabled=true; sbPost('ot_mano_obra',body).then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; toast('Mano de obra agregada ✓'); reload(); }).catch(function(){ toast('No se pudo agregar.'); reload(); }); });
       document.getElementById('vs-obs-save').addEventListener('click',function(){ var b=this; b.disabled=true; sbPatch('ordenes_trabajo?id=eq.'+o.id,{observaciones_tec:document.getElementById('vs-obs').value.trim()||null}).then(function(){ b.disabled=false; toast('Guardado ✓'); }); });
-      document.getElementById('vs-validar').addEventListener('click',function(){ var b=this; if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Validar y finalizar? Tocá de nuevo'; return; } b.disabled=true; b.textContent='Validando…';
+      // ── resolución del cliente libre (solo si es no planificado sin cliente real) ──
+      if(sinCli){
+        var _vmodo=document.getElementById('vres-modo');
+        var _vresShow=function(){ var m=_vmodo.value; document.getElementById('vres-principal').style.display=(m==='principal')?'':'none'; document.getElementById('vres-sub').style.display=(m==='sub')?'':'none'; document.getElementById('vres-nuevo').style.display=(m==='nuevo')?'':'none'; };
+        _vmodo.addEventListener('change',_vresShow);
+        document.getElementById('vres-essub').addEventListener('change',function(){ document.getElementById('vres-padre-box').style.display=this.checked?'':'none'; });
+        var _vlink=function(cliId, nom, btn){ btn.disabled=true; btn.textContent='Vinculando…'; sbPatchOk('ordenes_trabajo?id=eq.'+o.id,{cliente_servicio_id:cliId}).then(function(){ logOT(o.id,'CAMBIO_ESTADO',{cuadId:o.cuadrilla_id,detalle:'Cliente vinculado a "'+(nom||'')+'" (texto del técnico: '+(o.cliente_libre||'')+')'}); o.cliente_servicio_id=cliId; o.clientes_servicios={nombre:nom}; toast('Cliente vinculado ✓'); valDetalleServ(o); }).catch(function(){ btn.disabled=false; btn.textContent='🔗 Vincular y desbloquear'; document.getElementById('vres-err').textContent='No se pudo vincular. Reintentá.'; }); };
+        document.getElementById('vres-go').addEventListener('click',function(){
+          var err=document.getElementById('vres-err'); err.textContent=''; var modo=_vmodo.value, btn=this;
+          if(modo==='principal'){ var pv=document.getElementById('vres-cli-p'); if(!pv.value){ err.textContent='Elegí un cliente principal.'; return; } _vlink(Number(pv.value), pv.options[pv.selectedIndex].textContent, btn); }
+          else if(modo==='sub'){ var sv=document.getElementById('vres-cli-s'); if(!sv.value){ err.textContent='Elegí un sub-cliente.'; return; } _vlink(Number(sv.value), sv.options[sv.selectedIndex].textContent, btn); }
+          else { var nom=document.getElementById('vres-nom').value.trim(); if(!nom){ err.textContent='Escribí el nombre del cliente nuevo.'; return; } var essub=document.getElementById('vres-essub').checked, padre=essub?document.getElementById('vres-padre').value:''; if(essub && !padre){ err.textContent='Elegí el cliente principal del sub-cliente.'; return; } var body={nombre:nom}; if(essub) body.cliente_padre_id=Number(padre); btn.disabled=true; btn.textContent='Creando…'; sbPost('clientes_servicios',body).then(function(rr){ var nc=Array.isArray(rr)&&rr[0]; if(!nc) throw 0; _vlink(nc.id, nom, btn); }).catch(function(){ btn.disabled=false; btn.textContent='🔗 Vincular y desbloquear'; err.textContent='No se pudo crear el cliente. Reintentá.'; }); }
+        });
+      }
+      var _vbtn=document.getElementById('vs-validar'); if(_vbtn) _vbtn.addEventListener('click',function(){ var b=this; if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Validar y finalizar? Tocá de nuevo'; return; } b.disabled=true; b.textContent='Validando…';
         // 1° finalizar la OT (acción crítica); recién con éxito se descuenta el stock → evita egresos huérfanos / dobles
         sbPatchOk('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id }).then(function(){
           var stockJobs=[]; mats.forEach(function(m){ if(m.origen==='STOCK' && m.stock_item_id){ var it=stkItems.filter(function(x){return String(x.id)===String(m.stock_item_id);})[0]; var q=Number(m.cantidad)||0; if(it && q>0) stockJobs.push(_svStockMov(it,'EGRESO',q,'Consumo servicio N° '+o.numero,o.id)); } });
@@ -5085,14 +5115,14 @@
   // ── Validación de servicios (propia del módulo, separada de la de internet) ──
   function _svValidacion(){
     var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
-    sbGet('ordenes_trabajo?area=eq.SERVICIOS&estado=eq.CERRADA_TECNICO&validado_admin_at=is.null&select=id,numero,titulo,descripcion,fin_tec_at,cuadrilla_id,clientes_servicios(nombre),cuadrillas(nombre)&order=fin_tec_at.asc').then(function(d){
+    sbGet('ordenes_trabajo?area=eq.SERVICIOS&estado=eq.CERRADA_TECNICO&validado_admin_at=is.null&select=id,numero,titulo,descripcion,fin_tec_at,cuadrilla_id,autogenerada,cliente_libre,cliente_servicio_id,clientes_servicios(nombre),cuadrillas(nombre)&order=fin_tec_at.asc').then(function(d){
       d=Array.isArray(d)?d:[];
       if(!d.length){ b.innerHTML='<div class="center" style="padding:22px;color:#94a3b8">No hay servicios pendientes de validar. 🎉</div>'; return; }
       b.innerHTML='<p class="muted" style="font-size:12.5px;margin:2px 0 8px">Servicios cerrados por el técnico, pendientes de validar. Tocá uno para revisar horas, materiales y mano de obra, y finalizarlo.</p><div id="svv-tabla"></div>';
       var cols=[
         {k:'numero',t:'N°',sort:function(o){return o.numero;},r:function(o){return '<b>'+esc(o.numero)+'</b>';}},
-        {k:'cliente',t:'Cliente',sort:function(o){return o.clientes_servicios?o.clientes_servicios.nombre:'';},r:function(o){return esc(o.clientes_servicios?o.clientes_servicios.nombre:'—');}},
-        {k:'trabajo',t:'Trabajo',sort:function(o){return o.titulo||o.descripcion||'';},r:function(o){return (o.titulo?'<b>'+esc(o.titulo)+'</b> ':'')+'<span class="muted">'+esc((o.descripcion||'').slice(0,40))+'</span>';}},
+        {k:'cliente',t:'Cliente',sort:function(o){return o.clientes_servicios?o.clientes_servicios.nombre:'';},r:function(o){ if(o.clientes_servicios&&o.clientes_servicios.nombre) return esc(o.clientes_servicios.nombre); if(o.autogenerada&&o.cliente_libre) return esc(o.cliente_libre)+' <span class="pill p-baja">🔗 sin vincular</span>'; return '—'; }},
+        {k:'trabajo',t:'Trabajo',sort:function(o){return o.titulo||o.descripcion||'';},r:function(o){return (o.autogenerada?'<span class="pill" style="background:#fee2e2;color:#991b1b">🔴 no planif.</span> ':'')+(o.titulo?'<b>'+esc(o.titulo)+'</b> ':'')+'<span class="muted">'+esc((o.descripcion||'').slice(0,40))+'</span>';}},
         {k:'tecnico',t:'Técnico',sort:function(o){return o.cuadrillas?o.cuadrillas.nombre:'';},r:function(o){return esc(o.cuadrillas?o.cuadrillas.nombre:'—');}},
         {k:'cerrada',t:'Cerrada',sort:function(o){return o.fin_tec_at||'';},r:function(o){return esc(fmtFechaHora(o.fin_tec_at));}}
       ];
