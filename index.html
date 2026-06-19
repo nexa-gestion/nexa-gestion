@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.37';
+  var VER='v1.38';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4564,7 +4564,80 @@
     Array.prototype.forEach.call(b.querySelectorAll('.svrep-tab'),function(x){ x.addEventListener('click',function(){ _repDestroy(); _svState.rep=x.getAttribute('data-r'); _svReportes(); }); });
     if(rt==='facturacion') _svRepFacturacion(); else _svRepGerencial();
   }
-  function _svRepFacturacion(){ document.getElementById('svrep-body').innerHTML='<div class="center" style="padding:34px;color:#94a3b8">🧾 <b>Facturación</b> — detalle por cliente para armar la factura. <br>Próximamente (Fase 2).</div>'; }
+  // ── FACTURACIÓN: detalle por cliente principal para armar la factura ──
+  function _svRepFacturacion(){
+    var body=document.getElementById('svrep-body');
+    body.innerHTML='<div class="muted" style="font-size:13px;padding:10px">Cargando clientes…</div>';
+    sbGet('clientes_servicios?cliente_padre_id=is.null&select=id,nombre&order=nombre').then(function(clis){
+      clis=clis||[];
+      if(!_repState.desde){ _repState.desde=_hoyISO().substring(0,8)+'01'; _repState.hasta=_hoyISO(); }
+      var opts='<option value="">— elegí un cliente —</option>'+clis.map(function(c){return '<option value="'+c.id+'"'+(String(_repState.cli||'')===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+      body.innerHTML='<div class="toolbar" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">'
+        +'<div><label class="l">Cliente (principal)</label><select id="fac-cli">'+opts+'</select></div>'
+        +'<div><label class="l">Desde</label><input type="date" id="fac-desde" value="'+esc(_repState.desde)+'"></div>'
+        +'<div><label class="l">Hasta</label><input type="date" id="fac-hasta" value="'+esc(_repState.hasta)+'"></div>'
+        +'<button class="btn btn-pri" id="fac-ver">Ver detalle</button>'
+        +'</div><div id="fac-cont"></div>';
+      document.getElementById('fac-cli').addEventListener('change',function(){ _repState.cli=this.value; });
+      document.getElementById('fac-ver').addEventListener('click',function(){ _repState.cli=document.getElementById('fac-cli').value; _repState.desde=document.getElementById('fac-desde').value; _repState.hasta=document.getElementById('fac-hasta').value; _facCargar(); });
+      if(_repState.cli) _facCargar();
+      else document.getElementById('fac-cont').innerHTML='<div class="center" style="padding:30px;color:#94a3b8">Elegí un cliente y un rango para ver el detalle a facturar.</div>';
+    });
+  }
+  function _facCargar(){
+    var cont=document.getElementById('fac-cont'); if(!cont) return;
+    var cliId=_repState.cli, desde=_repState.desde, hasta=_repState.hasta;
+    if(!cliId){ cont.innerHTML='<div class="muted" style="padding:14px">Elegí un cliente.</div>'; return; }
+    cont.innerHTML='<div class="muted" style="font-size:13px;padding:14px">Cargando…</div>';
+    sbGet('clientes_servicios?or=(id.eq.'+cliId+',cliente_padre_id.eq.'+cliId+')&select=id,nombre,cliente_padre_id').then(function(fam){
+      fam=fam||[]; var nameMap={}; fam.forEach(function(c){ nameMap[c.id]=c.nombre; });
+      var ids=fam.map(function(c){return c.id;});
+      var princ=fam.filter(function(c){return String(c.id)===String(cliId);})[0]||{nombre:'(cliente)'};
+      var gte=desde+'T03:00:00Z', lt=_addDias(hasta,1)+'T03:00:00Z';
+      sbGet('ordenes_trabajo?area=eq.SERVICIOS&estado=eq.FINALIZADA&validado_admin_at=not.is.null&cliente_servicio_id=in.('+ids.join(',')+')&validado_admin_at=gte.'+gte+'&validado_admin_at=lt.'+lt+'&select=id,numero,titulo,cliente_servicio_id,validado_admin_at&order=validado_admin_at.asc&limit=2000').then(function(ots){
+        ots=ots||[];
+        if(!ots.length){ cont.innerHTML='<div class="center" style="padding:30px;color:#94a3b8">No hay OTs finalizadas de <b>'+esc(princ.nombre)+'</b> en este rango.</div>'; return; }
+        var otIds=ots.map(function(o){return o.id;});
+        Promise.all([ _repFetchIn('ot_sesiones','&select=ot_id,inicio,fin',otIds), _repFetchIn('ot_materiales','&select=ot_id,cantidad,descripcion,origen,costo_unitario,pagado_por,catalogo_materiales(nombre)',otIds) ]).then(function(rr){
+          _facRender(cont, princ, ots, rr[0]||[], rr[1]||[], nameMap, cliId);
+        });
+      });
+    }).catch(function(){ cont.innerHTML='<div class="center" style="color:var(--rojo);padding:20px">No se pudo cargar el detalle.</div>'; });
+  }
+  function _facRender(cont, princ, ots, ses, mats, nameMap, cliId){
+    var msPorOt={}; ses.forEach(function(s){ if(s.inicio&&s.fin){ var d=new Date(s.fin)-new Date(s.inicio); if(d>0) msPorOt[s.ot_id]=(msPorOt[s.ot_id]||0)+d; } });
+    var matPorOt={}; mats.forEach(function(m){ (matPorOt[m.ot_id]||(matPorOt[m.ot_id]=[])).push(m); });
+    var totMs=0, totNexa=0, totCli=0, filas='';
+    ots.forEach(function(o){
+      var ms=msPorOt[o.id]||0; totMs+=ms;
+      var lst=matPorOt[o.id]||[];
+      var matTxt=lst.length? lst.map(function(m){ var nom=(m.catalogo_materiales&&m.catalogo_materiales.nombre)||m.descripcion||'Material'; return esc(nom)+' ×'+esc(m.cantidad); }).join(', ') : '—';
+      var cds=lst.filter(function(m){ return m.origen==='COMPRA_DIRECTA' && (Number(m.costo_unitario)||0)>0; });
+      var cdTxt='';
+      cds.forEach(function(m){ var monto=(Number(m.cantidad)||0)*(Number(m.costo_unitario)||0);
+        if(m.pagado_por==='NEXA'){ totNexa+=monto; } else if(m.pagado_por==='CLIENTE'){ totCli+=monto; }
+        var nom=(m.catalogo_materiales&&m.catalogo_materiales.nombre)||m.descripcion||'Material';
+        var tag=(m.pagado_por==='NEXA')?'<span style="color:#15803d;font-weight:700">Nexa</span>':'<span style="color:#64748b;font-weight:700">Cliente</span>';
+        cdTxt+='<div style="font-size:12px">'+tag+' · '+esc(nom)+' ×'+esc(m.cantidad)+' = <b>'+_repMoney(monto)+'</b></div>'; });
+      if(!cdTxt) cdTxt='<span class="muted" style="font-size:12px">—</span>';
+      var sub=(String(o.cliente_servicio_id)!==String(cliId))?(' · <span style="color:#7c3aed">trabajo en '+esc(nameMap[o.cliente_servicio_id]||'sub-cliente')+'</span>'):'';
+      filas+='<div style="border:1px solid var(--bord);border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+        +'<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px"><div><b>OT N° '+esc(o.numero)+'</b>'+(o.titulo?(' · '+esc(o.titulo)):'')+sub+'</div><div class="muted" style="font-size:12px">📅 '+esc(fmtFecha(o.validado_admin_at))+' · 🕐 <b>'+_minTxt(ms/60000)+'</b></div></div>'
+        +'<div style="font-size:12.5px;margin-top:5px"><span class="muted">Materiales (cantidad):</span> '+matTxt+'</div>'
+        +'<div style="margin-top:4px"><span class="muted" style="font-size:12px">Compras directas:</span>'+cdTxt+'</div>'
+        +'</div>';
+    });
+    var bloqueA='<div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:12px;padding:14px"><div style="font-weight:800;color:#14532d;margin-bottom:6px">✅ Se factura al cliente</div>'
+      +'<div style="font-size:13px">Horas trabajadas: <b style="font-size:18px">'+_minTxt(totMs/60000)+'</b></div>'
+      +'<div style="font-size:13px;margin-top:3px">Compras directas (Nexa): <b style="font-size:18px;color:#15803d">'+_repMoney(totNexa)+'</b></div></div>';
+    var bloqueB='<div style="border:1px solid var(--bord);background:#f8fafc;border-radius:12px;padding:14px"><div style="font-weight:800;color:#475569;margin-bottom:6px">📋 Solo registro (lo puso el cliente)</div>'
+      +'<div style="font-size:13px">Compras directas (Cliente): <b style="font-size:18px;color:#64748b">'+_repMoney(totCli)+'</b></div>'
+      +'<div class="muted" style="font-size:12px;margin-top:4px">No se factura — es solo registro de lo que aportó el cliente.</div></div>';
+    cont.innerHTML='<div style="margin-bottom:6px"><b style="font-size:15px">'+esc(princ.nombre)+'</b> <span class="muted">· '+ots.length+' OT'+(ots.length===1?'':'s')+' finalizada'+(ots.length===1?'':'s')+' · '+esc(fmtFecha(_repState.desde))+' a '+esc(fmtFecha(_repState.hasta))+'</span></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:6px">'+bloqueA+bloqueB+'</div>'
+      +'<div class="muted" style="font-size:12px;margin:6px 0 10px">💡 Se factura: horas + compras Nexa. El bloque "solo registro" (compras Cliente) NO se suma a la factura. Materiales de stock van en cantidad (sin costo).</div>'
+      +filas;
+  }
 
   function _svRepGerencial(){
     var body=document.getElementById('svrep-body');
