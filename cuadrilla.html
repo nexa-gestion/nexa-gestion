@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.30</title>
+<title>Nexa · Técnico — v0.31</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.30';
+  var VER='v0.31';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -147,7 +147,7 @@
     else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,PARCIAL)';
     var agrupa=(listState.filtro==='activas');
     var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
-    var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,estado,prioridad,descripcion,fecha_agendada,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
+    var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
       function cardOT(o){
@@ -231,7 +231,7 @@
     getGPS().then(function(g){
       var body={ estado:'EN_CURSO', inicio_tec_at:new Date().toISOString() };
       if(g){ body.lat_inicio=g.lat; body.lng_inicio=g.lng; }
-      sbPatch('ordenes_trabajo?id=eq.'+o.id,body).then(function(){ o.estado='EN_CURSO'; toast(g?'Tarea iniciada ▶':'Tarea iniciada ▶ (no se pudo tomar GPS — activá la ubicación)'); vDetalle(o); });
+      sbPatch('ordenes_trabajo?id=eq.'+o.id,body).then(function(){ o.estado='EN_CURSO'; o.inicio_tec_at=body.inicio_tec_at; toast(g?'Tarea iniciada ▶':'Tarea iniciada ▶ (no se pudo tomar GPS — activá la ubicación)'); vDetalle(o); });
     });
   }
   function _cieArr(x){ return Array.isArray(x)?x:[]; }
@@ -437,15 +437,16 @@
 
   // ════════ SERVICIOS (cierre del técnico — tareas fuera de internet) ════════
   function cardServ(o){
-    var cli=o.clientes_servicios||{}, dir=cli.direccion?esc(cli.direccion):'';
-    return '<div class="ot"><div class="h"><div><span class="num">N° '+esc(o.numero)+'</span> · 🧰 Servicio</div>'+pillEstado(o.estado)+'</div>'
+    var cli=o.clientes_servicios||{}, dir=cli.direccion?esc(cli.direccion):'', parc=!!o.parcial;
+    return '<div class="ot"><div class="h"><div><span class="num">N° '+esc(o.numero)+'</span> · 🧰 Servicio</div>'+(parc?'<span class="pill p-curso">🔶 parcial</span>':pillEstado(o.estado))+'</div>'
       +'<div class="cli">'+esc(cli.nombre||'—')+'</div>'+(o.titulo?'<div class="dir" style="font-weight:600">'+esc(o.titulo)+'</div>':'')+(dir?'<div class="dir">📍 '+dir+'</div>':'')
+      +(parc?'<div class="dir" style="color:#b45309;font-weight:600">⏸️ Finalizada parcialmente — continuá la tarea</div>':'')
       +(cli.telefono?'<div class="dir">📞 '+esc(cli.telefono)+'</div>':'')
       +(o.descripcion?'<div class="dir" style="margin-top:6px">'+esc(o.descripcion)+'</div>':'')
       +'<div class="acc">'
       +(cli.direccion?'<a class="btn btn-2 btn-sm" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(cli.direccion)+'">🚗 Ir</a>':'')
       +(cli.telefono?'<a class="btn btn-2 btn-sm" href="tel:'+esc(String(cli.telefono).replace(/[^\d+]/g,''))+'">📞 Llamar</a><a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(cli.telefono)+'">💬</a>':'')
-      +'<button class="btn btn-pri btn-sm ot-abrir" data-id="'+o.id+'">Abrir</button></div></div>';
+      +'<button class="btn btn-pri btn-sm ot-abrir" data-id="'+o.id+'">'+(parc?'Continuar':'Abrir')+'</button></div></div>';
   }
   function vDetalleServ(o){
     app.innerHTML=topBar('OT N° '+o.numero,'Servicio')+'<div class="wrap"><div class="center"><div class="spin"></div></div></div>';
@@ -488,30 +489,34 @@
     app.innerHTML=topBar('Cerrar OT N° '+o.numero,'Servicio')+'<div class="wrap"><div class="center"><div class="spin"></div></div></div>';
     Promise.all([
       sbGet('catalogo_materiales?area=eq.SERVICIOS&activo=eq.true&select=id,nombre,unidad&order=nombre'),
-      sbGet('mano_obra_catalogo?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre')
+      sbGet('mano_obra_catalogo?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre'),
+      sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=id,material_id,cantidad,descripcion,catalogo_materiales(nombre)'),
+      sbGet('ot_mano_obra?ot_id=eq.'+o.id+'&select=id,mano_obra_id,nombre,cantidad'),
+      sbGet('ot_fotos?ot_id=eq.'+o.id+'&select=url')
     ]).then(function(r){
-      SV={ o:o, mats:_cieArr(r[0]), mos:_cieArr(r[1]), matC:{}, moC:{}, fotos:[], _obs:'', tipoCierre:'FINAL', _inicio:_toLocalInput(o.inicio_tec_at), _fin:_toLocalInput(new Date().toISOString()) };
+      SV={ o:o, catM:_cieArr(r[0]), catO:_cieArr(r[1]), matRows:_cieArr(r[2]), moRows:_cieArr(r[3]), fotosPrev:_cieArr(r[4]), fotos:[], _obs:(o.observaciones_tec||''), tipoCierre:'FINAL' };
       renderCierreServ();
     }).catch(function(){ app.innerHTML=topBar('Cerrar OT N° '+o.numero,'Servicio')+'<div class="wrap"><div class="center">Error al cargar. Reintentá.</div></div>'; });
   }
   function _firmaPad(which){ return '<canvas id="fp-'+which+'" width="600" height="180" style="width:100%;height:150px;border:1px dashed var(--bord);border-radius:10px;background:#fff;touch-action:none;display:block"></canvas><button class="btn btn-2 btn-sm" id="fp-clear-'+which+'" style="margin-top:6px">🗑️ Borrar</button>'; }
   function _renderFotosServ(){ if(!SV.fotos.length) return '<div class="muted" style="font-size:13px">Sin fotos todavía.</div>'; return '<div style="display:flex;gap:8px;flex-wrap:wrap">'+SV.fotos.map(function(f,i){ return '<div style="position:relative"><img src="'+f.preview+'" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)">'+(f.url?'<span style="position:absolute;bottom:2px;right:2px;background:#16a34a;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">✓</span>':'<span style="position:absolute;bottom:2px;right:2px;background:#f59e0b;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">…</span>')+'<button class="sv-foto-del btn" data-i="'+i+'" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--rojo);color:#fff;padding:0;font-size:13px;line-height:1">✕</button></div>'; }).join('')+'</div>'; }
   function renderCierreServ(){
-    var o=SV.o, cli=o.clientes_servicios||{};
-    var fin=(SV.tipoCierre==='FINAL');
+    var o=SV.o, cli=o.clientes_servicios||{}, fin=(SV.tipoCierre==='FINAL');
+    var iniTxt=o.inicio_tec_at?(fmtFecha(o.inicio_tec_at)+' '+_hhmm(o.inicio_tec_at)):null;
     var h=topBar('Cerrar OT N° '+o.numero,'Servicio')+'<div class="wrap">'
       +'<div class="card"><div style="font-weight:800">'+esc(cli.nombre||'')+'</div>'+(o.titulo?'<div class="dir" style="font-weight:600">'+esc(o.titulo)+'</div>':'')+(o.descripcion?'<div class="dir muted">'+esc(o.descripcion)+'</div>':'')+'</div>'
-      +'<div class="card"><div class="label">¿Terminaste la tarea?</div><div class="row2"><button type="button" class="btn '+(fin?'btn-ok':'btn-2')+'" id="sv-final">✅ Sí, cierre final</button><button type="button" class="btn '+(fin?'btn-2':'btn-x')+'" id="sv-parcial">⏸️ No, sigo otro día</button></div>'+(fin?'':'<div class="muted" style="font-size:12px;margin-top:6px">Cierre <b>parcial</b>: la tarea queda abierta para continuar otro día. Se cuentan las horas de esta visita. Foto y firmas no son obligatorias.</div>')+'</div>'
-      +'<div class="card"><div class="label">🕐 Horario de esta visita <span style="color:var(--rojo)">(obligatorio · para facturar)</span></div>'
-        +'<div class="row2"><div><div class="muted" style="font-size:12px;margin-bottom:3px">Hora de inicio</div><input type="datetime-local" id="sv-inicio" value="'+esc(SV._inicio||'')+'" style="width:100%"></div>'
-        +'<div><div class="muted" style="font-size:12px;margin-bottom:3px">Hora de fin</div><input type="datetime-local" id="sv-fin" value="'+esc(SV._fin||'')+'" style="width:100%"></div></div></div>'
+      +'<div class="card"><div class="label">¿Terminaste la tarea?</div><div class="row2"><button type="button" class="btn '+(fin?'btn-ok':'btn-2')+'" id="sv-final">✅ Sí, cierre final</button><button type="button" class="btn '+(fin?'btn-2':'btn-x')+'" id="sv-parcial">⏸️ No, sigo después</button></div>'+(fin?'':'<div class="muted" style="font-size:12px;margin-top:6px">Cierre <b>parcial</b>: queda abierta para continuar (otro día o cuando llegue el material). Se guardan las horas y lo cargado. Foto y firmas no son obligatorias.</div>')+'</div>'
+      +'<div class="card"><div class="label">🕐 Horario de esta visita</div><div style="font-size:14px">Inicio <b>'+(iniTxt||'—')+'</b> <span class="muted">(automático)</span> · Fin <b>ahora</b></div>'+(o.inicio_tec_at?'':'<div style="color:var(--rojo);font-size:12px;margin-top:4px">No se registró el inicio. Volvé y tocá «Iniciar tarea».</div>')+'</div>'
       +'<div class="card"><div class="label">📦 Materiales utilizados</div>';
-    if(!SV.mats.length) h+='<div class="muted" style="font-size:13px">No hay materiales en el catálogo de servicios.</div>';
-    SV.mats.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+(m.unidad?(' <span class="muted">('+esc(m.unidad)+')</span>'):'')+'</div><input type="number" inputmode="decimal" min="0" class="sv-mat" data-m="'+m.id+'" value="'+(SV.matC[m.id]>0?SV.matC[m.id]:'')+'" placeholder="0" style="width:92px;text-align:center;font-weight:700"></div>'; });
-    h+='</div><div class="card"><div class="label">👷 Mano de obra</div>';
-    if(!SV.mos.length) h+='<div class="muted" style="font-size:13px">No hay mano de obra en el catálogo de servicios.</div>';
-    SV.mos.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><input type="number" inputmode="numeric" min="0" class="sv-mo" data-m="'+m.id+'" value="'+(SV.moC[m.id]>0?SV.moC[m.id]:'')+'" placeholder="0" style="width:92px;text-align:center;font-weight:700"></div>'; });
-    h+='</div><div class="card"><div class="label">📝 Observaciones</div><textarea id="sv-obs" rows="3" style="width:100%" placeholder="Qué se hizo, detalles…">'+esc(SV._obs||'')+'</textarea></div>'
+    if(!SV.matRows.length) h+='<div class="muted" style="font-size:13px">Todavía no cargaste materiales.</div>';
+    SV.matRows.forEach(function(m){ var nom=m.catalogo_materiales?m.catalogo_materiales.nombre:(m.descripcion||'Material'); h+='<div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--bord);padding:8px 0"><span style="flex:1;font-weight:600;font-size:14px">'+esc(nom)+'</span><input type="number" inputmode="decimal" min="0" class="sv-matc" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:70px;text-align:center;padding:4px"><button class="sv-matdel" data-id="'+m.id+'" style="width:30px;border:1.5px solid #fecaca;background:#fff;color:var(--rojo);border-radius:7px;font-weight:700">✕</button></div>'; });
+    h+='<div style="margin-top:8px"><input id="sv-mat-nom" list="sv-matlist" placeholder="Material (escribí o elegí)" style="width:100%;margin-bottom:6px"><datalist id="sv-matlist">'+SV.catM.map(function(x){return '<option value="'+esc(x.nombre)+'">';}).join('')+'</datalist><div style="display:flex;gap:6px"><input id="sv-mat-qty" type="number" inputmode="decimal" min="0" placeholder="Cant." style="width:80px;text-align:center"><button class="btn btn-2" id="sv-mat-add" style="flex:1">+ Agregar material</button></div></div>'
+      +'</div><div class="card"><div class="label">👷 Mano de obra</div>';
+    if(!SV.moRows.length) h+='<div class="muted" style="font-size:13px">Todavía no cargaste mano de obra.</div>';
+    SV.moRows.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--bord);padding:8px 0"><span style="flex:1;font-weight:600;font-size:14px">'+esc(m.nombre)+'</span><input type="number" inputmode="numeric" min="0" class="sv-moc" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:70px;text-align:center;padding:4px"><button class="sv-model" data-id="'+m.id+'" style="width:30px;border:1.5px solid #fecaca;background:#fff;color:var(--rojo);border-radius:7px;font-weight:700">✕</button></div>'; });
+    h+='<div style="margin-top:8px"><input id="sv-mo-nom" list="sv-molist" placeholder="Mano de obra (escribí o elegí)" style="width:100%;margin-bottom:6px"><datalist id="sv-molist">'+SV.catO.map(function(x){return '<option value="'+esc(x.nombre)+'">';}).join('')+'</datalist><div style="display:flex;gap:6px"><input id="sv-mo-qty" type="number" inputmode="numeric" min="0" placeholder="Cant." style="width:80px;text-align:center"><button class="btn btn-2" id="sv-mo-add" style="flex:1">+ Agregar mano de obra</button></div></div>'
+      +'</div><div class="card"><div class="label">📝 Observaciones</div><textarea id="sv-obs" rows="3" style="width:100%" placeholder="Qué se hizo, detalles…">'+esc(SV._obs||'')+'</textarea></div>'
+      +(SV.fotosPrev.length?'<div class="card"><div class="label">📷 Fotos de visitas anteriores</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+SV.fotosPrev.map(function(f){return '<img src="'+esc(f.url)+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)">';}).join('')+'</div></div>':'')
       +'<div class="card"><div class="label">📷 Fotos '+(fin?'<span style="color:var(--rojo)">(obligatorio: al menos 1)</span>':'<span class="muted">(opcional)</span>')+'</div>'+_renderFotosServ()+'<label class="btn btn-2" style="margin-top:8px;display:block;text-align:center">📷 Agregar foto<input id="sv-foto-in" type="file" accept="image/*" capture="environment" multiple style="display:none"></label></div>'
       +(fin?'<div class="card"><div class="label">✍️ Firma del técnico <span class="muted">(opcional)</span></div>'+_firmaPad('tec')+'</div>'
         +'<div class="card"><div class="label">✍️ Firma del cliente <span class="muted">(opcional)</span></div>'+_firmaPad('cli')+'</div>':'')
@@ -551,13 +556,16 @@
   function wireCierreServ(){
     wireTop();
     document.getElementById('sv-volver').addEventListener('click',function(){ vDetalleServ(SV.o); });
-    each('.sv-mat',function(inp){ inp.oninput=function(){ SV.matC[inp.getAttribute('data-m')]=Math.max(0,parseFloat(inp.value)||0); }; });
-    each('.sv-mo',function(inp){ inp.oninput=function(){ SV.moC[inp.getAttribute('data-m')]=Math.max(0,parseInt(inp.value,10)||0); }; });
     var obs=document.getElementById('sv-obs'); if(obs) obs.oninput=function(){ SV._obs=this.value; };
-    var sin=document.getElementById('sv-inicio'); if(sin) sin.oninput=function(){ SV._inicio=this.value; };
-    var sfi=document.getElementById('sv-fin'); if(sfi) sfi.oninput=function(){ SV._fin=this.value; };
+    // Materiales: editar / quitar / agregar — se guardan al instante (no se pierden en el cierre parcial)
+    each('.sv-matc',function(i){ i.onchange=function(){ var v=Math.max(0,parseFloat(i.value)||0), id=i.getAttribute('data-id'); sbPatch('ot_materiales?id=eq.'+id,{cantidad:v}); var row=SV.matRows.filter(function(x){return String(x.id)===String(id);})[0]; if(row)row.cantidad=v; }; });
+    each('.sv-matdel',function(b){ b.onclick=function(){ var id=b.getAttribute('data-id'); fetch(SB_URL+'/rest/v1/ot_materiales?id=eq.'+id,{method:'DELETE',headers:H}).then(function(){ SV.matRows=SV.matRows.filter(function(x){return String(x.id)!==String(id);}); renderCierreServ(); }); }; });
+    var ma=document.getElementById('sv-mat-add'); if(ma) ma.onclick=function(){ var self=this, nom=(document.getElementById('sv-mat-nom').value||'').trim(), q=Math.max(0,parseFloat(document.getElementById('sv-mat-qty').value)||0); if(!nom){ toast('Escribí el material.'); return; } if(!(q>0)){ toast('Poné la cantidad.'); return; } var cat=SV.catM.filter(function(x){return x.nombre.toLowerCase()===nom.toLowerCase();})[0]; var body={ot_id:SV.o.id,cantidad:q,serial:null}; if(cat){body.material_id=cat.id;}else{body.descripcion=nom;} self.disabled=true; sbPost('ot_materiales',body).then(function(rr){ var row=Array.isArray(rr)&&rr[0]; if(!row)throw 0; if(cat)row.catalogo_materiales={nombre:cat.nombre}; SV.matRows.push(row); renderCierreServ(); }).catch(function(){ toast('No se pudo agregar.'); self.disabled=false; }); };
+    each('.sv-moc',function(i){ i.onchange=function(){ var v=Math.max(0,parseInt(i.value,10)||0), id=i.getAttribute('data-id'); sbPatch('ot_mano_obra?id=eq.'+id,{cantidad:v}); var row=SV.moRows.filter(function(x){return String(x.id)===String(id);})[0]; if(row)row.cantidad=v; }; });
+    each('.sv-model',function(b){ b.onclick=function(){ var id=b.getAttribute('data-id'); fetch(SB_URL+'/rest/v1/ot_mano_obra?id=eq.'+id,{method:'DELETE',headers:H}).then(function(){ SV.moRows=SV.moRows.filter(function(x){return String(x.id)!==String(id);}); renderCierreServ(); }); }; });
+    var oa=document.getElementById('sv-mo-add'); if(oa) oa.onclick=function(){ var self=this, nom=(document.getElementById('sv-mo-nom').value||'').trim(), q=Math.max(0,parseInt(document.getElementById('sv-mo-qty').value,10)||0); if(!nom){ toast('Escribí la mano de obra.'); return; } if(!(q>0)){ toast('Poné la cantidad.'); return; } var cat=SV.catO.filter(function(x){return x.nombre.toLowerCase()===nom.toLowerCase();})[0]; var body={ot_id:SV.o.id,nombre:nom,cantidad:q}; if(cat)body.mano_obra_id=cat.id; self.disabled=true; sbPost('ot_mano_obra',body).then(function(rr){ var row=Array.isArray(rr)&&rr[0]; if(!row)throw 0; SV.moRows.push(row); renderCierreServ(); }).catch(function(){ toast('No se pudo agregar.'); self.disabled=false; }); };
     each('.sv-foto-del',function(b){ b.onclick=function(){ SV.fotos.splice(+b.getAttribute('data-i'),1); renderCierreServ(); }; });
-    var fin=document.getElementById('sv-foto-in'); if(fin) fin.addEventListener('change',function(e){ _subirFotosServ(e.target.files); });
+    var ff=document.getElementById('sv-foto-in'); if(ff) ff.addEventListener('change',function(e){ _subirFotosServ(e.target.files); });
     if(SV.tipoCierre==='FINAL'){ _initFirma('tec'); _initFirma('cli');
       var ct=document.getElementById('fp-clear-tec'); if(ct) ct.addEventListener('click',function(){ _clearFirma('tec'); });
       var cc=document.getElementById('fp-clear-cli'); if(cc) cc.addEventListener('click',function(){ _clearFirma('cli'); }); }
@@ -568,28 +576,23 @@
   function confirmarCierreServ(){
     var err=document.getElementById('sv-err'); err.textContent='';
     var o=SV.o, btn=document.getElementById('sv-confirmar'), esFinal=(SV.tipoCierre==='FINAL');
-    var ini=_fromLocalInput(SV._inicio), fin=_fromLocalInput(SV._fin);
-    if(!ini||!fin){ err.textContent='Completá hora de inicio y de fin.'; return; }
-    if(new Date(fin).getTime()<new Date(ini).getTime()){ err.textContent='La hora de fin no puede ser anterior a la de inicio.'; return; }
-    if(esFinal && !SV.fotos.length){ err.textContent='Para el cierre final tenés que subir al menos 1 foto.'; return; }
+    var ini=o.inicio_tec_at, fin=new Date().toISOString();   // inicio automático (al iniciar la tarea); fin = ahora
+    if(!ini){ err.textContent='No se registró el inicio. Volvé y tocá «Iniciar tarea».'; return; }
+    if(esFinal && !(SV.fotos.length+SV.fotosPrev.length)){ err.textContent='Para el cierre final subí al menos 1 foto.'; return; }
     if(SV.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá a que terminen de subir las fotos.'; return; }
     btn.disabled=true; btn.textContent='Guardando…';
     Promise.all([esFinal?_uploadFirma('tec'):Promise.resolve(null), esFinal?_uploadFirma('cli'):Promise.resolve(null)]).then(function(firmas){
       getGPS().then(function(g){
         var jobs=[];
-        // Sesión: cuenta las horas de ESTA visita (inicio→fin). El total = suma de sesiones.
+        // Sesión: cuenta las horas de ESTA visita (inicio→fin). El total = suma de sesiones. Materiales/MO ya están guardados.
         jobs.push(sbPost('ot_sesiones',{ ot_id:o.id, cuadrilla_id:CUAD.id, inicio:ini, fin:fin, tipo:SV.tipoCierre, observaciones:SV._obs||null }));
         var upd={ observaciones_tec:SV._obs||null }; if(g){ upd.lat_fin=g.lat; upd.lng_fin=g.lng; }
-        if(esFinal){ upd.estado='CERRADA_TECNICO'; upd.fin_tec_at=fin; if(firmas[0]) upd.firma_tecnico_url=firmas[0]; if(firmas[1]) upd.firma_cliente_url=firmas[1];
+        if(esFinal){ upd.estado='CERRADA_TECNICO'; upd.fin_tec_at=fin; upd.parcial=false; if(firmas[0]) upd.firma_tecnico_url=firmas[0]; if(firmas[1]) upd.firma_cliente_url=firmas[1];
           jobs.push(sbPost('ot_historial',{ ot_id:o.id, evento:'CIERRE_TECNICO', estado_anterior:o.estado||null, estado_nuevo:'CERRADA_TECNICO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:(SV._obs||'Cierre final de servicio') }).catch(function(){}));
-        } else { upd.estado='ASIGNADA';   // queda abierta para continuar otro día (el progreso parcial se ve por las sesiones)
+        } else { upd.estado='ASIGNADA'; upd.parcial=true;   // queda abierta para continuar (otro día o cuando llegue el material)
           jobs.push(sbPost('ot_historial',{ ot_id:o.id, evento:'CAMBIO_ESTADO', estado_anterior:o.estado||null, estado_nuevo:'ASIGNADA', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:'Cierre parcial · '+_hm(new Date(fin)-new Date(ini))+(SV._obs?(' · '+SV._obs):'') }).catch(function(){}));
         }
         jobs.push(sbPatch('ordenes_trabajo?id=eq.'+o.id,upd));
-        var mats=[]; SV.mats.forEach(function(m){ var c=SV.matC[m.id]; if(c>0) mats.push({ot_id:o.id,material_id:m.id,cantidad:c,serial:null}); });
-        if(mats.length) jobs.push(sbPost('ot_materiales',mats));
-        var mos=[]; SV.mos.forEach(function(m){ var c=SV.moC[m.id]; if(c>0) mos.push({ot_id:o.id,mano_obra_id:m.id,nombre:m.nombre,cantidad:c}); });
-        if(mos.length) jobs.push(sbPost('ot_mano_obra',mos));
         SV.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'CIERRE'})); });
         Promise.all(jobs).then(function(){ toast(esFinal?'Cierre final guardado ✓':'Cierre parcial guardado ✓ (sigue abierta)'); SV=null; listState.filtro=(esFinal?'cerradas':'activas'); vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent=esFinal?'✔️ Confirmar cierre final':'⏸️ Guardar cierre parcial'; });
       });
