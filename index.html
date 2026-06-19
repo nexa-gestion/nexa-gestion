@@ -218,7 +218,7 @@
       <a data-v="comisiones" id="nav-comisiones" style="display:none">💰 Comisiones</a>
       <a data-v="actividad" id="nav-actividad" style="display:none">📋 Actividad</a>
       <a data-v="usuarios" id="nav-usuarios" style="display:none">👤 Usuarios</a>
-      <a data-v="config" id="nav-config" style="display:none">⚙️ Configuración</a>
+      <a data-v="config">⚙️ Configuración</a>
       <div class="sec">Stock</div>
       <a data-v="deposito">📦 Depósito / Stock</a>
       <div class="sec">Informes</div>
@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.31';
+  var VER='v1.32';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -421,7 +421,7 @@
     document.getElementById('side-user').innerHTML = '<div style="font-size:14px;font-weight:700;color:#0f172a">'+esc(USER.nombre)+'</div><div style="text-transform:capitalize">'+esc(USER.rol)+' · '+VER+'</div><button class="u-logout" id="logout">Cerrar sesión</button>';
     var _lo=document.getElementById('logout'); if(_lo) _lo.addEventListener('click',function(e){ e.preventDefault(); try{ localStorage.removeItem('nexa_sesion'); }catch(_){} location.reload(); });
     if(USER.rol==='superadmin'){ var nu=document.getElementById('nav-usuarios'); if(nu) nu.style.display=''; }
-    if(USER.rol==='superadmin'||USER.rol==='gerencial'){ var na=document.getElementById('nav-actividad'); if(na) na.style.display=''; var nc=document.getElementById('nav-comisiones'); if(nc) nc.style.display=''; var ng=document.getElementById('nav-gerencial'); if(ng) ng.style.display=''; var ncf=document.getElementById('nav-config'); if(ncf) ncf.style.display=''; }
+    if(USER.rol==='superadmin'||USER.rol==='gerencial'){ var na=document.getElementById('nav-actividad'); if(na) na.style.display=''; var nc=document.getElementById('nav-comisiones'); if(nc) nc.style.display=''; var ng=document.getElementById('nav-gerencial'); if(ng) ng.style.display=''; }
     // precargar referencias
     Promise.all([
       sbGet('empresas?select=*&order=nombre'),
@@ -3038,7 +3038,7 @@
   }
   function _dxInfo(o){
     if(o.estado==='ASIGNADA') return '🔧 '+esc(_cuadNombre(o.cuadrilla_id)||'—')+(o.fecha_agendada?('<br><span class="muted">📅 '+fmtFecha(o.fecha_agendada)+'</span>'):'');
-    if(o.estado==='PENDIENTE_ADMIN'){ var rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':'—'); return rec+'<br><span style="font-size:11px">'+(o.soporte_hecho?'<span style="color:#166534">✓Soporte</span>':'<span class="muted">☐Soporte</span>')+' '+(o.comercial_hecho?'<span style="color:#166534">✓Comercial</span>':'<span class="muted">☐Comercial</span>')+'</span>'; }
+    if(o.estado==='PENDIENTE_ADMIN'){ var rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':'—'); return rec+'<br><span style="font-size:11px">'+(o.deposito_hecho?'<span style="color:#166534">✓Depósito</span>':'<span class="muted">☐Depósito</span>')+' '+(o.soporte_hecho?'<span style="color:#166534">✓Soporte</span>':'<span class="muted">☐Soporte</span>')+' '+(o.comercial_hecho?'<span style="color:#166534">✓Comercial</span>':'<span class="muted">☐Comercial</span>')+'</span>'; }
     if(o.estado==='EN_REVISION') return '⏸️ '+esc(o.resolucion||'a revisar');
     if(o.estado==='FINALIZADO') return '✅ '+(o.finalizado_at?fmtFecha(o.finalizado_at):'')+(o.tenia_deuda?('<br><span class="muted">NC '+esc(o.nota_credito||'')+'</span>'):'');
     if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA') return '<span class="muted" style="font-size:12px">'+_dxEstadoTxt(o.estado)+(o.resolucion?('<br>'+esc(o.resolucion)):'')+'</span>';
@@ -3111,7 +3111,12 @@
     var btns='';
     if(o.estado==='PENDIENTE'){ btns=_bx('btn btn-ok','d-asig','📍 Asignar a cuadrilla')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
     else if(o.estado==='ASIGNADA'){ btns=_bx('btn btn-ok','d-reasig','🔄 Reasignar cuadrilla')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
-    else if(o.estado==='PENDIENTE_ADMIN'){ btns=(o.soporte_hecho?'<div style="color:#166534;font-size:13px">✅ Soporte: conexión eliminada</div>':_bx('btn btn-2','d-sop','☐ Soporte: eliminé la conexión en ISPcube'))+(o.comercial_hecho?'<div style="color:#166534;font-size:13px">✅ Comercial: cliente eliminado</div>':_bx('btn btn-2','d-com','☐ Comercial: nota de crédito + eliminé cliente'))+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else if(o.estado==='PENDIENTE_ADMIN'){
+      var bDep=o.deposito_hecho?('<div style="color:#166534;font-size:13px">✅ Depósito: '+(o.equipo_recibido?'equipo recibido':'no se devolvió')+'</div>'):_bx('btn btn-2','d-dep','📦 Depósito: registrar el equipo');
+      var bSop=o.soporte_hecho?'<div style="color:#166534;font-size:13px">✅ Soporte: conexión eliminada</div>':(o.deposito_hecho?_bx('btn btn-2','d-sop','☐ Soporte: eliminé la conexión en ISPcube'):'<div class="muted" style="font-size:13px">🔒 Soporte — esperá al depósito</div>');
+      var bCom=o.comercial_hecho?'<div style="color:#166534;font-size:13px">✅ Comercial: cliente eliminado</div>':(o.soporte_hecho?_bx('btn btn-2','d-com','☐ Comercial: nota de crédito + eliminé cliente'):'<div class="muted" style="font-size:13px">🔒 Comercial — esperá a soporte</div>');
+      btns=bDep+bSop+bCom+_bx('btn btn-2','d-can','✗ Cancelar baja');
+    }
     else if(o.estado==='EN_REVISION'){ btns=_bx('btn btn-ok','d-volv','↩️ Volver a pendientes')+_bx('btn btn-2','d-anul','🟢 Pagó / sigue con servicio')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
     else { btns=_bx('btn btn-2','d-volv','↩️ Reabrir (a pendientes)'); }
     modal(h+'<div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">'+btns+'</div><div style="margin-top:10px"><button class="btn btn-2" id="d-x">Cerrar</button></div>');
@@ -3126,6 +3131,30 @@
     if(g('d-anul')) g('d-anul').addEventListener('click',function(){ run({estado:'ANULADA_PAGO',resolucion:'El cliente pagó / sigue con servicio',resuelto_at:new Date().toISOString(),resuelto_por:USER.id},'🟢 Anulada — el cliente sigue','Anuló desconexión (pagó)'); });
     if(g('d-sop')) g('d-sop').addEventListener('click',function(){ g('d-sop').disabled=true; sbPatch('desconexiones?id=eq.'+id+'&select=*',{soporte_hecho:true,soporte_at:new Date().toISOString(),soporte_por:USER.id}).then(function(r){ logAct('Soporte: eliminó conexión ISPcube',{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); _dxQuizaFinalizar(Array.isArray(r)?r[0]:null); }); });
     if(g('d-com')) g('d-com').addEventListener('click',function(){ cerrarModal(); _dxComercial(id); });
+    if(g('d-dep')) g('d-dep').addEventListener('click',function(){ cerrarModal(); _dxDeposito(id); });
+  }
+  function _dxDeposito(id){
+    var o=_dxData.filter(function(x){return String(x.id)===String(id);})[0]; if(!o) return;
+    var c=o.clientes||{}, ser=o.equipo_serial||'';
+    var recTxt=(o.recupero_equipo===true)?('El técnico reportó equipo recuperado'+(ser?(' · serial '+esc(ser)):'')):(o.recupero_equipo===false?'El técnico reportó SIN recupero (no había equipo o no se devolvió)':'El técnico no especificó el equipo');
+    modal('<h2>📦 Depósito — equipo de la baja</h2>'
+      +'<p class="muted">'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+' · N° '+esc(c.numero_cliente||'')+'</p>'
+      +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;font-size:13px">'+recTxt+'</div>'
+      +'<p class="muted" style="margin-top:10px">Confirmá qué pasó con el equipo. Esto habilita a Soporte.</p>'
+      +'<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">'
+        +'<button class="btn btn-ok" id="dxd-si">✅ Recibí el equipo en depósito'+(ser?(' (serial '+esc(ser)+')'):'')+'</button>'
+        +'<button class="btn btn-2" id="dxd-no">⚠️ El cliente no devolvió el equipo</button>'
+      +'</div><div style="margin-top:10px"><button class="btn btn-2" id="dxd-x">Cancelar</button></div>');
+    document.getElementById('dxd-x').addEventListener('click',cerrarModal);
+    function guardar(recibido){
+      sbPatch('desconexiones?id=eq.'+id,{deposito_hecho:true,deposito_at:new Date().toISOString(),deposito_por:USER.id,equipo_recibido:recibido}).then(function(){
+        function after(){ logAct('Depósito: '+(recibido?'recibió el equipo':'sin devolución de equipo'),{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); toast(recibido?'📦 Equipo recibido — vuelve al depósito':'Registrado ✓'); vDesconexiones(); }
+        if(recibido && ser){ sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(ser),{estado:'EN_DEPOSITO',cliente_id:null,cuadrilla_id:null,ot_id:null}).then(after).catch(after); }
+        else after();
+      });
+    }
+    document.getElementById('dxd-si').addEventListener('click',function(){ this.disabled=true; guardar(true); });
+    document.getElementById('dxd-no').addEventListener('click',function(){ this.disabled=true; guardar(false); });
   }
   function _dxAsignar(id){
     var cuadOpts='<option value="">— elegí —</option>'+REF.cuadrillas.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('');
@@ -3138,12 +3167,14 @@
     var c=o.clientes||{}, deuda=Number(c.deuda||0), rec=(o.recupero_equipo===true)?('✅ Equipo recuperado'+(o.equipo_serial?(' · serial '+esc(o.equipo_serial)):'')):(o.recupero_equipo===false?'⚠️ Sin recupero de equipo':'—');
     modal('<h2>🔧 Baja administrativa</h2><p class="muted">'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+' · N° '+esc(c.numero_cliente||'')+(c.codigo_ispcube?(' · ISP '+esc(c.codigo_ispcube)):'')+'</p>'
       +'<div style="background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:8px 10px;font-size:13px"><b>Corte del técnico</b> '+(o.corte_at?('· '+fmtFechaHora(o.corte_at)):'')+'<br>'+rec+(o.obs_tecnico?('<br><span class="muted">🗣️ '+esc(o.obs_tecnico)+'</span>'):'')+'<div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">'+_dxMaps(o.lat,o.lng)+(o.foto_url?('<a class="btn btn-2" target="_blank" style="padding:2px 8px;font-size:12px" href="'+esc(o.foto_url)+'">📷 Foto</a>'):'')+'</div></div>'
-      +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px">📋 <b>En ISPcube:</b> 1) Soporte: eliminar la conexión. 2) Comercial: '+(deuda>0?('deuda <b>$'+deuda.toLocaleString('es-AR')+'</b> → nota de crédito, luego'):'sin deuda →')+' eliminar el cliente.</div>'
+      +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px">📋 <b>Orden:</b> 1) Depósito: registrar el equipo. 2) Soporte: eliminar la conexión en ISPcube. 3) Comercial: '+(deuda>0?('deuda <b>$'+deuda.toLocaleString('es-AR')+'</b> → nota de crédito, luego'):'sin deuda →')+' eliminar el cliente (cierre final).</div>'
       +'<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">'
-        +(o.soporte_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Soporte</b> — conexión eliminada · '+fmtFechaHora(o.soporte_at)+'</div>'):'<button class="btn btn-2" id="dxg-sop">☐ Soporte: eliminé la conexión en ISPcube</button>')
-        +(o.comercial_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Comercial</b> — '+(o.tenia_deuda?('NC '+esc(o.nota_credito||'')):'sin deuda')+' + cliente eliminado · '+fmtFechaHora(o.comercial_at)+'</div>'):'<button class="btn btn-2" id="dxg-com">☐ Comercial: nota de crédito + eliminé cliente</button>')
+        +(o.deposito_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Depósito</b> — '+(o.equipo_recibido?'equipo recibido':'no se devolvió')+(o.deposito_at?(' · '+fmtFechaHora(o.deposito_at)):'')+'</div>'):'<button class="btn btn-ok" id="dxg-dep">📦 Depósito: registrar el equipo</button>')
+        +(o.soporte_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Soporte</b> — conexión eliminada · '+fmtFechaHora(o.soporte_at)+'</div>'):(o.deposito_hecho?'<button class="btn btn-2" id="dxg-sop">☐ Soporte: eliminé la conexión en ISPcube</button>':'<div class="muted" style="font-size:13px">🔒 Soporte — esperá al depósito</div>'))
+        +(o.comercial_hecho?('<div style="color:#166534;font-size:13px">✅ <b>Comercial</b> — '+(o.tenia_deuda?('NC '+esc(o.nota_credito||'')):'sin deuda')+' + cliente eliminado · '+fmtFechaHora(o.comercial_at)+'</div>'):(o.soporte_hecho?'<button class="btn btn-2" id="dxg-com">☐ Comercial: nota de crédito + eliminé cliente</button>':'<div class="muted" style="font-size:13px">🔒 Comercial — esperá a soporte</div>'))
       +'</div><div style="margin-top:10px"><button class="btn btn-2" id="dxg-x">Cerrar</button></div>');
     document.getElementById('dxg-x').addEventListener('click',cerrarModal);
+    var dep=document.getElementById('dxg-dep'); if(dep) dep.addEventListener('click',function(){ cerrarModal(); _dxDeposito(id); });
     var sop=document.getElementById('dxg-sop'); if(sop) sop.addEventListener('click',function(){ sop.disabled=true; sbPatch('desconexiones?id=eq.'+id+'&select=*',{soporte_hecho:true,soporte_at:new Date().toISOString(),soporte_por:USER.id}).then(function(r){ logAct('Soporte: eliminó conexión ISPcube',{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); _dxQuizaFinalizar(Array.isArray(r)?r[0]:null); }); });
     var com=document.getElementById('dxg-com'); if(com) com.addEventListener('click',function(){ cerrarModal(); _dxComercial(id); });
   }
