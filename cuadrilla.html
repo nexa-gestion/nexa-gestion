@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.34</title>
+<title>Nexa · Técnico — v0.36</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.34';
+  var VER='v0.36';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -87,7 +87,7 @@
   function salir(){ sessionStorage.removeItem('nexa_tec'); CUAD=null; vLogin(); }
 
   // ── arranque ──
-  function iniciar(){ var s=getSesion(); if(s&&s.id){ CUAD=s; vLista(); } else vLogin(); }
+  function iniciar(){ var s=getSesion(); if(s&&s.id){ CUAD=s; sbGet('cuadrillas?id=eq.'+s.id+'&select=puede_urgencias').then(function(d){ CUAD.urg=!!(d&&d[0]&&d[0].puede_urgencias); setSesion(CUAD); vLista(); }).catch(function(){ vLista(); }); } else vLogin(); }
 
   // ── LOGIN ──
   function vLogin(){
@@ -97,7 +97,7 @@
       +'<div class="err" id="lg-err"></div>'
       +'<button class="btn btn-pri" id="lg-entrar" style="margin-top:6px">Entrar</button></div>'
       +'<div class="muted" style="text-align:center">Nexa · '+VER+'</div></div>';
-    sbGet('cuadrillas?select=id,nombre,pin_pwa&activa=eq.true&order=nombre').then(function(d){
+    sbGet('cuadrillas?select=id,nombre,pin_pwa,puede_urgencias&activa=eq.true&order=nombre').then(function(d){
       d=Array.isArray(d)?d:[]; var sel=document.getElementById('lg-cuad');
       if(!d.length){ sel.innerHTML='<option value="">No hay cuadrillas</option>'; return; }
       sel.innerHTML=d.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
@@ -109,7 +109,7 @@
       if(!c){ err.textContent='Elegí tu cuadrilla.'; return; }
       if(!c.pin_pwa){ err.textContent='Esta cuadrilla no tiene PIN configurado. Pedíselo al admin.'; return; }
       if(pin!==String(c.pin_pwa)){ err.textContent='PIN incorrecto.'; return; }
-      CUAD={ id:c.id, nombre:c.nombre }; setSesion(CUAD); vLista();
+      CUAD={ id:c.id, nombre:c.nombre, urg:!!c.puede_urgencias }; setSesion(CUAD); vLista();
     });
     document.getElementById('lg-pin').addEventListener('keydown',function(e){ if(e.key==='Enter') document.getElementById('lg-entrar').click(); });
   }
@@ -136,9 +136,12 @@
     app.innerHTML=topBar('Mis órdenes', CUAD.nombre)+'<div class="wrap">'
       +'<div class="tabs" id="ls-tabs">'
       +[['activas','Por hacer'],['curso','En curso'],['cerradas','Cerradas']].map(function(t){return '<button data-f="'+t[0]+'" class="'+(listState.filtro===t[0]?'on':'')+'">'+t[1]+'</button>';}).join('')
-      +'</div><div id="ls-cont"><div class="center"><div class="spin"></div></div></div></div>';
+      +'</div>'
+      +(CUAD.urg?'<button class="btn btn-sm" id="ls-urg" style="background:var(--rojo);color:#fff;margin-bottom:10px;width:100%">➕ Trabajo no planificado</button>':'')
+      +'<div id="ls-cont"><div class="center"><div class="spin"></div></div></div></div>';
     wireTop();
     Array.prototype.forEach.call(document.querySelectorAll('#ls-tabs [data-f]'),function(b){ b.addEventListener('click',function(){ listState.filtro=b.getAttribute('data-f'); vLista(); }); });
+    var bu=document.getElementById('ls-urg'); if(bu) bu.addEventListener('click',vUrgencia);
     cargarOTs();
   }
   function cargarOTs(){
@@ -149,7 +152,7 @@
     else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,PARCIAL)';
     var agrupa=(listState.filtro==='activas');
     var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
-    var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
+    var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
       function cardOT(o){
@@ -438,10 +441,54 @@
   }
 
   // ════════ SERVICIOS (cierre del técnico — tareas fuera de internet) ════════
+  // ── NUEVA URGENCIA (autogenerada por el técnico habilitado) ──
+  function vUrgencia(){
+    if(!CUAD.urg){ vLista(); return; }   // guarda extra: sin permiso no entra
+    app.innerHTML=topBar('Trabajo no planificado', CUAD.nombre)+'<div class="wrap">'
+      +'<div class="card" style="border-left:4px solid var(--rojo)"><div style="font-weight:800;color:var(--rojo)">🔴 Trabajo no planificado</div><div class="muted" style="font-size:12.5px;margin-top:3px">Generás vos la OT, registra el inicio ahora y la cerrás como cualquier servicio. El admin la valida después.</div></div>'
+      +'<div class="card"><div class="label">Cliente</div><select id="urg-cli"><option value="">Cargando…</option></select>'
+      +'<div id="urg-libre-box" style="display:none;margin-top:8px"><div class="label">Nombre del cliente (provisorio)</div><input id="urg-libre" placeholder="Escribí el nombre"><div class="muted" style="font-size:11.5px;margin-top:3px">Es solo una nota. El admin lo vincula a un cliente real al validar.</div></div></div>'
+      +'<div class="card"><div class="label">¿Qué vas a hacer?</div><input id="urg-tit" placeholder="ej: Reparación de cámara"><div class="label" style="margin-top:10px">Detalle (opcional)</div><textarea id="urg-desc" rows="2" placeholder="Detalle del trabajo…"></textarea></div>'
+      +'<div class="err" id="urg-err"></div>'
+      +'<button class="btn btn-ok" id="urg-go">▶ Iniciar trabajo</button>'
+      +'<button class="btn btn-2" id="urg-volver" style="margin-top:10px">← Cancelar</button></div>';
+    wireTop();
+    document.getElementById('urg-volver').addEventListener('click',vLista);
+    sbGet('clientes_servicios?select=id,nombre,cliente_padre_id&order=nombre').then(function(cs){
+      cs=cs||[]; var nameById={}; cs.forEach(function(c){ nameById[c.id]=c.nombre; });
+      var sel=document.getElementById('urg-cli'); if(!sel) return;
+      sel.innerHTML='<option value="">— elegí de la lista —</option>'
+        +cs.map(function(c){ var lbl=c.cliente_padre_id?(c.nombre+' (sub de '+(nameById[c.cliente_padre_id]||'…')+')'):c.nombre; return '<option value="'+c.id+'">'+esc(lbl)+'</option>'; }).join('')
+        +'<option value="__libre__">✏️ Otro / no está en la lista…</option>';
+      sel.addEventListener('change',function(){ var b=document.getElementById('urg-libre-box'); if(b) b.style.display=(this.value==='__libre__')?'':'none'; });
+    });
+    document.getElementById('urg-go').addEventListener('click',function(){
+      var err=document.getElementById('urg-err'); err.textContent='';
+      var cliVal=document.getElementById('urg-cli').value, tit=document.getElementById('urg-tit').value.trim(), desc=document.getElementById('urg-desc').value.trim();
+      var libre=(cliVal==='__libre__')?document.getElementById('urg-libre').value.trim():'';
+      if(!cliVal){ err.textContent='Elegí un cliente o «Otro» para escribirlo.'; return; }
+      if(cliVal==='__libre__' && !libre){ err.textContent='Escribí el nombre del cliente.'; return; }
+      if(!tit){ err.textContent='Escribí qué vas a hacer.'; return; }
+      var btn=this; btn.disabled=true; btn.textContent='Iniciando…';
+      getGPS().then(function(g){
+        var body={ tipo:'SERVICIO', area:'SERVICIOS', estado:'EN_CURSO', prioridad:'NORMAL', autogenerada:true, cuadrilla_id:CUAD.id, titulo:tit, descripcion:desc||null, inicio_tec_at:new Date().toISOString() };
+        if(cliVal==='__libre__'){ body.cliente_libre=libre; } else { body.cliente_servicio_id=Number(cliVal); }
+        if(g){ body.lat_inicio=g.lat; body.lng_inicio=g.lng; }
+        sbPost('ordenes_trabajo',body).then(function(r){
+          var ot=Array.isArray(r)&&r[0]; if(!ot) throw 0;
+          sbPost('ot_historial',{ ot_id:ot.id, evento:'CREADA', estado_nuevo:'EN_CURSO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:'Trabajo no planificado autogenerado por el técnico'+(libre?(' · cliente: '+libre):'') }).catch(function(){});
+          toast('Trabajo iniciado ▶');
+          sbGet('ordenes_trabajo?id=eq.'+ot.id+'&select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,clientes_servicios(nombre,direccion,telefono,contacto)&limit=1').then(function(d){ vDetalleServ((d&&d[0])||ot); }).catch(function(){ vDetalleServ(ot); });
+        }).catch(function(){ btn.disabled=false; btn.textContent='▶ Iniciar trabajo'; err.textContent='No se pudo iniciar el trabajo. Reintentá.'; });
+      });
+    });
+  }
+  // nombre del cliente de servicio: si no hay cliente real vinculado, muestra el texto libre (urgencia sin resolver)
+  function _servNom(o){ var c=o.clientes_servicios||{}; return c.nombre || (o.cliente_libre?(o.cliente_libre+' ✏️ (provisorio)'):'—'); }
   function cardServ(o){
     var cli=o.clientes_servicios||{}, dir=cli.direccion?esc(cli.direccion):'', parc=!!o.parcial;
-    return '<div class="ot"><div class="h"><div><span class="num">N° '+esc(o.numero)+'</span> · 🧰 Servicio</div>'+(parc?'<span class="pill p-curso">🔶 parcial</span>':pillEstado(o.estado))+'</div>'
-      +'<div class="cli">'+esc(cli.nombre||'—')+'</div>'+(o.titulo?'<div class="dir" style="font-weight:600">'+esc(o.titulo)+'</div>':'')+(dir?'<div class="dir">📍 '+dir+'</div>':'')
+    return '<div class="ot"><div class="h"><div><span class="num">N° '+esc(o.numero)+'</span> · 🧰 Servicio'+(o.autogenerada?' <span class="pill" style="background:#fee2e2;color:#991b1b">🔴 no planificado</span>':'')+'</div>'+(parc?'<span class="pill p-curso">🔶 parcial</span>':pillEstado(o.estado))+'</div>'
+      +'<div class="cli">'+esc(_servNom(o))+'</div>'+(o.titulo?'<div class="dir" style="font-weight:600">'+esc(o.titulo)+'</div>':'')+(dir?'<div class="dir">📍 '+dir+'</div>':'')
       +(parc?'<div class="dir" style="color:#b45309;font-weight:600">⏸️ Finalizada parcialmente — continuá la tarea</div>':'')
       +(cli.telefono?'<div class="dir">📞 '+esc(cli.telefono)+'</div>':'')
       +(o.descripcion?'<div class="dir" style="margin-top:6px">'+esc(o.descripcion)+'</div>':'')
@@ -462,7 +509,8 @@
     var enCurso=(o.estado==='EN_CURSO');
     app.innerHTML=topBar('OT N° '+o.numero,'Servicio')+'<div class="wrap">'
       +'<div class="card"><div style="margin-bottom:8px">'+pillEstado(o.estado)+' · 🧰 Servicio · prioridad '+esc(o.prioridad||'NORMAL')+'</div>'
-      +fila('Cliente',cli.nombre||'—')
+      +(o.autogenerada?fila('Origen','🔴 No planificado (autogenerado)'):'')
+      +fila('Cliente',_servNom(o))
       +(cli.contacto?fila('Contacto',cli.contacto):'')
       +(cli.direccion?fila('Dirección',cli.direccion):'')
       +(cli.telefono?fila('Teléfono',cli.telefono):'')
@@ -506,7 +554,7 @@
     var o=SV.o, cli=o.clientes_servicios||{}, fin=(SV.tipoCierre==='FINAL');
     var iniTxt=o.inicio_tec_at?(fmtFecha(o.inicio_tec_at)+' '+_hhmm(o.inicio_tec_at)):null;
     var h=topBar('Cerrar OT N° '+o.numero,'Servicio')+'<div class="wrap">'
-      +'<div class="card"><div style="font-weight:800">'+esc(cli.nombre||'')+'</div>'+(o.titulo?'<div class="dir" style="font-weight:600">'+esc(o.titulo)+'</div>':'')+(o.descripcion?'<div class="dir muted">'+esc(o.descripcion)+'</div>':'')+'</div>'
+      +'<div class="card"><div style="font-weight:800">'+esc(_servNom(o))+'</div>'+(o.titulo?'<div class="dir" style="font-weight:600">'+esc(o.titulo)+'</div>':'')+(o.descripcion?'<div class="dir muted">'+esc(o.descripcion)+'</div>':'')+'</div>'
       +'<div class="card"><div class="label">¿Terminaste la tarea?</div><div class="row2"><button type="button" class="btn '+(fin?'btn-ok':'btn-2')+'" id="sv-final">✅ Sí, cierre final</button><button type="button" class="btn '+(fin?'btn-2':'btn-x')+'" id="sv-parcial">⏸️ No, sigo después</button></div>'+(fin?'':'<div class="muted" style="font-size:12px;margin-top:6px">Cierre <b>parcial</b>: queda abierta para continuar (otro día o cuando llegue el material). Se guardan las horas y lo cargado. Foto y firmas no son obligatorias.</div>')+'</div>'
       +'<div class="card"><div class="label">🕐 Horario de esta visita</div><div style="font-size:14px">Inicio <b>'+(iniTxt||'—')+'</b> <span class="muted">(automático)</span> · Fin <b>ahora</b></div>'+(o.inicio_tec_at?'':'<div style="color:var(--rojo);font-size:12px;margin-top:4px">No se registró el inicio. Volvé y tocá «Iniciar tarea».</div>')+'</div>'
       +'<div class="card"><div class="label">📦 Materiales utilizados</div>';
