@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.35';
+  var VER='v1.36';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -941,7 +941,7 @@
   }
   // valida (descuenta stock + finaliza) y vuelve a la lista de validación
   function _validarYvolver(o,mats){
-    var nowISO=new Date().toISOString(), jobs=[ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', validado_admin_at:nowISO, validado_por:USER.id }) ];
+    var nowISO=new Date().toISOString(), jobs=[ sbPatchOk('ordenes_trabajo?id=eq.'+o.id,{ estado:'FINALIZADA', validado_admin_at:nowISO, validado_por:USER.id }) ];
     var noSer=(mats||[]).filter(function(m){return !m.serial&&m.material_id;});
     if(o.cuadrilla_id) noSer.forEach(function(m){
       jobs.push(sbGet('stock_cuadrillas?cuadrilla_id=eq.'+o.cuadrilla_id+'&material_id=eq.'+m.material_id+'&select=id,cantidad').then(function(s){ if(s&&s[0]){ var n=Math.max(0,Number(s[0].cantidad)-Number(m.cantidad)); return sbPatch('stock_cuadrillas?id=eq.'+s[0].id,{cantidad:n,updated_at:nowISO}); } }));
@@ -1189,7 +1189,7 @@
   function _dniUtil(doc){ var d=String(doc||'').replace(/\D/g,''); return (d.length>=7 && !/^(\d)\1+$/.test(d) && d!=='9999999')?d:null; }
   function _crearOTdesdeSolicitud(cliId,s){
     return sbPost('ordenes_trabajo',{ cliente_id:cliId,solicitud_id:s.id,tipo:'INSTALACION',estado:'PENDIENTE',prioridad:'NORMAL',plan_id:s.plan_id||null,descripcion:'Instalación nueva (desde solicitud)',created_by:USER.id })
-      .then(function(){ return sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'convertida',cliente_id:cliId,gestionado_por:USER.id,gestionado_at:new Date().toISOString() }); });
+      .then(function(r){ if(!Array.isArray(r)||!r.length) throw new Error('No se pudo crear la OT'); return sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'convertida',cliente_id:cliId,gestionado_por:USER.id,gestionado_at:new Date().toISOString() }); });
   }
   function convertirSolicitud(s){
     var cli={ nombre:s.nombre,apellido:s.apellido||null,tipo_doc:'DNI',doc_numero:s.doc_numero||null,telefono:s.telefono,telefono_alt:s.telefono_alt||null,
@@ -1609,14 +1609,14 @@
           sbPatch('stock_seriales?ot_id=eq.'+id+'&estado=eq.COMPROMETIDO',{ estado:'EN_CUADRILLA', ot_id:null });
           Promise.all(_limpiarCierreJobs('eq.'+id)).catch(function(){});
         }
-        sbPatch('ordenes_trabajo?id=eq.'+id,upd).then(function(){
+        sbPatchOk('ordenes_trabajo?id=eq.'+id,upd).then(function(){
           if(est!==o.estado || (cuad?Number(cuad):null)!==(o.cuadrilla_id||null)){
             var nc=cuad?Number(cuad):null;
             var evt = (est==='ASIGNADA'&&nc&&nc!==o.cuadrilla_id) ? 'ASIGNADA' : 'CAMBIO_ESTADO';
             logOT(id, evt, { de:o.estado, a:est, cuadId:nc, detalle:(nc&&nc!==o.cuadrilla_id?('Asignada a '+_cuadNombre(nc)):'') });
           }
           cerrarModal(); toast('OT actualizada ✓'); refrescarOT();
-        });
+        }).catch(function(){ toast('⚠️ No se pudo guardar la OT. Reintentá.'); });
       });
       document.getElementById('ot-del').addEventListener('click',function(){
         if(!confirm('¿Eliminar la OT N° '+o.numero+'? Esta acción no se puede deshacer.')) return;
