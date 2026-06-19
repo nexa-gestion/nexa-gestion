@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.42';
+  var VER='v1.43';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3090,29 +3090,36 @@
     if(!_dxEsAdmin()){ view.innerHTML='<h1>Desconexiones</h1><div class="center">Solo disponible para administrativo, gerencial o superadmin.</div>'; return; }
     if(!window._dxState) window._dxState={ver:'PENDIENTE',q:'',origen:''};
     var st=window._dxState; loading();
-    _dxAutoGenerar(function(gen){
-    if(gen>0) toast('➕ '+gen+' desconexión(es) nuevas en Pendientes');
-    if(st.ver==='cand'){ _dxCandidatos(); return; }
-    var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':'estado=eq.'+st.ver;
-    _dxLimpiarEliminados(function(){
-    _dxAutoAnular(function(){
-    sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=created_at.desc&limit=2000').then(function(d){
-      _dxData=Array.isArray(d)?d:[];
-      var h='<h1>🔌 Desconexiones / Bajas</h1><p class="sub">El técnico hace el corte/recupero. Después <b>soporte</b> elimina la conexión en ISPcube y <b>comercial</b> hace la nota de crédito (si hay deuda) + borra el cliente. Con las dos firmas, la baja queda finalizada.</p><div id="dx-wrap">'+_dxTabs()
-        +'<div class="toolbar"><input id="dx-q" placeholder="🔎 Buscar N°, ISP, cliente, barrio, precinto, caja, teléfono…" value="'+esc(st.q||'')+'" style="min-width:240px;flex:1">'
-        +'<select id="dx-forigen"><option value="">Todos los orígenes</option>'+[['manual','✋ Manual'],['baja_isp','⬇️ Baja ISPcube'],['bloqueado_30d','⛔ Bloqueado +30d']].map(function(o){return '<option value="'+o[0]+'"'+(st.origen===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'
-        +'<button class="btn btn-2" id="dx-csv">⬇️ Exportar CSV</button></div>'
-        +'<div id="dx-tabla"></div></div>';
-      view.innerHTML=h; _dxBadge();
-      document.getElementById('dx-q').addEventListener('input',function(){ st.q=this.value; _dxPinta(); });
-      document.getElementById('dx-forigen').addEventListener('change',function(){ st.origen=this.value; _dxPinta(); });
-      document.getElementById('dx-csv').addEventListener('click',_dxCSV);
-      _dxWire();
-      _dxPinta();
-    }).catch(function(){ view.innerHTML='<h1>🔌 Desconexiones</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL v32?</div>'; });
-    });
-    });
-    });
+    // Trae las desconexiones del tab activo y pinta. El mantenimiento NO corre acá (ver abajo).
+    var _render=function(){
+      if(st.ver==='cand'){ _dxCandidatos(); return; }
+      var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':'estado=eq.'+st.ver;
+      sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=created_at.desc&limit=2000').then(function(d){
+        _dxData=Array.isArray(d)?d:[];
+        var h='<h1>🔌 Desconexiones / Bajas</h1><p class="sub">El técnico hace el corte/recupero. Después <b>soporte</b> elimina la conexión en ISPcube y <b>comercial</b> hace la nota de crédito (si hay deuda) + borra el cliente. Con las dos firmas, la baja queda finalizada.</p><div id="dx-wrap">'+_dxTabs()
+          +'<div class="toolbar"><input id="dx-q" placeholder="🔎 Buscar N°, ISP, cliente, barrio, precinto, caja, teléfono…" value="'+esc(st.q||'')+'" style="min-width:240px;flex:1">'
+          +'<select id="dx-forigen"><option value="">Todos los orígenes</option>'+[['manual','✋ Manual'],['baja_isp','⬇️ Baja ISPcube'],['bloqueado_30d','⛔ Bloqueado +30d']].map(function(o){return '<option value="'+o[0]+'"'+(st.origen===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'
+          +'<button class="btn btn-2" id="dx-refrescar" title="Re-procesa altas/bajas automáticas (esto es lo que tarda)">🔄 Actualizar</button>'
+          +'<button class="btn btn-2" id="dx-csv">⬇️ Exportar CSV</button></div>'
+          +'<div id="dx-tabla"></div></div>';
+        view.innerHTML=h; _dxBadge();
+        document.getElementById('dx-q').addEventListener('input',function(){ st.q=this.value; _dxPinta(); });
+        document.getElementById('dx-forigen').addEventListener('change',function(){ st.origen=this.value; _dxPinta(); });
+        document.getElementById('dx-csv').addEventListener('click',_dxCSV);
+        var rb=document.getElementById('dx-refrescar'); if(rb) rb.addEventListener('click',function(){ window._dxMaintDone=false; vDesconexiones(); });
+        _dxWire();
+        _dxPinta();
+      }).catch(function(){ view.innerHTML='<h1>🔌 Desconexiones</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL v32?</div>'; });
+    };
+    // El mantenimiento (auto-generar / limpiar eliminados / anular pagos) ya lo hace el sync del servidor.
+    // En el panel lo corremos UNA vez por sesión y en PARALELO — no en cada cambio de pestaña (era el cuello de botella).
+    // El botón 🔄 Actualizar lo vuelve a correr a demanda.
+    if(window._dxMaintDone){ _render(); return; }
+    window._dxMaintDone=true;
+    var pend=3, done=function(){ if(--pend<=0) _render(); };
+    _dxAutoGenerar(function(gen){ if(gen>0) toast('➕ '+gen+' desconexión(es) nuevas en Pendientes'); done(); });
+    _dxLimpiarEliminados(done);
+    _dxAutoAnular(done);
   }
   function _dxFiltrados(){
     var st=window._dxState, q=(st.q||'').toLowerCase().trim(), org=st.origen||'';
