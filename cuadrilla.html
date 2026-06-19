@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.31</title>
+<title>Nexa · Técnico — v0.32</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.31';
+  var VER='v0.32';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -583,9 +583,10 @@
     btn.disabled=true; btn.textContent='Guardando…';
     Promise.all([esFinal?_uploadFirma('tec'):Promise.resolve(null), esFinal?_uploadFirma('cli'):Promise.resolve(null)]).then(function(firmas){
       getGPS().then(function(g){
+        // La sesión (horas) es crítica para facturar: la guardo PRIMERO y verifico que quedó.
+        sbPost('ot_sesiones',{ ot_id:o.id, cuadrilla_id:CUAD.id, inicio:ini, fin:fin, tipo:SV.tipoCierre, observaciones:SV._obs||null }).then(function(sr){
+        if(!Array.isArray(sr)||!sr.length){ err.textContent='No se pudo guardar la sesión de horas. Reintentá.'; btn.disabled=false; btn.textContent=esFinal?'✔️ Confirmar cierre final':'⏸️ Guardar cierre parcial'; return; }
         var jobs=[];
-        // Sesión: cuenta las horas de ESTA visita (inicio→fin). El total = suma de sesiones. Materiales/MO ya están guardados.
-        jobs.push(sbPost('ot_sesiones',{ ot_id:o.id, cuadrilla_id:CUAD.id, inicio:ini, fin:fin, tipo:SV.tipoCierre, observaciones:SV._obs||null }));
         var upd={ observaciones_tec:SV._obs||null }; if(g){ upd.lat_fin=g.lat; upd.lng_fin=g.lng; }
         if(esFinal){ upd.estado='CERRADA_TECNICO'; upd.fin_tec_at=fin; upd.parcial=false; if(firmas[0]) upd.firma_tecnico_url=firmas[0]; if(firmas[1]) upd.firma_cliente_url=firmas[1];
           jobs.push(sbPost('ot_historial',{ ot_id:o.id, evento:'CIERRE_TECNICO', estado_anterior:o.estado||null, estado_nuevo:'CERRADA_TECNICO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:(SV._obs||'Cierre final de servicio') }).catch(function(){}));
@@ -595,6 +596,7 @@
         jobs.push(sbPatch('ordenes_trabajo?id=eq.'+o.id,upd));
         SV.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'CIERRE'})); });
         Promise.all(jobs).then(function(){ toast(esFinal?'Cierre final guardado ✓':'Cierre parcial guardado ✓ (sigue abierta)'); SV=null; listState.filtro=(esFinal?'cerradas':'activas'); vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent=esFinal?'✔️ Confirmar cierre final':'⏸️ Guardar cierre parcial'; });
+        });   // cierra sbPost('ot_sesiones').then
       });
     });
   }
