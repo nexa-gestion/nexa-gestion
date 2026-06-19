@@ -237,7 +237,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.27';
+  var VER='v1.28';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4447,9 +4447,11 @@
     var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
     sbGet('clientes_servicios?select=*&order=nombre').then(function(d){
       d=Array.isArray(d)?d:[];
+      var byId={}; d.forEach(function(c){ byId[c.id]=c; });
       b.innerHTML='<div class="toolbar"><input id="svc-q" placeholder="🔎 Buscar nombre, contacto, teléfono…" style="flex:1;min-width:220px"><button class="btn btn-ok" id="svc-new">➕ Nuevo cliente</button></div><div id="svc-tabla"></div>';
       var cols=[
-        {k:'nombre',t:'Nombre',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}},
+        {k:'nombre',t:'Nombre',sort:function(o){return (o.cliente_padre_id?((byId[o.cliente_padre_id]||{}).nombre||'')+' ~ ':'')+(o.nombre||'');},r:function(o){return (o.cliente_padre_id!=null?'<span class="muted">↳ </span>':'')+'<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}},
+        {k:'principal',t:'Principal',sort:function(o){return o.cliente_padre_id?((byId[o.cliente_padre_id]||{}).nombre||''):'';},r:function(o){ if(o.cliente_padre_id==null) return '<span class="muted">— directo</span>'; var p=byId[o.cliente_padre_id]; return '🏢 '+esc(p?p.nombre:'(?)'); }},
         {k:'tipo',t:'Tipo',sort:function(o){return o.tipo||'';},r:function(o){return esc(o.tipo||'—');}},
         {k:'contacto',t:'Contacto',sort:function(o){return o.contacto||'';},r:function(o){return esc(o.contacto||'—');}},
         {k:'telefono',t:'Teléfono',sort:function(o){return o.telefono||'';},r:function(o){return esc(o.telefono||'—');}},
@@ -4464,27 +4466,39 @@
   }
   function _svClienteForm(c){
     var ed=!!c.id, tipos=['empresa','comercio','institución','particular','otro'];
-    var h='<h2>'+(ed?'Editar':'Nuevo')+' cliente de servicios</h2><div class="fsgrid">'
-      +_svInput('svf-nombre','Nombre',c.nombre,'ej: Farmacia X / Hospital / Armando')
-      +'<div><label class="l">Tipo <span class="muted">(opcional)</span></label><select id="svf-tipo"><option value="">—</option>'+tipos.map(function(x){return '<option'+(c.tipo===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'
-      +_svInput('svf-cuit','CUIT',c.cuit,'',true)+_svInput('svf-contacto','Persona de contacto',c.contacto,'',true)
-      +_svInput('svf-telefono','Teléfono',c.telefono,'',true)+_svInput('svf-email','Email',c.email,'',true)
-      +'<div style="grid-column:1/-1">'+_svInput('svf-direccion','Dirección',c.direccion,'',true)+'</div>'
-      +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="svf-notas" style="min-height:48px">'+esc(c.notas||'')+'</textarea></div>'
-      +'</div><div id="svf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
-      +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="svf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svf-close">Cerrar</button></div>';
-    modal(h,'wide');
-    document.getElementById('svf-close').addEventListener('click',cerrarModal);
-    document.getElementById('svf-save').addEventListener('click',function(){
-      var nombre=document.getElementById('svf-nombre').value.trim();
-      if(!nombre){ document.getElementById('svf-err').textContent='El nombre es obligatorio.'; return; }
-      var body={ nombre:nombre, tipo:document.getElementById('svf-tipo').value||null, cuit:document.getElementById('svf-cuit').value.trim()||null, contacto:document.getElementById('svf-contacto').value.trim()||null, telefono:document.getElementById('svf-telefono').value.trim()||null, email:document.getElementById('svf-email').value.trim()||null, direccion:document.getElementById('svf-direccion').value.trim()||null, notas:document.getElementById('svf-notas').value.trim()||null };
-      var btn=this; btn.disabled=true; var prom=ed? sbPatch('clientes_servicios?id=eq.'+c.id,body) : sbPost('clientes_servicios',body);
-      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Cliente guardado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svf-err').textContent='No se pudo guardar.'; });
-    });
-    var del=document.getElementById('svf-del'); if(del) del.addEventListener('click',function(){
-      if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
-      fetch(SB_URL+'/rest/v1/clientes_servicios?id=eq.'+c.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Cliente eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar (¿tiene servicios cargados?).'); });
+    sbGet('clientes_servicios?select=id,nombre,cliente_padre_id&order=nombre').then(function(all){
+      all=all||[];
+      var principals=all.filter(function(x){ return x.cliente_padre_id==null && String(x.id)!==String(c.id); });
+      var hijos = ed ? all.filter(function(x){ return String(x.cliente_padre_id)===String(c.id); }) : [];
+      // Regla 1 nivel: un cliente con sub-clientes NO puede colgar de otro; y solo se ofrecen principales como padre.
+      var padreField = hijos.length
+        ? '<div style="grid-column:1/-1"><label class="l">Cliente principal</label><div class="muted" style="font-size:12.5px;background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:7px 9px">🏢 Este cliente es <b>principal</b> de '+hijos.length+' sub-cliente(s), por eso no puede colgar de otro.</div></div>'
+        : '<div style="grid-column:1/-1"><label class="l">Cliente principal <span class="muted">(dejar vacío si es cliente directo)</span></label><select id="svf-padre"><option value="">— ninguno (cliente directo) —</option>'+principals.map(function(p){return '<option value="'+p.id+'"'+(String(c.cliente_padre_id||'')===String(p.id)?' selected':'')+'>'+esc(p.nombre)+'</option>';}).join('')+'</select></div>';
+      var h='<h2>'+(ed?'Editar':'Nuevo')+' cliente de servicios</h2><div class="fsgrid">'
+        +_svInput('svf-nombre','Nombre',c.nombre,'ej: Farmacia X / Hospital / Armando')
+        +'<div><label class="l">Tipo <span class="muted">(opcional)</span></label><select id="svf-tipo"><option value="">—</option>'+tipos.map(function(x){return '<option'+(c.tipo===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'
+        +padreField
+        +_svInput('svf-cuit','CUIT',c.cuit,'',true)+_svInput('svf-contacto','Persona de contacto',c.contacto,'',true)
+        +_svInput('svf-telefono','Teléfono',c.telefono,'',true)+_svInput('svf-email','Email',c.email,'',true)
+        +'<div style="grid-column:1/-1">'+_svInput('svf-direccion','Dirección',c.direccion,'',true)+'</div>'
+        +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="svf-notas" style="min-height:48px">'+esc(c.notas||'')+'</textarea></div>'
+        +'</div><div id="svf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="svf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svf-close">Cerrar</button></div>';
+      modal(h,'wide');
+      document.getElementById('svf-close').addEventListener('click',cerrarModal);
+      document.getElementById('svf-save').addEventListener('click',function(){
+        var nombre=document.getElementById('svf-nombre').value.trim();
+        if(!nombre){ document.getElementById('svf-err').textContent='El nombre es obligatorio.'; return; }
+        var padreEl=document.getElementById('svf-padre');
+        var padre = hijos.length ? null : (padreEl && padreEl.value ? Number(padreEl.value) : null);
+        var body={ nombre:nombre, cliente_padre_id:padre, tipo:document.getElementById('svf-tipo').value||null, cuit:document.getElementById('svf-cuit').value.trim()||null, contacto:document.getElementById('svf-contacto').value.trim()||null, telefono:document.getElementById('svf-telefono').value.trim()||null, email:document.getElementById('svf-email').value.trim()||null, direccion:document.getElementById('svf-direccion').value.trim()||null, notas:document.getElementById('svf-notas').value.trim()||null };
+        var btn=this; btn.disabled=true; var prom=ed? sbPatch('clientes_servicios?id=eq.'+c.id,body) : sbPost('clientes_servicios',body);
+        prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Cliente guardado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('svf-err').textContent='No se pudo guardar.'; });
+      });
+      var del=document.getElementById('svf-del'); if(del) del.addEventListener('click',function(){
+        if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
+        fetch(SB_URL+'/rest/v1/clientes_servicios?id=eq.'+c.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Cliente eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar (¿tiene servicios cargados?).'); });
+      });
     });
   }
   // ── Tipos de trabajo de servicios (tipos_trabajo area=SERVICIOS) ──
