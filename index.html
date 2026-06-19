@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.32';
+  var VER='v1.33';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3121,7 +3121,7 @@
     else { btns=_bx('btn btn-2','d-volv','↩️ Reabrir (a pendientes)'); }
     modal(h+'<div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">'+btns+'</div><div style="margin-top:10px"><button class="btn btn-2" id="d-x">Cerrar</button></div>');
     function run(body,msg,act){ sbPatch('desconexiones?id=eq.'+id,body).then(function(){ if(act) logAct(act,{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); toast(msg); vDesconexiones(); }); }
-    var g=function(x){return document.getElementById(x);};
+    var g=function(x){return document.getElementById(x)||document.querySelector('#ov [data-id="'+x+'"]');};
     g('d-x').addEventListener('click',cerrarModal);
     if(g('d-asig')) g('d-asig').addEventListener('click',function(){ cerrarModal(); _dxAsignar(id); });
     if(g('d-reasig')) g('d-reasig').addEventListener('click',function(){ cerrarModal(); _dxReasignar(id); });
@@ -3140,21 +3140,26 @@
     modal('<h2>📦 Depósito — equipo de la baja</h2>'
       +'<p class="muted">'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+' · N° '+esc(c.numero_cliente||'')+'</p>'
       +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;font-size:13px">'+recTxt+'</div>'
-      +'<p class="muted" style="margin-top:10px">Confirmá qué pasó con el equipo. Esto habilita a Soporte.</p>'
-      +'<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">'
-        +'<button class="btn btn-ok" id="dxd-si">✅ Recibí el equipo en depósito'+(ser?(' (serial '+esc(ser)+')'):'')+'</button>'
-        +'<button class="btn btn-2" id="dxd-no">⚠️ El cliente no devolvió el equipo</button>'
-      +'</div><div style="margin-top:10px"><button class="btn btn-2" id="dxd-x">Cancelar</button></div>');
+      +'<label class="l" style="margin-top:10px">¿Se retiró el equipo?</label>'
+      +'<select id="dxd-rec"><option value="si"'+(o.recupero_equipo===false?'':' selected')+'>✅ Sí, recibí el equipo en depósito</option><option value="no"'+(o.recupero_equipo===false?' selected':'')+'>⚠️ No se devolvió el equipo</option></select>'
+      +'<div id="dxd-serbox"><label class="l">MAC / Serial del equipo (corregir si está mal)</label><input id="dxd-ser" value="'+esc(ser)+'" placeholder="MAC o serial"></div>'
+      +'<p class="muted" style="margin-top:8px;font-size:12px">Al confirmar con equipo recibido, el serial vuelve al stock del depósito. Esto habilita a Soporte.</p>'
+      +'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ok" id="dxd-go">Confirmar</button><button class="btn btn-2" id="dxd-x">Cancelar</button></div>');
     document.getElementById('dxd-x').addEventListener('click',cerrarModal);
-    function guardar(recibido){
-      sbPatch('desconexiones?id=eq.'+id,{deposito_hecho:true,deposito_at:new Date().toISOString(),deposito_por:USER.id,equipo_recibido:recibido}).then(function(){
-        function after(){ logAct('Depósito: '+(recibido?'recibió el equipo':'sin devolución de equipo'),{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); toast(recibido?'📦 Equipo recibido — vuelve al depósito':'Registrado ✓'); vDesconexiones(); }
-        if(recibido && ser){ sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(ser),{estado:'EN_DEPOSITO',cliente_id:null,cuadrilla_id:null,ot_id:null}).then(after).catch(after); }
+    var selRec=document.getElementById('dxd-rec'), serBox=document.getElementById('dxd-serbox');
+    function toggleSer(){ serBox.style.display=(selRec.value==='si')?'':'none'; }
+    selRec.addEventListener('change',toggleSer); toggleSer();
+    document.getElementById('dxd-go').addEventListener('click',function(){
+      var recibido=(selRec.value==='si'); var nuevoSer=recibido?(document.getElementById('dxd-ser').value.trim()):ser;
+      this.disabled=true; this.textContent='Guardando…';
+      var body={deposito_hecho:true,deposito_at:new Date().toISOString(),deposito_por:USER.id,equipo_recibido:recibido};
+      if(recibido && nuevoSer!==ser) body.equipo_serial=nuevoSer||null;
+      sbPatch('desconexiones?id=eq.'+id,body).then(function(){
+        function after(){ logAct('Depósito: '+(recibido?('recibió el equipo'+(nuevoSer?(' ('+nuevoSer+')'):'')):'sin devolución de equipo'),{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); toast(recibido?'📦 Equipo recibido — vuelve al depósito':'Registrado ✓'); vDesconexiones(); }
+        if(recibido && nuevoSer){ sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(nuevoSer),{estado:'EN_DEPOSITO',cliente_id:null,cuadrilla_id:null,ot_id:null}).then(after).catch(after); }
         else after();
       });
-    }
-    document.getElementById('dxd-si').addEventListener('click',function(){ this.disabled=true; guardar(true); });
-    document.getElementById('dxd-no').addEventListener('click',function(){ this.disabled=true; guardar(false); });
+    });
   }
   function _dxAsignar(id){
     var cuadOpts='<option value="">— elegí —</option>'+REF.cuadrillas.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('');
