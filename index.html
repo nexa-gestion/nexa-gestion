@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.30';
+  var VER='v1.31';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1094,10 +1094,11 @@
         +'<div class="fichagrid">'+fr('Empresa',c.empresa)+fr('Documento',(c.tipo_doc||'')+' '+(c.doc_numero||''))+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(c.telefono||'—')+' '+waLink(c.telefono,cNom,'',_domLimpio(c.domicilio_full))+'</span></div>'+fr('Email',c.email)
         +fr('Domicilio',_domLimpio(c.domicilio_full))+fr('Barrio',c.barrio)
         +'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(c.lat,c.lng)+'</span></div>'+fr('Nodo',c.nodo)
-        +fr('Plan',c.planes?c.planes.nombre:'')+fr('Tecnología',c.tecnologia)+fr('TV / Fútbol',(c.tv_online?'TV ':'')+(c.pack_futbol?'Fútbol':'')||'No')+'</div>'
+        +fr('Tecnología',c.tecnologia)+fr('TV / Fútbol',(c.tv_online?'TV ':'')+(c.pack_futbol?'Fútbol':'')||'No')+'</div>'
         +'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;margin-top:10px"><div style="font-weight:700;color:#1e40af;margin-bottom:6px">📡 Datos de conexión (lo que va en ISPcube)</div>'
           +'<div class="row"><div><label class="l">Caja (NAP)</label><input id="f-caja" value="'+esc(c.caja_nap||'')+'"></div><div><label class="l">Puerto</label><input id="f-puerto" value="'+esc(c.puerto||'')+'"></div><div><label class="l">Precinto</label><input id="f-precinto" value="'+esc(c.precinto||'')+'"></div></div>'
-          +'<button class="btn btn-ok" id="f-conx-save" style="margin-top:8px">Guardar conexión</button></div>'
+          +'<div style="margin-top:8px"><label class="l">📡 Plan contratado <span class="muted">(cambia el plan y ajusta la tecnología)</span></label><select id="f-plan"><option value="">— sin plan —</option>'+REF.planes.map(function(p){return '<option value="'+p.id+'"'+(String(c.plan_id||'')===String(p.id)?' selected':'')+'>'+esc(p.nombre)+(p.tecnologia?(' · '+esc(p.tecnologia)):'')+'</option>';}).join('')+'</select></div>'
+          +'<button class="btn btn-ok" id="f-conx-save" style="margin-top:8px">💾 Guardar conexión y plan</button></div>'
         +ispBlock
         +'<div id="f-hist" style="margin-top:14px"></div>'
         +'<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-pri" id="f-ot">+ Generar OT</button><button class="btn btn-2" id="f-close">Cerrar</button></div>', 'wide');
@@ -1106,7 +1107,9 @@
       cargarHistCliente(c.id);
       document.getElementById('f-conx-save').addEventListener('click',function(){
         var b={ caja_nap:document.getElementById('f-caja').value.trim()||null, puerto:document.getElementById('f-puerto').value.trim()||null, precinto:document.getElementById('f-precinto').value.trim()||null };
-        var btn=this; btn.disabled=true; sbPatch('clientes?id=eq.'+c.id,b).then(function(){ c.caja_nap=b.caja_nap; c.puerto=b.puerto; c.precinto=b.precinto; btn.disabled=false; toast('Datos de conexión guardados ✓'); }).catch(function(){ btn.disabled=false; toast('No se pudo guardar.'); });
+        var pEl=document.getElementById('f-plan'), np=pEl&&pEl.value?Number(pEl.value):null;
+        if(np!==(c.plan_id||null)){ b.plan_id=np; var pl=REF.planes.filter(function(p){return p.id===np;})[0]; var _t=pl?((pl.tecnologia||'')+' '+(pl.nombre||'')):''; var tec=/ftth/i.test(_t)?'FTTH':(/(wifi|wireless|inalamb)/i.test(_t)?'INALAMBRICO':null); if(tec)b.tecnologia=tec; }
+        var btn=this; btn.disabled=true; sbPatch('clientes?id=eq.'+c.id,b).then(function(){ c.caja_nap=b.caja_nap; c.puerto=b.puerto; c.precinto=b.precinto; if(b.plan_id!==undefined){ c.plan_id=b.plan_id; if(b.tecnologia)c.tecnologia=b.tecnologia; } btn.disabled=false; toast('Conexión y plan guardados ✓'); }).catch(function(){ btn.disabled=false; toast('No se pudo guardar.'); });
       });
       var ispSave=document.getElementById('f-isp-save');
       if(ispSave) ispSave.addEventListener('click',function(){
