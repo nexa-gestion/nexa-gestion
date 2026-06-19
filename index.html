@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.36';
+  var VER='v1.37';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -302,6 +302,16 @@
     var s=document.createElement('script'); s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
     s.onload=function(){ _leafletLoading=false; _leafletCbs.forEach(function(f){f();}); _leafletCbs=[]; };
     s.onerror=function(){ _leafletLoading=false; _leafletCbs=[]; };
+    document.head.appendChild(s);
+  }
+  // Chart.js bajo demanda (mismo patrón que Leaflet) — solo se carga al abrir Reportes
+  var _chartLoading=false, _chartCbs=[];
+  function ensureChartJs(cb){
+    if(window.Chart){ cb(); return; }
+    _chartCbs.push(cb); if(_chartLoading) return; _chartLoading=true;
+    var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+    s.onload=function(){ _chartLoading=false; _chartCbs.forEach(function(f){f();}); _chartCbs=[]; };
+    s.onerror=function(){ _chartLoading=false; _chartCbs=[]; };
     document.head.appendChild(s);
   }
   // ── WhatsApp: link directo a wa.me con mensaje predefinido según el tipo de trabajo ──
@@ -4522,11 +4532,107 @@
   var _svOtFilt={ q:'', cli:'', tec:'', est:'', desde:'', hasta:'' };
   function vServicios(){
     var t=_svState.tab||'ots';
-    var tabs=[['ots','📋 Órdenes de trabajo'],['validacion','✅ Validación'],['clientes','🏢 Clientes'],['stock','🗃️ Stock'],['tipos','🏷️ Tipos de trabajo'],['catalogo','📦 Catálogo']];
+    var tabs=[['ots','📋 Órdenes de trabajo'],['validacion','✅ Validación'],['reportes','📊 Reportes'],['clientes','🏢 Clientes'],['stock','🗃️ Stock'],['tipos','🏷️ Tipos de trabajo'],['catalogo','📦 Catálogo']];
     view.innerHTML='<h1>🧰 Servicios</h1><p class="sub">Tareas fuera del servicio de internet (cableado, cámaras, telemetría…) para clientes externos. Generás la OT, la asignás a un técnico y después sacás reportes por cliente.</p>'
       +'<div class="toolbar" style="gap:6px">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' sv-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="sv-body"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.sv-tab'),function(b){ b.addEventListener('click',function(){ _svState.tab=b.getAttribute('data-t'); vServicios(); }); });
-    if(t==='clientes') _svClientes(); else if(t==='tipos') _svTipos(); else if(t==='catalogo') _svCatalogo(); else if(t==='validacion') _svValidacion(); else if(t==='stock') _svStock(); else _svOts();
+    if(t==='clientes') _svClientes(); else if(t==='tipos') _svTipos(); else if(t==='catalogo') _svCatalogo(); else if(t==='validacion') _svValidacion(); else if(t==='stock') _svStock(); else if(t==='reportes') _svReportes(); else _svOts();
+  }
+
+  // ══ REPORTES de Servicios ══════════════════════════════════════════════
+  // Solo OTs FINALIZADA + validado_admin_at no nulo. Se filtra por validado_admin_at (fecha de finalización).
+  // Horas = suma de ot_sesiones. Cliente facturable = principal (cliente_padre_id) o él mismo.
+  // Plata = SOLO compras directas (origen=COMPRA_DIRECTA, costo_unitario), separada por pagado_por.
+  var _repState={ desde:null, hasta:null }, _repCharts=[];
+  function _repDestroy(){ _repCharts.forEach(function(c){ try{ c.destroy(); }catch(e){} }); _repCharts=[]; }
+  function _repMoney(n){ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); }
+  function _repYM(iso){ var d=new Date(new Date(iso).getTime()-3*3600000); return d.getUTCFullYear()+'-'+('0'+(d.getUTCMonth()+1)).slice(-2); }   // año-mes en hora AR
+  function _repMesLbl(ym){ var mn=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'], p=String(ym).split('-'); return (mn[(+p[1])-1]||p[1])+' '+p[0].slice(2); }
+  function _repTopN(obj,nameFn,n){ var arr=Object.keys(obj).map(function(k){return {k:k,v:obj[k]};}).sort(function(a,b){return b.v-a.v;}); if(n) arr=arr.slice(0,n); return { labels:arr.map(function(x){return nameFn(x.k);}), data:arr.map(function(x){return +(x.v/3600000).toFixed(2);}) }; }
+  function _repBarOpts(){ return { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{ callback:function(v){return v+'h';} } } } }; }
+  function _repMoneyOpts(){ return { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:true,position:'bottom'}}, scales:{ y:{ beginAtZero:true, ticks:{ callback:function(v){return '$'+Number(v).toLocaleString('es-AR');} } } } }; }
+  // trae filas por ot_id en lotes (in.()) para no pasar URLs gigantes
+  function _repFetchIn(table,extra,ids){ var CH=80, chunks=[]; for(var i=0;i<ids.length;i+=CH) chunks.push(ids.slice(i,i+CH)); return Promise.all(chunks.map(function(c){ return sbGet(table+'?ot_id=in.('+c.join(',')+')'+extra+'&limit=10000'); })).then(function(parts){ return parts.reduce(function(a,p){ return a.concat(p||[]); },[]); }); }
+
+  function _svReportes(){
+    var rt=_svState.rep||'gerencial';
+    var b=document.getElementById('sv-body');
+    b.innerHTML='<div class="toolbar" style="gap:6px;margin-bottom:10px">'
+      +'<button class="btn '+(rt==='gerencial'?'btn-pri':'btn-2')+' svrep-tab" data-r="gerencial">📈 Gerencial</button>'
+      +'<button class="btn '+(rt==='facturacion'?'btn-pri':'btn-2')+' svrep-tab" data-r="facturacion">🧾 Facturación</button>'
+      +'</div><div id="svrep-body"></div>';
+    Array.prototype.forEach.call(b.querySelectorAll('.svrep-tab'),function(x){ x.addEventListener('click',function(){ _repDestroy(); _svState.rep=x.getAttribute('data-r'); _svReportes(); }); });
+    if(rt==='facturacion') _svRepFacturacion(); else _svRepGerencial();
+  }
+  function _svRepFacturacion(){ document.getElementById('svrep-body').innerHTML='<div class="center" style="padding:34px;color:#94a3b8">🧾 <b>Facturación</b> — detalle por cliente para armar la factura. <br>Próximamente (Fase 2).</div>'; }
+
+  function _svRepGerencial(){
+    var body=document.getElementById('svrep-body');
+    if(!_repState.desde){ _repState.desde=_hoyISO().substring(0,8)+'01'; _repState.hasta=_hoyISO(); }
+    body.innerHTML='<div class="toolbar" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">'
+      +'<div><label class="l">Desde</label><input type="date" id="rep-desde" value="'+esc(_repState.desde)+'"></div>'
+      +'<div><label class="l">Hasta</label><input type="date" id="rep-hasta" value="'+esc(_repState.hasta)+'"></div>'
+      +'<button class="btn btn-pri" id="rep-ver">Ver reporte</button>'
+      +'<button class="btn btn-2" id="rep-mes">Este mes</button>'
+      +'</div><div id="rep-cont"></div>';
+    document.getElementById('rep-ver').addEventListener('click',function(){ _repState.desde=document.getElementById('rep-desde').value; _repState.hasta=document.getElementById('rep-hasta').value; _repCargarGerencial(); });
+    document.getElementById('rep-mes').addEventListener('click',function(){ _repState.desde=_hoyISO().substring(0,8)+'01'; _repState.hasta=_hoyISO(); _svRepGerencial(); });
+    _repCargarGerencial();
+  }
+  function _repCargarGerencial(){
+    var cont=document.getElementById('rep-cont'); if(!cont) return;
+    cont.innerHTML='<div class="muted" style="font-size:13px;padding:14px">Cargando…</div>';
+    _repDestroy();
+    var desde=_repState.desde, hasta=_repState.hasta;
+    if(!desde||!hasta){ cont.innerHTML='<div class="muted" style="padding:14px">Elegí el rango de fechas.</div>'; return; }
+    var gte=desde+'T03:00:00Z', lt=_addDias(hasta,1)+'T03:00:00Z';
+    var q='ordenes_trabajo?area=eq.SERVICIOS&estado=eq.FINALIZADA&validado_admin_at=not.is.null&validado_admin_at=gte.'+gte+'&validado_admin_at=lt.'+lt+'&select=id,numero,cliente_servicio_id,cuadrilla_id,validado_admin_at&limit=5000';
+    Promise.all([ sbGet(q), sbGet('clientes_servicios?select=id,nombre,cliente_padre_id'), sbGet('cuadrillas?select=id,nombre') ]).then(function(r){
+      var ots=r[0]||[], clis=r[1]||[], cuads=r[2]||[];
+      if(!ots.length){ cont.innerHTML='<div class="center" style="padding:34px;color:#94a3b8">No hay OTs de servicio finalizadas en este rango.</div>'; return; }
+      var ids=ots.map(function(o){return o.id;});
+      Promise.all([ _repFetchIn('ot_sesiones','&select=ot_id,inicio,fin',ids), _repFetchIn('ot_materiales','&origen=eq.COMPRA_DIRECTA&select=ot_id,cantidad,costo_unitario,pagado_por',ids) ]).then(function(rr){
+        _repRenderGerencial(cont, ots, rr[0]||[], rr[1]||[], clis, cuads);
+      });
+    }).catch(function(){ cont.innerHTML='<div class="center" style="color:var(--rojo);padding:20px">No se pudo cargar el reporte.</div>'; });
+  }
+  function _repRenderGerencial(cont, ots, ses, mats, clis, cuads){
+    var cliMap={}; clis.forEach(function(c){ cliMap[c.id]=c; });
+    var cuadMap={}; cuads.forEach(function(c){ cuadMap[c.id]=c.nombre; });
+    function principalId(cliId){ var c=cliMap[cliId]; return (c&&c.cliente_padre_id)?c.cliente_padre_id:cliId; }
+    function cliNombre(id){ return (cliMap[id]&&cliMap[id].nombre)||('Cliente '+id); }
+    var msPorOt={}; ses.forEach(function(s){ if(s.inicio&&s.fin){ var d=new Date(s.fin)-new Date(s.inicio); if(d>0) msPorOt[s.ot_id]=(msPorOt[s.ot_id]||0)+d; } });
+    var otPrincipal={};
+    var hCli={}, hCuad={}, hMes={}, totalMs=0;
+    ots.forEach(function(o){ var ms=msPorOt[o.id]||0; totalMs+=ms; var pid=principalId(o.cliente_servicio_id); otPrincipal[o.id]=pid;
+      hCli[pid]=(hCli[pid]||0)+ms; var cu=o.cuadrilla_id||'0'; hCuad[cu]=(hCuad[cu]||0)+ms; var ym=_repYM(o.validado_admin_at); hMes[ym]=(hMes[ym]||0)+ms; });
+    var cdCli={}, totNexa=0, totCli=0;
+    mats.forEach(function(m){ var monto=(Number(m.cantidad)||0)*(Number(m.costo_unitario)||0); if(!monto) return; var pid=otPrincipal[m.ot_id]; if(pid==null) return; var bk=cdCli[pid]||(cdCli[pid]={nexa:0,cliente:0});
+      if(m.pagado_por==='NEXA'){ bk.nexa+=monto; totNexa+=monto; } else if(m.pagado_por==='CLIENTE'){ bk.cliente+=monto; totCli+=monto; } });
+    var kpis='<div class="dkpis">'
+      +dkpi(_minTxt(totalMs/60000),'Horas trabajadas','en el rango','blue')
+      +dkpi(ots.length,'OTs finalizadas','validadas','green')
+      +dkpi(_repMoney(totNexa),'Compras directas Nexa','se factura al cliente','amber')
+      +dkpi(_repMoney(totCli),'Compras directas Cliente','solo registro, no se factura','gray')
+      +'</div>';
+    var nota='<div class="muted" style="font-size:12px;margin:2px 0 12px">💡 Los montos en $ son <b>solo compras directas</b>. No incluyen materiales de stock (sin costo cargado).</div>';
+    function card(title,cid){ return '<div class="dkpi" style="border-left-color:#2563eb"><div class="dkpi-lbl" style="color:#334155;font-size:12px">'+title+'</div><div style="position:relative;height:240px;margin-top:8px"><canvas id="'+cid+'"></canvas></div></div>'; }
+    var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">'
+      +card('Horas por cliente','rep-c1')+card('Horas por técnico','rep-c2')
+      +card('Horas por mes','rep-c3')+card('Compras directas por cliente · Nexa vs Cliente','rep-c4')+'</div>';
+    cont.innerHTML=kpis+nota+grid;
+    ensureChartJs(function(){
+      if(!document.getElementById('rep-c1')) return;   // el usuario cambió de pestaña antes de que cargue
+      _repDestroy();
+      var d1=_repTopN(hCli, cliNombre, 12);
+      _repCharts.push(new Chart(document.getElementById('rep-c1'),{ type:'bar', data:{ labels:d1.labels, datasets:[{label:'Horas',data:d1.data,backgroundColor:'#2563eb'}] }, options:_repBarOpts() }));
+      var d2=_repTopN(hCuad, function(k){ return cuadMap[k]||(k==='0'?'(sin cuadrilla)':('Cuadrilla '+k)); }, 12);
+      _repCharts.push(new Chart(document.getElementById('rep-c2'),{ type:'bar', data:{ labels:d2.labels, datasets:[{label:'Horas',data:d2.data,backgroundColor:'#0891b2'}] }, options:_repBarOpts() }));
+      var meses=Object.keys(hMes).sort();
+      _repCharts.push(new Chart(document.getElementById('rep-c3'),{ type:'line', data:{ labels:meses.map(_repMesLbl), datasets:[{label:'Horas',data:meses.map(function(m){return +(hMes[m]/3600000).toFixed(2);}),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.12)',fill:true,tension:.25}] }, options:_repBarOpts() }));
+      var ck=Object.keys(cdCli).sort(function(a,b){ return (cdCli[b].nexa+cdCli[b].cliente)-(cdCli[a].nexa+cdCli[a].cliente); }).slice(0,12);
+      _repCharts.push(new Chart(document.getElementById('rep-c4'),{ type:'bar', data:{ labels:ck.map(cliNombre), datasets:[ {label:'Nexa (se factura)',data:ck.map(function(k){return Math.round(cdCli[k].nexa);}),backgroundColor:'#16a34a'}, {label:'Cliente (solo registro)',data:ck.map(function(k){return Math.round(cdCli[k].cliente);}),backgroundColor:'#94a3b8'} ] }, options:_repMoneyOpts() }));
+    });
   }
   function _svInput(id,lbl,val,ph,opc){ return '<div><label class="l">'+lbl+(opc?' <span class="muted">(opcional)</span>':'')+'</label><input id="'+id+'" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'"></div>'; }
   // ── Clientes de servicios ──
