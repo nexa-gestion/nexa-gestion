@@ -237,7 +237,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.26';
+  var VER='v1.27';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4435,11 +4435,11 @@
   var _svOtFilt={ q:'', cli:'', tec:'', est:'', desde:'', hasta:'' };
   function vServicios(){
     var t=_svState.tab||'ots';
-    var tabs=[['ots','📋 Órdenes de trabajo'],['validacion','✅ Validación'],['clientes','🏢 Clientes'],['tipos','🏷️ Tipos de trabajo'],['catalogo','📦 Catálogo']];
+    var tabs=[['ots','📋 Órdenes de trabajo'],['validacion','✅ Validación'],['clientes','🏢 Clientes'],['stock','🗃️ Stock'],['tipos','🏷️ Tipos de trabajo'],['catalogo','📦 Catálogo']];
     view.innerHTML='<h1>🧰 Servicios</h1><p class="sub">Tareas fuera del servicio de internet (cableado, cámaras, telemetría…) para clientes externos. Generás la OT, la asignás a un técnico y después sacás reportes por cliente.</p>'
       +'<div class="toolbar" style="gap:6px">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' sv-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="sv-body"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.sv-tab'),function(b){ b.addEventListener('click',function(){ _svState.tab=b.getAttribute('data-t'); vServicios(); }); });
-    if(t==='clientes') _svClientes(); else if(t==='tipos') _svTipos(); else if(t==='catalogo') _svCatalogo(); else if(t==='validacion') _svValidacion(); else _svOts();
+    if(t==='clientes') _svClientes(); else if(t==='tipos') _svTipos(); else if(t==='catalogo') _svCatalogo(); else if(t==='validacion') _svValidacion(); else if(t==='stock') _svStock(); else _svOts();
   }
   function _svInput(id,lbl,val,ph,opc){ return '<div><label class="l">'+lbl+(opc?' <span class="muted">(opcional)</span>':'')+'</label><input id="'+id+'" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'"></div>'; }
   // ── Clientes de servicios ──
@@ -4651,6 +4651,136 @@
           +'<div style="text-align:center;width:30%;border-top:1px solid #000;padding-top:3px">Aclaración / Fecha</div></div>'
         +'</div>';
       return body;
+    });
+  }
+  // ════════ STOCK DE SERVICIOS (inventario por cantidades, SIN costo) ════════
+  var _svStockFilt={ dueno:'', q:'' };
+  function _ownerLabel(it,climap){ return it.dueno_tipo==='CLIENTE' ? (climap[it.dueno_cliente_id]||('Cliente '+it.dueno_cliente_id)) : 'Nexa'; }
+  function _esBajo(it){ return it.minimo!=null && Number(it.cantidad_actual)<=Number(it.minimo); }
+  // Movimiento: registra en stock_serv_movimientos y actualiza el saldo del ítem
+  function _svStockMov(item,tipo,cantidad,motivo,otId){
+    var actual=Number(item.cantidad_actual)||0, c=Number(cantidad)||0;
+    var nueva = (tipo==='INGRESO') ? actual+c : (tipo==='EGRESO' ? actual-c : c);   // AJUSTE = saldo absoluto
+    return sbPost('stock_serv_movimientos',{ stock_item_id:item.id, tipo:tipo, cantidad:Math.abs(c), motivo:motivo||null, ot_id:otId||null, usuario_id:USER.id }).then(function(mr){
+      if(!Array.isArray(mr)||!mr.length) throw 0;
+      return sbPatch('stock_serv?id=eq.'+item.id,{ cantidad_actual:nueva }).then(function(){ item.cantidad_actual=nueva; return nueva; });
+    });
+  }
+  function _svStock(){
+    var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    Promise.all([
+      sbGet('stock_serv?activo=eq.true&select=*&order=descripcion'),
+      sbGet('clientes_servicios?cliente_padre_id=is.null&select=id,nombre&order=nombre')
+    ]).then(function(r){
+      var items=r[0]||[], clis=r[1]||[], climap={}; clis.forEach(function(c){ climap[c.id]=c.nombre; });
+      var f=_svStockFilt;
+      var duenoOpts='<option value="">Todos los dueños</option><option value="NEXA"'+(f.dueno==='NEXA'?' selected':'')+'>Nexa</option>'+clis.map(function(c){return '<option value="C'+c.id+'"'+(f.dueno==='C'+c.id?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+      var bajos=items.filter(_esBajo);
+      b.innerHTML=(bajos.length?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin-bottom:8px;font-size:13px;color:#991b1b">⚠️ <b>'+bajos.length+'</b> ítem(s) bajo el mínimo: '+bajos.map(function(it){return esc(it.descripcion);}).join(', ')+'</div>':'')
+        +'<div class="toolbar" style="flex-wrap:wrap;gap:6px"><select id="svs-dueno">'+duenoOpts+'</select><input id="svs-q" placeholder="🔎 Buscar ítem…" value="'+esc(f.q)+'" style="flex:1;min-width:160px"><button class="btn btn-2" id="svs-ing">📥 Cargar ingreso</button><button class="btn btn-ok" id="svs-new">➕ Nuevo ítem</button></div><div id="svs-tabla"></div>';
+      var cols=[
+        {k:'desc',t:'Ítem',sort:function(o){return o.descripcion||'';},r:function(o){return '<b>'+esc(o.descripcion||'')+'</b>'+(o.unidad?' <span class="muted">('+esc(o.unidad)+')</span>':'')+(_esBajo(o)?' <span class="pill p-bloqueado">⚠️ bajo mínimo</span>':'');}},
+        {k:'dueno',t:'Dueño',sort:function(o){return _ownerLabel(o,climap);},r:function(o){return o.dueno_tipo==='CLIENTE'?('🏢 '+esc(_ownerLabel(o,climap))):'<b>Nexa</b>';}},
+        {k:'cant',t:'Cantidad',sort:function(o){return Number(o.cantidad_actual)||0;},r:function(o){return '<b style="font-size:15px'+(_esBajo(o)?';color:var(--rojo)':'')+'">'+esc(o.cantidad_actual)+'</b>'+(o.minimo!=null?' <span class="muted" style="font-size:11px">mín '+esc(o.minimo)+'</span>':'');}}
+      ];
+      function aplica(){
+        var rs=items.filter(function(it){
+          if(f.dueno==='NEXA' && it.dueno_tipo!=='NEXA') return false;
+          if(f.dueno.indexOf('C')===0 && !(it.dueno_tipo==='CLIENTE'&&String(it.dueno_cliente_id)===f.dueno.slice(1))) return false;
+          if(f.q){ var q=f.q.toLowerCase().trim(); if((it.descripcion||'').toLowerCase().indexOf(q)<0 && _ownerLabel(it,climap).toLowerCase().indexOf(q)<0) return false; }
+          return true;
+        });
+        gridRender(document.getElementById('svs-tabla'),cols,rs,{key:'svs',note:rs.length+' ítem(s)',onRow:function(o){ _svStockDet(o,climap); }});
+      }
+      aplica();
+      document.getElementById('svs-q').addEventListener('input',function(){ f.q=this.value; aplica(); });
+      document.getElementById('svs-dueno').addEventListener('change',function(){ f.dueno=this.value; aplica(); });
+      document.getElementById('svs-new').addEventListener('click',function(){ _svStockForm({}); });
+      document.getElementById('svs-ing').addEventListener('click',function(){ _svStockIngreso(null); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste la SQL v41?</div>'; });
+  }
+  function _svStockForm(item){
+    var ed=!!item.id;
+    sbGet('clientes_servicios?cliente_padre_id=is.null&select=id,nombre&order=nombre').then(function(clis){
+      clis=clis||[];
+      var duenoSel='<select id="sks-dueno"><option value="NEXA"'+((item.dueno_tipo||'NEXA')==='NEXA'?' selected':'')+'>Nexa</option>'+clis.map(function(c){return '<option value="C'+c.id+'"'+(item.dueno_tipo==='CLIENTE'&&String(item.dueno_cliente_id)===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('')+'</select>';
+      var h='<h2>'+(ed?'Editar':'Nuevo')+' ítem de stock</h2><div class="fsgrid">'
+        +'<div style="grid-column:1/-1">'+_svInput('sks-desc','Descripción',item.descripcion,'ej: Ficha RJ45')+'</div>'
+        +_svInput('sks-unidad','Unidad',item.unidad,'ej: UNIDAD / MTS',true)
+        +'<div><label class="l">Dueño</label>'+duenoSel+'</div>'
+        +_svInput('sks-min','Stock mínimo <span class="muted">(avisa cuando baja)</span>',(item.minimo!=null?item.minimo:''),'(opcional)',true)
+        +(ed?'':_svInput('sks-ini','Cantidad inicial','','0',true))
+        +'</div><div id="sks-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="sks-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="sks-del">🗑️ Desactivar</button>':'')+'<button class="btn btn-2" id="sks-close">Cerrar</button></div>';
+      modal(h,'wide');
+      document.getElementById('sks-close').addEventListener('click',cerrarModal);
+      document.getElementById('sks-save').addEventListener('click',function(){
+        var desc=document.getElementById('sks-desc').value.trim(); if(!desc){ document.getElementById('sks-err').textContent='Poné la descripción.'; return; }
+        var dv=document.getElementById('sks-dueno').value, minv=document.getElementById('sks-min').value.trim();
+        var body={ descripcion:desc, unidad:document.getElementById('sks-unidad').value.trim()||null, minimo:(minv!==''?Number(minv):null), dueno_tipo:(dv==='NEXA'?'NEXA':'CLIENTE'), dueno_cliente_id:(dv==='NEXA'?null:Number(dv.slice(1))) };
+        var btn=this; btn.disabled=true;
+        if(ed){ sbPatch('stock_serv?id=eq.'+item.id,body).then(function(r){ if(!Array.isArray(r)||!r.length)throw 0; cerrarModal(); toast('Ítem guardado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('sks-err').textContent='No se pudo guardar.'; }); }
+        else { body.cantidad_actual=0; sbPost('stock_serv',body).then(function(r){ var it=Array.isArray(r)&&r[0]; if(!it)throw 0;
+            var iniv=document.getElementById('sks-ini').value.trim(), ini=iniv!==''?Number(iniv):0;
+            if(ini>0){ return _svStockMov(it,'INGRESO',ini,'Carga inicial').then(function(){ cerrarModal(); toast('Ítem creado con '+ini+' de stock ✓'); vServicios(); }); }
+            cerrarModal(); toast('Ítem creado ✓'); vServicios();
+          }).catch(function(){ btn.disabled=false; document.getElementById('sks-err').textContent='No se pudo crear.'; }); }
+      });
+      var del=document.getElementById('sks-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Desactivar? Tocá de nuevo'; return; } sbPatch('stock_serv?id=eq.'+item.id,{activo:false}).then(function(){ cerrarModal(); toast('Ítem desactivado'); vServicios(); }); });
+    });
+  }
+  function _svStockIngreso(item){
+    sbGet('stock_serv?activo=eq.true&select=id,descripcion,unidad,cantidad_actual,dueno_tipo,dueno_cliente_id&order=descripcion').then(function(items){
+      items=items||[];
+      var opts=items.map(function(it){return '<option value="'+it.id+'"'+(item&&item.id===it.id?' selected':'')+'>'+esc(it.descripcion)+' (actual '+esc(it.cantidad_actual)+(it.unidad?(' '+esc(it.unidad)):'')+')</option>';}).join('');
+      var h='<h2>📥 Cargar ingreso de stock</h2><div class="fsgrid">'
+        +'<div style="grid-column:1/-1"><label class="l">Ítem</label><select id="ski-item"><option value="">— elegí el ítem —</option>'+opts+'</select></div>'
+        +_svInput('ski-cant','Cantidad que ingresa','','ej: 100')
+        +_svInput('ski-mot','Motivo / remito','','(opcional)',true)
+        +'</div><div id="ski-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="ski-save">📥 Cargar</button><button class="btn btn-2" id="ski-close">Cerrar</button></div>';
+      modal(h,'wide');
+      document.getElementById('ski-close').addEventListener('click',cerrarModal);
+      document.getElementById('ski-save').addEventListener('click',function(){
+        var iid=document.getElementById('ski-item').value, cant=Number(document.getElementById('ski-cant').value);
+        if(!iid){ document.getElementById('ski-err').textContent='Elegí el ítem.'; return; }
+        if(!(cant>0)){ document.getElementById('ski-err').textContent='Poné una cantidad mayor a 0.'; return; }
+        var it=items.filter(function(x){return String(x.id)===String(iid);})[0]; if(!it){ return; }
+        var btn=this; btn.disabled=true;
+        _svStockMov(it,'INGRESO',cant,document.getElementById('ski-mot').value.trim()||'Ingreso').then(function(){ cerrarModal(); toast('Ingreso cargado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('ski-err').textContent='No se pudo cargar.'; });
+      });
+    });
+  }
+  function _svStockAjuste(item){
+    var h='<h2>🔧 Ajustar stock</h2><p class="muted"><b>'+esc(item.descripcion)+'</b> — saldo actual <b>'+esc(item.cantidad_actual)+'</b>. Poné la cantidad REAL contada.</p><div class="fsgrid">'
+      +_svInput('ska-nueva','Cantidad real',(item.cantidad_actual),'')
+      +_svInput('ska-mot','Motivo','','ej: recuento físico',true)
+      +'</div><div id="ska-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="ska-save">💾 Ajustar</button><button class="btn btn-2" id="ska-close">Cerrar</button></div>';
+    modal(h);
+    document.getElementById('ska-close').addEventListener('click',cerrarModal);
+    document.getElementById('ska-save').addEventListener('click',function(){
+      var nv=document.getElementById('ska-nueva').value.trim(); if(nv===''||isNaN(Number(nv))){ document.getElementById('ska-err').textContent='Poné un número.'; return; }
+      var nueva=Number(nv), mot=document.getElementById('ska-mot').value.trim();
+      var btn=this; btn.disabled=true;
+      _svStockMov(item,'AJUSTE',nueva,'Ajuste '+item.cantidad_actual+'→'+nueva+(mot?(' · '+mot):'')).then(function(){ cerrarModal(); toast('Stock ajustado ✓'); vServicios(); }).catch(function(){ btn.disabled=false; document.getElementById('ska-err').textContent='No se pudo ajustar.'; });
+    });
+  }
+  function _svStockDet(item,climap){
+    sbGet('stock_serv_movimientos?stock_item_id=eq.'+item.id+'&order=fecha.desc&select=tipo,cantidad,fecha,motivo,ot_id&limit=100').then(function(mov){
+      mov=mov||[];
+      var tIco={INGRESO:'📥',EGRESO:'📤',AJUSTE:'🔧'};
+      var h='<h2>🗃️ '+esc(item.descripcion)+'</h2>'
+        +'<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><div>Dueño: <b>'+(item.dueno_tipo==='CLIENTE'?('🏢 '+esc(_ownerLabel(item,climap))):'Nexa')+'</b></div><div>Saldo: <b style="font-size:18px'+(_esBajo(item)?';color:var(--rojo)':'')+'">'+esc(item.cantidad_actual)+'</b>'+(item.unidad?(' '+esc(item.unidad)):'')+'</div>'+(item.minimo!=null?'<div class="muted">mínimo '+esc(item.minimo)+'</div>':'')+'</div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="btn btn-2" id="skd-edit">✏️ Editar</button><button class="btn btn-ok" id="skd-ing">📥 Ingreso</button><button class="btn btn-2" id="skd-aj">🔧 Ajustar</button></div>'
+        +'<div class="l">Movimientos</div>'
+        +(mov.length? '<div style="max-height:300px;overflow:auto">'+mov.map(function(m){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--bord);font-size:13px"><span>'+(tIco[m.tipo]||'')+' '+esc(m.tipo.toLowerCase())+(m.ot_id?(' <span class="muted">· OT '+esc(m.ot_id)+'</span>'):'')+(m.motivo?(' <span class="muted">· '+esc(m.motivo)+'</span>'):'')+'</span><span style="white-space:nowrap"><b>'+(m.tipo==='EGRESO'?'-':(m.tipo==='INGRESO'?'+':''))+esc(m.cantidad)+'</b> <span class="muted" style="font-size:11px">'+esc(fmtFecha(m.fecha))+'</span></span></div>'; }).join('')+'</div>' : '<div class="muted" style="font-size:13px">Sin movimientos.</div>')
+        +'<div style="margin-top:12px"><button class="btn btn-2" id="skd-close">Cerrar</button></div>';
+      modal(h,'wide');
+      document.getElementById('skd-close').addEventListener('click',cerrarModal);
+      document.getElementById('skd-edit').addEventListener('click',function(){ cerrarModal(); _svStockForm(item); });
+      document.getElementById('skd-ing').addEventListener('click',function(){ cerrarModal(); _svStockIngreso(item); });
+      document.getElementById('skd-aj').addEventListener('click',function(){ cerrarModal(); _svStockAjuste(item); });
     });
   }
   // ── Validación de servicios (propia del módulo, separada de la de internet) ──
