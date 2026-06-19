@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.41';
+  var VER='v1.42';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -889,12 +889,17 @@
       if(_esAuto){ h+='<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:13px;color:#991b1b">🔴 <b>Trabajo no planificado</b> — generado por '+esc(o.cuadrillas?o.cuadrillas.nombre:'la cuadrilla')+'. Revisalo con más atención.</div>'; }
       if(sinCli){
         var _princs=svClis.filter(function(x){return !x.cliente_padre_id;}), _subs=svClis.filter(function(x){return x.cliente_padre_id;}), _nameById={}; svClis.forEach(function(x){_nameById[x.id]=x.nombre;});
+        // ¿el texto del técnico coincide con un cliente que ya existe? (sin distinguir may/min ni espacios de los extremos)
+        var _norm=function(s){ return String(s||'').trim().toLowerCase(); }, _libreN=_norm(o.cliente_libre);
+        var _matches=_libreN?svClis.filter(function(x){return _norm(x.nombre)===_libreN;}):[];
+        var _m0=_matches[0]||null, _mSub=!!(_m0&&_m0.cliente_padre_id), _defModo=_m0?(_mSub?'sub':'principal'):'principal';
         h+='<div style="background:#fff7ed;border:2px solid #fdba74;border-radius:10px;padding:12px 14px;margin-bottom:12px">'
           +'<div style="font-weight:800;color:#9a3412">🔗 Falta vincular el cliente</div>'
           +'<div style="font-size:13px;margin:4px 0 8px">El técnico anotó: "<b>'+esc(o.cliente_libre||'(sin texto)')+'</b>". Resolvé a quién corresponde antes de finalizar.</div>'
-          +'<label class="l">¿Cómo lo resolvés?</label><select id="vres-modo"><option value="principal">a) Vincular a un cliente principal existente</option><option value="sub">b) Vincular a un sub-cliente existente</option><option value="nuevo">c) Crear el cliente nuevo</option></select>'
-          +'<div id="vres-principal" style="margin-top:8px"><label class="l">Cliente principal</label><select id="vres-cli-p"><option value="">— elegí —</option>'+_princs.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('')+'</select></div>'
-          +'<div id="vres-sub" style="margin-top:8px;display:none"><label class="l">Sub-cliente</label><select id="vres-cli-s"><option value="">— elegí —</option>'+_subs.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+' (sub de '+esc(_nameById[x.cliente_padre_id]||'—')+')</option>';}).join('')+'</select>'+(_subs.length?'':'<div class="muted" style="font-size:12px;margin-top:3px">No hay sub-clientes cargados todavía.</div>')+'</div>'
+          +(_matches.length?('<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12.5px;color:#854d0e">⚠️ Ya existe '+(_matches.length>1?('un cliente con ese nombre'):('un cliente llamado <b>'+esc(_m0.nombre)+'</b>'+(_mSub?(' (sub de '+esc(_nameById[_m0.cliente_padre_id]||'—')+')'):'')))+'. Lo dejé preseleccionado abajo — ¿querés vincularlo a ese en vez de crear uno nuevo?</div>'):'')
+          +'<label class="l">¿Cómo lo resolvés?</label><select id="vres-modo"><option value="principal"'+(_defModo==='principal'?' selected':'')+'>a) Vincular a un cliente principal existente</option><option value="sub"'+(_defModo==='sub'?' selected':'')+'>b) Vincular a un sub-cliente existente</option><option value="nuevo">c) Crear el cliente nuevo</option></select>'
+          +'<div id="vres-principal" style="margin-top:8px'+(_defModo==='principal'?'':';display:none')+'"><label class="l">Cliente principal</label><select id="vres-cli-p"><option value="">— elegí —</option>'+_princs.map(function(x){var sel=(!_mSub&&_m0&&String(_m0.id)===String(x.id))?' selected':''; return '<option value="'+x.id+'"'+sel+'>'+esc(x.nombre)+'</option>';}).join('')+'</select></div>'
+          +'<div id="vres-sub" style="margin-top:8px'+(_defModo==='sub'?'':';display:none')+'"><label class="l">Sub-cliente</label><select id="vres-cli-s"><option value="">— elegí —</option>'+_subs.map(function(x){var sel=(_mSub&&_m0&&String(_m0.id)===String(x.id))?' selected':''; return '<option value="'+x.id+'"'+sel+'>'+esc(x.nombre)+' (sub de '+esc(_nameById[x.cliente_padre_id]||'—')+')</option>';}).join('')+'</select>'+(_subs.length?'':'<div class="muted" style="font-size:12px;margin-top:3px">No hay sub-clientes cargados todavía.</div>')+'</div>'
           +'<div id="vres-nuevo" style="margin-top:8px;display:none"><label class="l">Nombre del cliente nuevo</label><input id="vres-nom" placeholder="ej: Kiosco Don Pepe"><label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-top:8px"><input type="checkbox" id="vres-essub" style="width:auto"> Es sub-cliente de un principal</label><div id="vres-padre-box" style="display:none;margin-top:6px"><label class="l">Cliente principal</label><select id="vres-padre"><option value="">— elegí principal —</option>'+_princs.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('')+'</select></div></div>'
           +'<div id="vres-err" style="color:var(--rojo);font-size:12.5px;min-height:14px;margin-top:6px"></div>'
           +'<button class="btn btn-ok" id="vres-go" style="margin-top:4px">🔗 Vincular y desbloquear</button>'
