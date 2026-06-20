@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.36</title>
+<title>Nexa · Técnico — v0.38</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.36';
+  var VER='v0.38';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -710,7 +710,7 @@
     if(desconState.list) renderDescon(); else cargarDescon();
   }
   function cargarDescon(){
-    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
+    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       desconState.list=d; renderDescon();
       _dxOrdenarGPS(true);   // intento automático de ordenar por cercanía (no bloquea la lista)
@@ -764,6 +764,9 @@
   function renderCorteFotos(){ if(!CORTE.fotos.length) return '<span class="muted">Sin fotos.</span>'; return '<div style="display:flex;flex-wrap:wrap;gap:8px">'+CORTE.fotos.map(function(f,i){return '<div style="position:relative"><img src="'+f.preview+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px"><button class="btn cofoto-del" data-i="'+i+'" style="position:absolute;top:-7px;right:-7px;width:22px;height:22px;padding:0;background:var(--rojo);color:#fff;border-radius:50%;line-height:1">×</button><div style="font-size:10px;text-align:center;color:'+(f.url?'var(--verde)':'var(--ambar)')+'">'+(f.url?'✓':'…')+'</div></div>';}).join('')+'</div>'; }
   function renderCortar(){
     var c=CORTE.c, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    var _cc=(CORTE.dx&&CORTE.dx.compromiso_count)||0, _compSec;
+    if(_cc>=2){ _compSec='<div class="card" style="border-left:4px solid var(--rojo)"><div style="font-weight:800;color:var(--rojo)">🤝 Sin más compromisos</div><div class="muted" style="font-size:12.5px;margin-top:3px">Este cliente ya tuvo los 2 compromisos de pago y no cumplió. No se le puede dar otro — corresponde el corte. (Si hay un acuerdo nuevo, lo carga un administrador.)</div></div>'; }
+    else { var _dias=(_cc===0?7:3); _compSec=(_cc===1?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12.5px;color:#92400e">⚠️ Este cliente <b>ya tuvo un compromiso de pago y no cumplió</b>. Este sería el <b>ÚLTIMO</b> (3 días).</div>':'')+'<button class="btn btn-2" id="co-comp" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">🤝 Compromiso de pago ('+_dias+' días) — no cortar</button>'; }
     app.innerHTML=topBar('Cortar N° '+c.numero_cliente, nom)+'<div class="wrap">'
       +'<div class="card"><div class="muted" style="font-size:13px">Registrás el corte y la baja pasa a <b>pendiente administrativo</b> (soporte y comercial la cierran en ISPcube).</div></div>'
       +'<div class="card"><div class="label">📡 Conexión</div>'+fila('Caja (NAP)',c.caja_nap)+fila('Puerto',c.puerto)+fila('Precinto',c.precinto)+'</div>'
@@ -773,13 +776,15 @@
       +'<div class="card"><div class="label">Observación</div><textarea id="co-obs" rows="2" style="width:100%"></textarea></div>'
       +'<div class="err" id="co-err"></div>'
       +'<button class="btn btn-ok" id="co-confirmar" style="background:var(--rojo)">✂️ Confirmar corte</button>'
-      +'<button class="btn btn-2" id="co-pago" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">🟢 El cliente va a abonar — no cortar</button>'
+      +_compSec
+      +'<button class="btn btn-2" id="co-pagado" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">✅ Ya pagó (verificado) — no cortar</button>'
       +'<button class="btn btn-2" id="co-volver" style="margin-top:10px">← Cancelar</button></div>';
     wireTop();
     document.getElementById('co-volver').addEventListener('click',vDescon);
     document.getElementById('co-rec-si').addEventListener('click',function(){ CORTE.recupero=true; renderCortar(); });
     document.getElementById('co-rec-no').addEventListener('click',function(){ CORTE.recupero=false; renderCortar(); });
-    document.getElementById('co-pago').addEventListener('click',cortePago);
+    var _cob=document.getElementById('co-comp'); if(_cob) _cob.addEventListener('click',compromisoPago);
+    var _cpa=document.getElementById('co-pagado'); if(_cpa) _cpa.addEventListener('click',cortePagado);
     var fin=document.getElementById('co-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirCorteFotos(e.target.files); });
     Array.prototype.forEach.call(document.querySelectorAll('.cofoto-del'),function(b){ b.onclick=function(){ CORTE.fotos.splice(+b.getAttribute('data-i'),1); renderCortar(); }; });
     document.getElementById('co-confirmar').addEventListener('click',confirmarCorte);
@@ -813,17 +818,40 @@
       Promise.all(jobs).then(function(){ toast('Corte registrado ✓ — pasa a administrativo'); if(desconState.list) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); }).catch(function(){ err.textContent='Error al registrar el corte.'; btn.disabled=false; btn.textContent='✂️ Confirmar corte'; });
     });
   }
-  // El cliente dice que va a pagar → no se corta, se anula la orden y se deja el servicio
-  function cortePago(){
+  // Compromiso de pago: el cliente se compromete a pagar → NO se corta, sale del pool por 7 días
+  // (3 si es el 2°/último). Si no paga, vuelve a PENDIENTE. Máx 2 por el técnico (después solo el admin).
+  function compromisoPago(){
     var c=CORTE.c, err=document.getElementById('co-err'); err.textContent='';
-    var nota=document.getElementById('co-obs').value.trim();
-    if(!confirm('El cliente va a abonar: NO se corta y se deja el servicio. ¿Confirmás?')) return;
-    var btn=document.getElementById('co-pago'); btn.disabled=true; btn.textContent='Registrando…';
-    var dxId=CORTE.dx&&CORTE.dx.id;
-    var cuerpo={ estado:'ANULADA_PAGO', resolucion:'El cliente dice que va a abonar (en la visita)'+(nota?(' — '+nota):''), resuelto_at:new Date().toISOString(), cerrado_por:CUAD.id, updated_at:new Date().toISOString() };
+    var obs=document.getElementById('co-obs').value.trim();
+    var cc=(CORTE.dx&&CORTE.dx.compromiso_count)||0, dias=(cc===0?7:3);
+    if(cc>=2){ err.textContent='Este cliente ya agotó los compromisos. Lo gestiona un admin.'; return; }
+    if(!confirm('Compromiso de pago por '+dias+' días: NO se corta ahora. Si en '+dias+' días no paga, vuelve al listado a desconectar. ¿Confirmás?')) return;
+    var btn=document.getElementById('co-comp'); if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
+    var dxId=CORTE.dx&&CORTE.dx.id, vence=new Date(Date.now()+dias*86400000).toISOString(), ahora=new Date().toISOString();
+    var cuerpo={ estado:'COMPROMISO_PAGO', compromiso_vence:vence, compromiso_at:ahora, compromiso_por:CUAD.id, compromiso_count:cc+1, compromiso_obs:obs||null, resolucion:'🤝 Compromiso de pago ('+dias+' días)'+(obs?(' — '+obs):''), resuelto_at:ahora, cerrado_por:CUAD.id, updated_at:ahora };
     var main = dxId ? sbPatch('desconexiones?id=eq.'+dxId,cuerpo)
                     : sbPost('desconexiones',Object.assign({cliente_id:c.id,cuadrilla_id:CUAD.id,origen:'manual'},cuerpo));
-    main.then(function(){ toast('🟢 Registrado — el cliente sigue con servicio'); if(desconState.list&&dxId) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); }).catch(function(){ err.textContent='No se pudo registrar.'; btn.disabled=false; btn.textContent='🟢 El cliente va a abonar — no cortar'; });
+    // queda en el historial (módulo Actividad)
+    sbPost('actividad_log',{ accion:'🤝 Compromiso de pago ('+dias+' días)', entidad:'DESCONEXION', entidad_id:dxId||null, detalle:'Cliente N° '+(c.numero_cliente||'')+(obs?(' — '+obs):''), cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre }).catch(function(){});
+    main.then(function(){ toast('🤝 Compromiso por '+dias+' días registrado — el cliente sale del pool'); if(desconState.list&&dxId) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); }).catch(function(){ err.textContent='No se pudo registrar.'; if(btn){ btn.disabled=false; btn.textContent='🤝 Compromiso de pago ('+dias+' días) — no cortar'; } });
+  }
+
+  // El técnico verificó con comercial que el cliente YA pagó → cierre definitivo (no vuelve al pool)
+  function cortePagado(){
+    var c=CORTE.c, err=document.getElementById('co-err'); err.textContent='';
+    var obs=document.getElementById('co-obs').value.trim();
+    var quien=prompt('¿Con quién de comercial verificaste que ya pagó?','');
+    if(quien===null) return;
+    quien=quien.trim();
+    if(!quien){ err.textContent='Decí con quién verificaste el pago.'; return; }
+    if(!confirm('Ya pagó (verificado con '+quien+'): se cierra la baja y NO se corta. ¿Confirmás?')) return;
+    var btn=document.getElementById('co-pagado'); if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
+    var dxId=CORTE.dx&&CORTE.dx.id, ahora=new Date().toISOString();
+    var cuerpo={ estado:'ANULADA_PAGO', resolucion:'✅ Ya pagó — verificado con '+quien+(obs?(' — '+obs):''), resuelto_at:ahora, cerrado_por:CUAD.id, updated_at:ahora };
+    var main = dxId ? sbPatch('desconexiones?id=eq.'+dxId,cuerpo)
+                    : sbPost('desconexiones',Object.assign({cliente_id:c.id,cuadrilla_id:CUAD.id,origen:'manual'},cuerpo));
+    sbPost('actividad_log',{ accion:'✅ Ya pagó (verificado)', entidad:'DESCONEXION', entidad_id:dxId||null, detalle:'Cliente N° '+(c.numero_cliente||'')+' — verificado con '+quien+(obs?(' — '+obs):''), cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre }).catch(function(){});
+    main.then(function(){ toast('✅ Registrado — ya pagó, no se corta'); if(desconState.list&&dxId) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); }).catch(function(){ err.textContent='No se pudo registrar.'; if(btn){ btn.disabled=false; btn.textContent='✅ Ya pagó (verificado) — no cortar'; } });
   }
 
   iniciar();
