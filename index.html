@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.47';
+  var VER='v1.48';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3071,8 +3071,8 @@
   function _dxAutoGenerar(cb){
     var cut=new Date(Date.now()-30*864e5).toISOString();
     Promise.all([
-      sbGet('clientes?estado=eq.baja&select=id&limit=3000'),
-      sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&select=id&limit=3000')
+      sbGet('clientes?estado=eq.baja&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000'),
+      sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000')
     ]).then(function(r){
       var cands=[];
       (r[0]||[]).forEach(function(c){ cands.push([c.id,'baja_isp']); });
@@ -3085,13 +3085,17 @@
       });
     }).catch(function(){ cb(0); });
   }
-  // Auto-anula SOLO las bajas automáticas (baja_isp/bloqueado_30d) cuyo cliente volvió a ACTIVO (pagó).
-  // Las bajas MANUALES (origen='manual') NO se tocan: una baja voluntaria es decisión del admin.
+  // Cierra las bajas cuyo cliente YA pagó = deuda<=0 (NO basta estado activo: puede estar habilitado por
+  // un compromiso de pago de ISPcube). Cubre bajas automáticas (baja_isp/bloqueado_30d) y compromisos de
+  // pago. Las MANUALES no se tocan (decisión del admin).
   function _dxAutoAnular(cb){
-    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,cliente_id,clientes!inner(estado)&clientes.estado=eq.activo&limit=1000').then(function(d){
-      d=Array.isArray(d)?d:[];
-      if(!d.length){ cb(); return; }
-      Promise.all(d.map(function(o){ return sbPatch('desconexiones?id=eq.'+o.id,{estado:'ANULADA_PAGO',resolucion:'El cliente se rehabilitó (pagó) — anulada automáticamente',resuelto_at:new Date().toISOString()}).catch(function(){}); })).then(function(){ toast('🟢 '+d.length+' baja(s) anulada(s): el cliente se rehabilitó'); cb(); });
+    Promise.all([
+      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000'),
+      sbGet('desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000')
+    ]).then(function(rr){
+      var ids=[].concat(Array.isArray(rr[0])?rr[0]:[],Array.isArray(rr[1])?rr[1]:[]).map(function(x){return x.id;});
+      if(!ids.length){ cb(); return; }
+      Promise.all(ids.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'El cliente pagó (deuda 0) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); })).then(function(){ toast('🟢 '+ids.length+' baja(s) cerradas: el cliente pagó'); cb(); });
     }).catch(function(){ cb(); });
   }
   // Cierra las bajas cuyo cliente YA fue eliminado de ISPcube (corte/baja hecho fuera del sistema) → no deben quedar en la cola

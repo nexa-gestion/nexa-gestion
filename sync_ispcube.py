@@ -351,8 +351,9 @@ def generar_desconexiones_pendientes():
     # Se chequea SOLO contra los candidatos (chunks), no toda la tabla (evita el tope de 1000 filas).
     try:
         cut = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 30*86400))
-        baja = sb_get("clientes?estado=eq.baja&select=id&limit=3000") or []
-        blo  = sb_get("clientes?estado=eq.bloqueado&bloqueado_desde=lt.%s&select=id&limit=3000" % cut) or []
+        # No generar baja para el que YA pagó (deuda<=0); null y >0 sí entran (puede no tener dato de deuda).
+        baja = sb_get("clientes?estado=eq.baja&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000") or []
+        blo  = sb_get("clientes?estado=eq.bloqueado&bloqueado_desde=lt.%s&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000" % cut) or []
         cand_ids = [c["id"] for c in baja] + [c["id"] for c in blo]
         yaset = set()
         for i in range(0, len(cand_ids), 150):
@@ -373,23 +374,26 @@ def generar_desconexiones_pendientes():
     return n
 
 def anular_desconexiones_rehabilitados():
-    # SOLO bajas automáticas (baja_isp/bloqueado_30d) cuyo cliente volvió a 'activo' (pagó) → se anulan solas.
-    # Las bajas MANUALES no se tocan (son decisión del admin).
+    # El cliente que PAGÓ = deuda <= 0 (NO basta estado 'activo': en ISPcube puede figurar habilitado
+    # por un compromiso de pago aunque deba). Se cierran las bajas automáticas (baja_isp/bloqueado_30d)
+    # y los compromisos de pago cuyo cliente quedó con deuda 0. Las MANUALES no se tocan.
     try:
-        d = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(estado)&clientes.estado=eq.activo&limit=2000")
+        d  = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
+        d += sb_get("desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
     except Exception as e:
         print("WARN anular_desconexiones:", e); return 0
     d = d if isinstance(d, list) else []
     if not d: return 0
     if DRY:
-        print(f"🟢 Desconexiones a anular por rehabilitación (DRY): {len(d)}"); return len(d)
+        print(f"🟢 Desconexiones a cerrar por pago (deuda 0) (DRY): {len(d)}"); return len(d)
     n = 0
     for o in d:
         try:
             sb_patch("desconexiones?id=eq." + str(o["id"]),
                      {"estado": "ANULADA_PAGO",
-                      "resolucion": "El cliente se rehabilitó (pagó) — anulada por el sync",
-                      "resuelto_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+                      "resolucion": "El cliente pagó (deuda 0) — cerrada por el sync",
+                      "resuelto_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                      "compromiso_vence": None})
             n += 1
         except Exception as e: print(f"  ERROR anular desconexion {o['id']}: {e}")
     return n
