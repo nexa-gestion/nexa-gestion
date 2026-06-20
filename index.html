@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.45';
+  var VER='v1.46';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -662,14 +662,23 @@
     function _esFin(o){ if(o.estado!=='FINALIZADA'&&o.estado!=='CERRADA_TECNICO') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
     function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
     function _esRech(o){ if(o.estado!=='NO_REALIZADA'&&o.estado!=='CANCELADA') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
-    sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500').then(function(arr){
-      arr=(Array.isArray(arr)?arr:[]).filter(function(o){ return _esFin(o)||_esPend(o)||_esRech(o); });
+    Promise.all([
+      sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500'),
+      sbGet('desconexiones?cuadrilla_id=eq.'+cuadId+'&corte_at=gte.'+dia+'T03:00:00Z&corte_at=lt.'+nextDia+'T03:00:00Z&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=corte_at.desc&limit=500')
+    ]).then(function(_rr){
+      var arr=(Array.isArray(_rr[0])?_rr[0]:[]).filter(function(o){ return _esFin(o)||_esPend(o)||_esRech(o); });
+      var cortes=Array.isArray(_rr[1])?_rr[1]:[];
       var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3,PENDIENTE:4};
       arr.sort(function(a,b){ return (ord[a.estado]==null?9:ord[a.estado])-(ord[b.estado]==null?9:ord[b.estado]); });
-      if(!arr.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin OTs.</div>'; return; }
+      if(!arr.length && !cortes.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin OTs ni cortes.</div>'; return; }
       var pend=arr.filter(_esPend);
       var btnHtml=pend.length?'<div style="margin-bottom:8px"><button class="btn btn-2" style="padding:7px 12px;font-size:12.5px" id="rp-pend-'+cuadId+'">📅 Pasar '+pend.length+' pendiente'+(pend.length===1?'':'s')+' al '+esc(fmtFecha(nextDia))+'</button></div>':'';
-      det.innerHTML=btnHtml+arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; var fhoy=_esFin(o)&&o.fecha_agendada!==dia?' <span class="muted">· cerrada hoy (era de '+esc(fmtFecha(o.fecha_agendada))+')</span>':''; return '<div class="pd-row"><span><b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+fhoy+'</span>'+pill(o.estado)+'</div>'; }).join('');
+      var otHtml=arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; var fhoy=_esFin(o)&&o.fecha_agendada!==dia?' <span class="muted">· cerrada hoy (era de '+esc(fmtFecha(o.fecha_agendada))+')</span>':''; return '<div class="pd-row pd-ot" data-ot="'+o.id+'" style="cursor:pointer" title="Ver la OT"><span><b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+fhoy+'</span>'+pill(o.estado)+'</div>'; }).join('');
+      var _ecz={PENDIENTE_ADMIN:'pend. admin',FINALIZADO:'finalizada',ANULADA_PAGO:'pagó',CANCELADA:'cancelada',EN_REVISION:'en revisión',PENDIENTE:'pendiente',ASIGNADA:'asignada'};
+      var corteHtml=cortes.length?('<div style="font-size:11px;font-weight:700;margin:8px 0 4px;color:#0891b2">🔌 Cortes de desconexión ('+cortes.length+')</div>'+cortes.map(function(o,i){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':''); return '<div class="pd-row pd-corte" data-corte="'+i+'" style="cursor:pointer" title="Ver el corte"><span>🔌 <b>'+esc(c.numero_cliente||'')+'</b> · '+esc(nom)+(c.barrio?(' <span class="muted">('+esc(c.barrio)+')</span>'):'')+(rec?(' <span class="muted">· '+rec+'</span>'):'')+'</span><span style="font-size:10px;padding:1px 7px;border-radius:99px;background:#e0f2fe;color:#075985;white-space:nowrap">'+esc(_ecz[o.estado]||o.estado)+'</span></div>'; }).join('')):'';
+      det.innerHTML=btnHtml+otHtml+corteHtml;
+      Array.prototype.forEach.call(det.querySelectorAll('.pd-ot'),function(el){ el.addEventListener('click',function(e){ e.stopPropagation(); detalleOT(el.getAttribute('data-ot')); }); });
+      Array.prototype.forEach.call(det.querySelectorAll('.pd-corte'),function(el){ el.addEventListener('click',function(e){ e.stopPropagation(); var o=cortes[Number(el.getAttribute('data-corte'))]; if(!o)return; if(!_dxData.some(function(x){return String(x.id)===String(o.id);})) _dxData.push(o); _dxDetalle(o); }); });
       var rb=document.getElementById('rp-pend-'+cuadId); if(rb) rb.addEventListener('click',function(e){ e.stopPropagation(); reprogramarOTs(pend.map(function(o){return o.id;}),{ fecha:nextDia }); });
     }).catch(function(){ det.innerHTML='<div class="muted" style="font-size:12px;color:var(--rojo)">No se pudo cargar.</div>'; });
   }
