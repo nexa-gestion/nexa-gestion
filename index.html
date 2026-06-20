@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.44';
+  var VER='v1.45';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -613,8 +613,12 @@
     function _esFin(o){ return (o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO') && _finEnDia(o); }
     function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
     function _esRech(o){ return (o.estado==='NO_REALIZADA'||o.estado==='CANCELADA') && _finEnDia(o); }
-    sbGet('ordenes_trabajo?or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+_nx+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,cuadrilla_id,fecha_agendada,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000').then(function(d){
-      d=Array.isArray(d)?d:[];
+    Promise.all([
+      sbGet('ordenes_trabajo?or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+_nx+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,cuadrilla_id,fecha_agendada,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000'),
+      sbGet('desconexiones?corte_at=gte.'+dia+'T03:00:00Z&corte_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000')
+    ]).then(function(_rr){
+      var d=Array.isArray(_rr[0])?_rr[0]:[];
+      var _cortes=Array.isArray(_rr[1])?_rr[1]:[], totalCortes=_cortes.length, cortesPorCuad={}; _cortes.forEach(function(x){ if(x.cuadrilla_id) cortesPorCuad[x.cuadrilla_id]=(cortesPorCuad[x.cuadrilla_id]||0)+1; });
       var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var sinAsig=d.filter(function(o){ return !o.cuadrilla_id && o.fecha_agendada===dia && o.estado!=='FINALIZADA' && o.estado!=='CERRADA_TECNICO'; });
       var act=d.filter(function(o){ return o.cuadrilla_id && _act[o.cuadrilla_id] && (_esFin(o)||_esPend(o)||_esRech(o)); });
@@ -622,18 +626,20 @@
       var G={val:0,fval:0,enc:0,sin:0,nr:0}; act.forEach(function(o){ G[clase(o)]++; });
       var total=act.length, fin=G.val+G.fval, pc=total?Math.round(fin/total*100):0;
       var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,rech:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(_esRech(o))p.rech++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
-      var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return (b.total-a.total)||(b.fin-a.fin); });
+      var _cpc=(typeof cortesPorCuad!=='undefined')?cortesPorCuad:{};
+      Object.keys(_cpc).forEach(function(cid){ if(!_act[cid]) return; var p=perf[cid]; if(!p){ p=perf[cid]={id:Number(cid),nombre:_cuadNombre(cid)||('Cuadrilla '+cid),total:0,fin:0,rech:0,durSum:0,durN:0}; } p.cortes=_cpc[cid]; });
+      var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return ((b.total+(b.cortes||0))-(a.total+(a.cortes||0)))||(b.fin-a.fin); });
       var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar'],['nr',G.nr,'#b45309','Rechazadas']];
       var compBar=seg.filter(function(s){return s[1]>0;}).map(function(s){ return '<div style="width:'+(s[1]/(total||1)*100)+'%;background:'+s[2]+'"></div>'; }).join('');
       var compLeg=seg.map(function(s){ var p=Math.round(s[1]/(total||1)*100); return '<div><span class="dot" style="background:'+s[2]+'"></span>'+s[3]+' <b style="color:#0f172a">'+s[1]+'</b> <span style="color:#94a3b8">('+p+'%)</span></div>'; }).join('');
       var perfHead='<div class="perf-head"><div></div><div>Cuadrilla</div><div style="text-align:center">Del día</div><div style="text-align:center">Finalizadas</div><div style="text-align:center">% Avance</div><div>Progreso</div></div>';
-      var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr);
+      var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr), pcrTxt=p.total?(pcr+'%'):'—';
         return '<div class="perf-row clk" data-cuad="'+p.id+'">'
           +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
-          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+'</div></div>'
-          +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">del día</div></div>'
+          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+(p.cortes?(' · <span style="color:#0891b2;font-weight:700">🔌 '+p.cortes+' corte'+(p.cortes===1?'':'s')+' de desconexión</span>'):'')+'</div></div>'
+          +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">del día</div>'+(p.cortes?('<div style="font-size:11px;color:#0891b2;font-weight:700;margin-top:2px;white-space:nowrap">🔌 '+p.cortes+'</div>'):'')+'</div>'
           +'<div><div class="perf-big" style="color:#16a34a">'+p.fin+'</div><div class="perf-cap">finalizadas</div></div>'
-          +'<div><div class="perf-big" style="color:'+pcc+'">'+pcr+'%</div><div class="perf-cap">avance</div></div>'
+          +'<div><div class="perf-big" style="color:'+pcc+'">'+pcrTxt+'</div><div class="perf-cap">avance</div></div>'
           +'<div><div style="height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pcr+'%;background:'+pcc+';transition:width .4s"></div></div><div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right">'+p.fin+' / '+p.total+'</div></div>'
           +'</div><div class="perf-det" id="perf-det-'+p.id+'" style="display:none"></div>';
       }).join('') : '<div class="center" style="padding:18px;color:#94a3b8">No hay OTs coordinadas para este día.</div>';
@@ -685,18 +691,20 @@
       var G={val:0,fval:0,enc:0,sin:0,nr:0}; act.forEach(function(o){ G[clase(o)]++; });
       var total=act.length, fin=G.val+G.fval, pc=total?Math.round(fin/total*100):0;
       var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,rech:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(_esRech(o))p.rech++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
-      var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return (b.total-a.total)||(b.fin-a.fin); });
+      var _cpc=(typeof cortesPorCuad!=='undefined')?cortesPorCuad:{};
+      Object.keys(_cpc).forEach(function(cid){ if(!_act[cid]) return; var p=perf[cid]; if(!p){ p=perf[cid]={id:Number(cid),nombre:_cuadNombre(cid)||('Cuadrilla '+cid),total:0,fin:0,rech:0,durSum:0,durN:0}; } p.cortes=_cpc[cid]; });
+      var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return ((b.total+(b.cortes||0))-(a.total+(a.cortes||0)))||(b.fin-a.fin); });
       var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar'],['nr',G.nr,'#b45309','Rechazadas']];
       var compBar=seg.filter(function(s){return s[1]>0;}).map(function(s){ return '<div style="width:'+(s[1]/(total||1)*100)+'%;background:'+s[2]+'"></div>'; }).join('');
       var compLeg=seg.map(function(s){ var p=Math.round(s[1]/(total||1)*100); return '<div><span class="dot" style="background:'+s[2]+'"></span>'+s[3]+' <b style="color:#0f172a">'+s[1]+'</b> <span style="color:#94a3b8">('+p+'%)</span></div>'; }).join('');
       var perfHead='<div class="perf-head"><div></div><div>Cuadrilla</div><div style="text-align:center">Del día</div><div style="text-align:center">Finalizados</div><div style="text-align:center">% Avance</div><div>Progreso</div></div>';
-      var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr);
+      var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr), pcrTxt=p.total?(pcr+'%'):'—';
         return '<div class="perf-row clk" data-cuad="'+p.id+'">'
           +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
           +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en el cliente'):'')+'</div></div>'
           +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">del día</div></div>'
           +'<div><div class="perf-big" style="color:#16a34a">'+p.fin+'</div><div class="perf-cap">finalizados</div></div>'
-          +'<div><div class="perf-big" style="color:'+pcc+'">'+pcr+'%</div><div class="perf-cap">avance</div></div>'
+          +'<div><div class="perf-big" style="color:'+pcc+'">'+pcrTxt+'</div><div class="perf-cap">avance</div></div>'
           +'<div><div style="height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pcr+'%;background:'+pcc+';transition:width .4s"></div></div><div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right">'+p.fin+' / '+p.total+'</div></div>'
           +'</div><div class="perf-det" id="perf-det-s-'+p.id+'" style="display:none"></div>';
       }).join('') : '<div class="center" style="padding:18px;color:#94a3b8">No hay servicios coordinados para este día.</div>';
