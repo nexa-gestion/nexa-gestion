@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.49';
+  var VER='v1.50';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -875,6 +875,13 @@
       });
     });
   }
+  // ── Borrado seguro de una OT: devuelve los seriales consumidos a stock y limpia las tablas hijas antes de borrar la OT (si no, la FK lo bloquea) ──
+  function _svDeleteOT(o){
+    var oid=o.id, cuad=o.cuadrilla_id||null;
+    var revertSer=sbPatch('stock_seriales?ot_id=eq.'+oid,{ estado:(cuad?'EN_CUADRILLA':'EN_DEPOSITO'), cliente_id:null, cuadrilla_id:cuad, ot_id:null }).catch(function(){});
+    var hijas=['ot_sesiones','ot_materiales','ot_mano_obra','ot_datos_servicio','ot_fotos','ot_historial'].map(function(t){ return fetch(SB_URL+'/rest/v1/'+t+'?ot_id=eq.'+oid,{method:'DELETE',headers:H}).catch(function(){}); });
+    return Promise.all([revertSer].concat(hijas)).then(function(){ return fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+oid,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; }); });
+  }
   // ── Validación de SERVICIOS (cliente externo, sesiones/horas, materiales y mano de obra LIBRES, sin stock) ──
   function valDetalleServ(o){
     loading();
@@ -985,7 +992,7 @@
       Array.prototype.forEach.call(view.querySelectorAll('.vs-ses-ini'),function(i){ i.addEventListener('change',function(){ if(!i.value)return; sbPatch('ot_sesiones?id=eq.'+i.getAttribute('data-id'),{inicio:new Date(i.value).toISOString()}).then(function(){ toast('✓'); reload(); }); }); });
       Array.prototype.forEach.call(view.querySelectorAll('.vs-ses-fin'),function(i){ i.addEventListener('change',function(){ if(!i.value)return; sbPatch('ot_sesiones?id=eq.'+i.getAttribute('data-id'),{fin:new Date(i.value).toISOString()}).then(function(){ toast('✓'); reload(); }); }); });
       Array.prototype.forEach.call(view.querySelectorAll('.vs-ses-del'),function(b){ b.addEventListener('click',function(){ if(!confirm('¿Borrar esta sesión de horas?'))return; fetch(SB_URL+'/rest/v1/ot_sesiones?id=eq.'+b.getAttribute('data-id'),{method:'DELETE',headers:H}).then(function(){ toast('Sesión borrada ✓'); reload(); }); }); });
-      var _vsdel=document.getElementById('vs-del'); if(_vsdel) _vsdel.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar la OT? Tocá de nuevo'; return; } var b=this; b.disabled=true; fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+o.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; toast('Servicio eliminado'); _svState.tab='validacion'; vServicios(); }).catch(function(){ b.disabled=false; b.textContent='🗑️ Eliminar'; toast('No se pudo eliminar (¿tiene movimientos asociados?).'); }); });
+      var _vsdel=document.getElementById('vs-del'); if(_vsdel) _vsdel.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar la OT? Tocá de nuevo'; return; } var b=this; b.disabled=true; _svDeleteOT(o).then(function(){ toast('Servicio eliminado'); _svState.tab='validacion'; vServicios(); }).catch(function(){ b.disabled=false; b.textContent='🗑️ Eliminar'; toast('No se pudo eliminar.'); }); });
       // ── resolución del cliente libre (solo si es no planificado sin cliente real) ──
       if(sinCli){
         var _vmodo=document.getElementById('vres-modo');
@@ -5041,7 +5048,7 @@
       });
       var del=document.getElementById('svof-del'); if(del) del.addEventListener('click',function(){
         if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
-        fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+o.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Servicio eliminado'); vServicios(); }).catch(function(){ toast('No se pudo eliminar.'); });
+        var b=this; b.disabled=true; _svDeleteOT(o).then(function(){ cerrarModal(); toast('Servicio eliminado'); vServicios(); }).catch(function(){ b.disabled=false; toast('No se pudo eliminar.'); });
       });
     });
   }
