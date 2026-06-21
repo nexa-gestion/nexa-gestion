@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.48';
+  var VER='v1.49';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -882,7 +882,7 @@
     Promise.all([
       sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=id,material_id,cantidad,descripcion,origen,stock_item_id,costo_unitario,pagado_por,catalogo_materiales(nombre)'),
       sbGet('ot_mano_obra?ot_id=eq.'+o.id+'&select=id,mano_obra_id,nombre,cantidad'),
-      sbGet('ot_sesiones?ot_id=eq.'+o.id+'&order=inicio.asc&select=inicio,fin,tipo').catch(function(){return [];}),
+      sbGet('ot_sesiones?ot_id=eq.'+o.id+'&order=inicio.asc&select=id,inicio,fin,tipo').catch(function(){return [];}),
       sbGet('ot_fotos?ot_id=eq.'+o.id+'&select=url'),
       sbGet('catalogo_materiales?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre'),
       sbGet('mano_obra_catalogo?area=eq.SERVICIOS&activo=eq.true&select=id,nombre&order=nombre'),
@@ -895,6 +895,7 @@
       var reload=function(){ valDetalleServ(o); };
       var totMs=0; ses.forEach(function(s){ if(s.inicio&&s.fin){ var d=new Date(s.fin)-new Date(s.inicio); if(d>0)totMs+=d; } });
       var hh=function(iso){ if(!iso)return '--:--'; var d=new Date(iso); var p=function(n){return (n<10?'0':'')+n;}; return p(d.getHours())+':'+p(d.getMinutes()); };
+      var _dtLocal=function(iso){ if(!iso)return ''; var d=new Date(iso),p=function(n){return (n<10?'0':'')+n;}; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); };
       var h='<div class="toolbar" style="margin-bottom:10px"><button class="btn btn-2" id="vs-back">← Volver a validación</button><h1 style="margin:0;font-size:18px">🧰 Validar servicio N° '+esc(o.numero)+'</h1></div>';
       h+='<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;margin-bottom:10px">'
         +'<div style="font-weight:800;font-size:15px;color:#14532d">'+esc(c.nombre||o.cliente_libre||'(cliente)')+(o.titulo?(' · '+esc(o.titulo)):'')+'</div>'
@@ -922,7 +923,7 @@
           +'<button class="btn btn-ok" id="vres-go" style="margin-top:4px">🔗 Vincular y desbloquear</button>'
           +'</div>';
       }
-      if(ses.length){ h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:10px;margin-bottom:10px"><div class="l" style="margin:0 0 6px">🕐 Sesiones · total '+_minTxt(totMs/60000)+'</div>'+ses.map(function(s,i){ var d=(s.inicio&&s.fin)?(new Date(s.fin)-new Date(s.inicio)):0; return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f1f5f9"><span>'+(i+1)+'. '+esc(fmtFecha(s.inicio))+' '+hh(s.inicio)+'–'+hh(s.fin)+' '+(s.tipo==='FINAL'?'<b>(final)</b>':'(parcial)')+'</span><b>'+_minTxt(d/60000)+'</b></div>'; }).join('')+'</div>'; }
+      if(ses.length){ h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:10px;margin-bottom:10px"><div class="l" style="margin:0 0 6px">🕐 Sesiones · total <b>'+_minTxt(totMs/60000)+'</b> <span class="muted" style="font-weight:400">— editá inicio/fin si el horario no es el real</span></div>'+ses.map(function(s,i){ var d=(s.inicio&&s.fin)?(new Date(s.fin)-new Date(s.inicio)):0; return '<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 0;border-bottom:1px solid #f1f5f9;flex-wrap:wrap"><span style="font-weight:700">'+(i+1)+'.</span> '+(s.tipo==='FINAL'?'<b>final</b>':'parcial')+' <span class="muted">inicio</span><input type="datetime-local" class="vs-ses-ini" data-id="'+s.id+'" value="'+_dtLocal(s.inicio)+'" style="font-size:12px;padding:2px;width:172px"> <span class="muted">fin</span><input type="datetime-local" class="vs-ses-fin" data-id="'+s.id+'" value="'+_dtLocal(s.fin)+'" style="font-size:12px;padding:2px;width:172px"> <b class="vs-ses-dur">'+_minTxt(d/60000)+'</b>'+_xb('vs-ses-del',s.id)+'</div>'; }).join('')+'</div>'; }
       h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;align-items:start">';
       h+='<div style="border:1px solid var(--bord);border-radius:10px;padding:11px"><div class="l" style="margin:0 0 6px">🔧 Materiales</div>';
       if(!mats.length) h+='<div class="muted" style="font-size:12px;padding:2px 0">—</div>';
@@ -947,7 +948,8 @@
       if(fotos.length){ h+='<div style="margin-top:10px"><div class="l">📷 Fotos</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+fotos.map(function(f){return '<a href="'+esc(f.url)+'" target="_blank"><img src="'+esc(f.url)+'" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)"></a>';}).join('')+'</div></div>'; }
       var firmas=''; if(o.firma_tecnico_url) firmas+='<div style="text-align:center"><div class="muted" style="font-size:12px">Firma técnico</div><img src="'+esc(o.firma_tecnico_url)+'" style="max-width:200px;border:1px solid var(--bord);border-radius:8px;background:#fff"></div>'; if(o.firma_cliente_url) firmas+='<div style="text-align:center"><div class="muted" style="font-size:12px">Firma cliente</div><img src="'+esc(o.firma_cliente_url)+'" style="max-width:200px;border:1px solid var(--bord);border-radius:8px;background:#fff"></div>';
       if(firmas) h+='<div style="margin-top:10px"><div class="l">✍️ Firmas</div><div style="display:flex;gap:14px;flex-wrap:wrap">'+firmas+'</div></div>';
-      h+='<div class="toolbar" style="margin-top:14px;flex-wrap:wrap">'+(sinCli?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;color:#991b1b;font-weight:600">🔒 Falta vincular el cliente "'+esc(o.cliente_libre||'')+'" antes de finalizar.</div>':'<button class="btn btn-ok" id="vs-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>')+'<button class="btn btn-2" id="vs-print">🖨️ Imprimir</button></div>';
+      var _esFin=(o.estado==='FINALIZADA');
+      h+='<div class="toolbar" style="margin-top:14px;flex-wrap:wrap">'+(sinCli?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;color:#991b1b;font-weight:600">🔒 Falta vincular el cliente "'+esc(o.cliente_libre||'')+'" antes de finalizar.</div>':(_esFin?'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 13px;font-size:12.5px;color:#166534;font-weight:600">✅ Servicio finalizado · los cambios de horas y materiales se guardan al instante.</div>':'<button class="btn btn-ok" id="vs-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>'))+'<button class="btn btn-2" id="vs-print">🖨️ Imprimir</button><button class="btn btn-x" id="vs-del" style="margin-left:auto">🗑️ Eliminar</button></div>';
       view.innerHTML=h;
       document.getElementById('vs-back').addEventListener('click',function(){ _svState.tab='validacion'; vServicios(); });
       document.getElementById('vs-print').addEventListener('click',function(){ imprimirServicio(o.id); });
@@ -979,6 +981,11 @@
       document.getElementById('vs-mat-ok').addEventListener('click',function(){ var nom=document.getElementById('vs-mat-nom').value.trim(), q=Math.max(1,parseFloat(document.getElementById('vs-mat-qty').value)||1); if(!nom){ toast('Escribí el material.'); return; } var cat=catM.filter(function(x){return x.nombre.toLowerCase()===nom.toLowerCase();})[0]; var body={ot_id:o.id,cantidad:q,serial:null}; if(cat){ body.material_id=cat.id; } else { body.descripcion=nom; } this.disabled=true; sbPost('ot_materiales',body).then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; toast('Material agregado ✓'); reload(); }).catch(function(){ toast('No se pudo agregar el material.'); reload(); }); });
       document.getElementById('vs-mo-ok').addEventListener('click',function(){ var nom=document.getElementById('vs-mo-nom').value.trim(), q=Math.max(1,parseInt(document.getElementById('vs-mo-qty').value,10)||1); if(!nom){ toast('Escribí la mano de obra.'); return; } var cat=catO.filter(function(x){return x.nombre.toLowerCase()===nom.toLowerCase();})[0]; var body={ot_id:o.id,nombre:nom,cantidad:q}; if(cat) body.mano_obra_id=cat.id; this.disabled=true; sbPost('ot_mano_obra',body).then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; toast('Mano de obra agregada ✓'); reload(); }).catch(function(){ toast('No se pudo agregar.'); reload(); }); });
       document.getElementById('vs-obs-save').addEventListener('click',function(){ var b=this; b.disabled=true; sbPatch('ordenes_trabajo?id=eq.'+o.id,{observaciones_tec:document.getElementById('vs-obs').value.trim()||null}).then(function(){ b.disabled=false; toast('Guardado ✓'); }); });
+      // sesiones editables: cambiar inicio/fin (datetime-local en hora local → UTC) o borrar la sesión; recalcula al recargar
+      Array.prototype.forEach.call(view.querySelectorAll('.vs-ses-ini'),function(i){ i.addEventListener('change',function(){ if(!i.value)return; sbPatch('ot_sesiones?id=eq.'+i.getAttribute('data-id'),{inicio:new Date(i.value).toISOString()}).then(function(){ toast('✓'); reload(); }); }); });
+      Array.prototype.forEach.call(view.querySelectorAll('.vs-ses-fin'),function(i){ i.addEventListener('change',function(){ if(!i.value)return; sbPatch('ot_sesiones?id=eq.'+i.getAttribute('data-id'),{fin:new Date(i.value).toISOString()}).then(function(){ toast('✓'); reload(); }); }); });
+      Array.prototype.forEach.call(view.querySelectorAll('.vs-ses-del'),function(b){ b.addEventListener('click',function(){ if(!confirm('¿Borrar esta sesión de horas?'))return; fetch(SB_URL+'/rest/v1/ot_sesiones?id=eq.'+b.getAttribute('data-id'),{method:'DELETE',headers:H}).then(function(){ toast('Sesión borrada ✓'); reload(); }); }); });
+      var _vsdel=document.getElementById('vs-del'); if(_vsdel) _vsdel.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar la OT? Tocá de nuevo'; return; } var b=this; b.disabled=true; fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+o.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; toast('Servicio eliminado'); _svState.tab='validacion'; vServicios(); }).catch(function(){ b.disabled=false; b.textContent='🗑️ Eliminar'; toast('No se pudo eliminar (¿tiene movimientos asociados?).'); }); });
       // ── resolución del cliente libre (solo si es no planificado sin cliente real) ──
       if(sinCli){
         var _vmodo=document.getElementById('vres-modo');
@@ -5016,9 +5023,10 @@
         +'<div style="grid-column:1/-1">'+_svInput('svof-titulo','Título / nombre del trabajo',o.titulo,'ej: Cambio de focos / Cableado oficina',true)+'</div>'
         +'<div style="grid-column:1/-1"><label class="l">Descripción de la tarea</label><textarea id="svof-desc" style="min-height:60px" placeholder="Qué hay que hacer…">'+esc(o.descripcion||'')+'</textarea></div>'
         +'</div><div id="svof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
-        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+(ed?'<button class="btn btn-2" id="svof-print">🖨️ Imprimir</button>':'')+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+((ed&&(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'||o.estado==='EN_CURSO'))?'<button class="btn btn-pri" id="svof-detalle">📋 Horas y materiales</button>':'')+(ed?'<button class="btn btn-2" id="svof-print">🖨️ Imprimir</button>':'')+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
       modal(h,'wide');
       document.getElementById('svof-close').addEventListener('click',cerrarModal);
+      var _svdt=document.getElementById('svof-detalle'); if(_svdt) _svdt.addEventListener('click',function(){ cerrarModal(); valDetalle(o.id); });
       var _svpr=document.getElementById('svof-print'); if(_svpr) _svpr.addEventListener('click',function(){ imprimirServicio(o.id); });
       document.getElementById('svof-save').addEventListener('click',function(){
         var cli=document.getElementById('svof-cli').value, desc=document.getElementById('svof-desc').value.trim();
