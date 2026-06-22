@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.51';
+  var VER='v1.52';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1665,6 +1665,7 @@
           +'<div><label class="l">Asignar a cuadrilla</label><select id="ot-cuad-edit">'+cuadOpts+'</select></div>'
           +'<div><label class="l">📅 Fecha coordinada</label><input type="date" id="ot-fecha-edit" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'"></div>'
           +'<div><label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select></div>'
+          +(o.clientes?'<div style="grid-column:1/-1"><label class="l">🔢 Código ISPcube del cliente <span class="muted">(cargalo y desaparece «falta ISP»; recién ahí se puede asignar)</span></label><input id="ot-isp-edit" value="'+esc(o.clientes.codigo_ispcube||'')+'" placeholder="ej: 006408"'+(o.clientes.codigo_ispcube?'':' style="border-color:#f59e0b;background:#fffbeb"')+'></div>':'')
           +(o.clientes?'<div style="grid-column:1/-1"><label class="l">📡 Plan contratado <span class="muted">(modifica el plan del cliente; ajusta la tecnología)</span></label><select id="ot-plan-edit"><option value="">— sin plan —</option>'+REF.planes.map(function(p){return '<option value="'+p.id+'"'+(String(o.clientes.plan_id||'')===String(p.id)?' selected':'')+'>'+esc(p.nombre)+(p.tecnologia?(' · '+esc(p.tecnologia)):'')+'</option>';}).join('')+'</select></div>':'')
         +'</div>'
         +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button>'+accBtns+'<button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>'
@@ -1680,6 +1681,9 @@
       var _ra=document.getElementById('ot-reasignar'); if(_ra) _ra.addEventListener('click',function(){ reasignarOT(o); });
       document.getElementById('ot-save').addEventListener('click',function(){
         var cuad=document.getElementById('ot-cuad-edit').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
+        // Código ISPcube: si lo cargaste/cambiaste, lo guardo en el cliente (destraba «falta ISP» y habilita asignar). Actualizo en memoria ANTES del bloqueo para permitir cargar+asignar en el mismo Guardar.
+        var _ispEl=document.getElementById('ot-isp-edit');
+        if(o.clientes && _ispEl){ var _ispVal=_ispEl.value.trim()||null, _ispPrev=(o.clientes.codigo_ispcube||null); if(_ispVal!==_ispPrev){ o.clientes.codigo_ispcube=_ispVal; sbPatchOk('clientes?id=eq.'+o.clientes.id,{codigo_ispcube:_ispVal}).then(function(){ toast(_ispVal?'Código ISPcube guardado ✓':'Código ISPcube borrado'); }).catch(function(){ o.clientes.codigo_ispcube=_ispPrev; toast('⚠️ No se guardó el código ISPcube: ese código ya está usado por otro cliente. Revisalo.'); }); } }
         // Bloqueo: no se puede asignar cuadrilla si el cliente todavía no está en ISPcube
         if(cuad && !_otAsignable(o)){ toast('⚠️ No se puede asignar: el cliente todavía no está cargado en ISPcube.'); return; }
         var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null), fecha_agendada:document.getElementById('ot-fecha-edit').value||null };
