@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.54';
+  var VER='v1.55';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1613,7 +1613,7 @@
     logAct(lbl+' OT N°'+otId, { entidad:'OT', entidad_id:otId, cuadId:o.cuadId, cuadNom:o.cuadNom, detalle:o.detalle });
     return sbPost('ot_historial',{ ot_id:otId, evento:evento, estado_anterior:o.de||null, estado_nuevo:o.a||null, cuadrilla_id:o.cuadId||null, cuadrilla_nombre:o.cuadNom||(o.cuadId?_cuadNombre(o.cuadId):null), detalle:o.detalle||null, usuario_id:(USER&&USER.id)||null, usuario_nombre:(USER&&USER.nombre)||null }).catch(function(){}); }
   function logOTmuchas(ids, evento, o){ (ids||[]).forEach(function(id){ logOT(id, evento, o); }); }
-  var _EVENTO_LBL={ CREADA:['🆕','Creada'], ASIGNADA:['👷','Asignada'], DEVUELTA_POOL:['↩️','Devuelta al pool'], REASIGNADA:['🔄','Reasignada'], REPROGRAMADA:['📅','Reprogramada'], CIERRE_MANUAL:['✍️','Cierre manual (admin)'], CERRADA_TECNICO:['📥','Cerrada por técnico'], NO_REALIZADA:['✕','No realizada'], VALIDADA:['✅','Validada'], CAMBIO_ESTADO:['🔁','Cambio de estado'] };
+  var _EVENTO_LBL={ CREADA:['🆕','Creada'], ASIGNADA:['👷','Asignada'], DEVUELTA_POOL:['↩️','Devuelta al pool'], REASIGNADA:['🔄','Reasignada'], REPROGRAMADA:['📅','Reprogramada'], EN_CURSO:['▶️','En curso (técnico arrancó)'], REALIZADA:['🔧','Realizada por el técnico'], CIERRE_TECNICO:['📥','Cerrada por el técnico'], CERRADA_TECNICO:['📥','Cerrada por el técnico'], CIERRE_MANUAL:['✍️','Cierre manual (admin)'], NO_REALIZADA:['✕','No realizada'], VALIDADA:['✅','Validada y finalizada'], CAMBIO_ESTADO:['🔁','Cambio de estado'] };
   // ── Reprogramar OTs: cambiar la fecha coordinada (y opcionalmente la cuadrilla) sin pasar por PENDIENTE ──
   function reprogramarOTs(ids, ctx){
     if(!ids||!ids.length) return; ctx=ctx||{};
@@ -1674,7 +1674,7 @@
       document.getElementById('ot-print').addEventListener('click',function(){ imprimirOT(id); });
       if(_tv) cargarTvOT(o);
       if(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'||o.estado==='NO_REALIZADA') cargarCierreOT(o);
-      cargarHistorialOT(id);
+      cargarHistorialOT(id, o);
       var _cm=document.getElementById('ot-cerrarman'); if(_cm) _cm.addEventListener('click',function(){ cierreManualOT(o); });
       var _dv=document.getElementById('ot-devolver'); if(_dv) _dv.addEventListener('click',function(){ devolverOTpoolUI([o.id], o); });
       var _rp=document.getElementById('ot-reprog'); if(_rp) _rp.addEventListener('click',function(){ reprogramarOTs([o.id],{ fecha:o.fecha_agendada?String(o.fecha_agendada).substring(0,10):null, cuadId:o.cuadrilla_id }); });
@@ -1715,11 +1715,18 @@
     });
   }
   // ── Historial / bitácora de la OT ──
-  function cargarHistorialOT(otId){
+  function cargarHistorialOT(otId, ot){
     var cont=document.getElementById('ot-hist'); if(!cont) return;
     cont.innerHTML='<div class="muted" style="font-size:12px">Cargando historial…</div>';
-    sbGet('ot_historial?ot_id=eq.'+otId+'&select=*&order=created_at.desc&limit=100').then(function(d){
-      d=Array.isArray(d)?d:[];
+    Promise.all([
+      sbGet('ot_historial?ot_id=eq.'+otId+'&select=*&order=created_at.desc&limit=100'),
+      window._usuariosMap?Promise.resolve(window._usuariosMap):sbGet('usuarios?select=id,nombre').then(function(u){ var m={}; (Array.isArray(u)?u:[]).forEach(function(x){ m[x.id]=x.nombre; }); window._usuariosMap=m; return m; }).catch(function(){ return {}; })
+    ]).then(function(r){
+      var d=Array.isArray(r[0])?r[0]:[], umap=r[1]||{};
+      // CREACIÓN: la agrego como el evento más viejo (al final, porque la lista va de más nuevo a más viejo). Derivada de created_by/created_at → cubre TODAS las órdenes, también las viejas que no la tenían logueada.
+      if(ot && ot.created_at && !d.some(function(e){return e.evento==='CREADA';})){
+        d.push({ evento:'CREADA', created_at:ot.created_at, usuario_nombre:(ot.created_by?(umap[ot.created_by]||('Usuario '+ot.created_by)):'(sin registro)'), detalle:(ot.solicitud_id?'Generada al convertir una solicitud':'Creada manualmente') });
+      }
       var h='<div style="border-top:2px solid #e2e8f0;padding-top:10px"><h3 style="margin:0 0 6px;color:var(--azul)">📜 Historial de la orden</h3>';
       if(!d.length){ cont.innerHTML=h+'<div class="muted" style="font-size:13px">Sin movimientos registrados todavía.</div></div>'; return; }
       d.forEach(function(e){ var lbl=_EVENTO_LBL[e.evento]||['•',e.evento];
