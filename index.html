@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.52';
+  var VER='v1.54';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1080,7 +1080,8 @@
       +'<button class="btn btn-2" id="cl-export" title="Exportar a Excel la lista filtrada">⬇️ Excel</button>'
       +'</div><div id="cl-syncinfo" class="muted" style="font-size:12px;margin:-4px 0 10px;min-height:16px"></div><div id="cl-tabla"></div>';
     document.getElementById('cl-buscar').addEventListener('click',function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); });
-    document.getElementById('cl-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leerFiltrosCl(); clState.page=0; cargarClientes(); } });
+    document.getElementById('cl-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ clearTimeout(window._clBuscaTmr); leerFiltrosCl(); clState.page=0; cargarClientes(); } });
+    document.getElementById('cl-q').addEventListener('input',function(){ clearTimeout(window._clBuscaTmr); window._clBuscaTmr=setTimeout(function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); },350); });
     document.getElementById('cl-pend').addEventListener('click',function(){ leerFiltrosCl(); clState.pend=!clState.pend; clState.page=0; vClientes(); });
     document.getElementById('cl-sync').addEventListener('click',function(){ pedirSyncISP(this); });
     document.getElementById('cl-export').addEventListener('click',function(){ leerFiltrosCl(); _clExport(this); });
@@ -1100,14 +1101,13 @@
     if(clState.barrio) p.push('barrio=eq.'+encodeURIComponent(clState.barrio));
     if(clState.pend) p.push('codigo_ispcube=is.null');
     if(clState.q){
-      var q=clState.q.replace(/[(),]/g,' ').trim();
-      var ors=['nombre.ilike.*'+q+'*','doc_numero.ilike.*'+q+'*','precinto.ilike.*'+q+'*','caja_nap.ilike.*'+q+'*','telefono.ilike.*'+q+'*'];
-      if(/^\d+$/.test(q)){
-        ors.push('numero_cliente.eq.'+q);
-        ors.push('codigo_ispcube.eq.'+q);                 // por si lo escriben sin ceros
-        ors.push('codigo_ispcube.eq.'+('000000'+q).slice(-6)); // ISPcube guarda con ceros (ej 006356)
-      }
-      p.push('or=('+ors.join(',')+')');
+      var raw=clState.q.replace(/[(),]/g,' ').trim();
+      var toks=raw.split(/\s+/).filter(Boolean);
+      // busca cada palabra en CUALQUIERA de estos campos (incluye apellido, domicilio, barrio, email, código ISP); multi-palabra = todas deben aparecer (ej "yesica espindola" o "espindola yesica")
+      var FLDS=['nombre','apellido','doc_numero','domicilio_full','barrio','telefono','precinto','caja_nap','codigo_ispcube','email'];
+      var orFor=function(t){ var l=FLDS.map(function(f){ return f+'.ilike.*'+t+'*'; }); if(/^\d+$/.test(t)){ l.push('numero_cliente.eq.'+t); l.push('codigo_ispcube.eq.'+('000000'+t).slice(-6)); } return l; };
+      if(toks.length<=1){ p.push('or=('+orFor(toks[0]||raw).join(',')+')'); }
+      else { p.push('and=('+toks.map(function(t){ return 'or('+orFor(t).join(',')+')'; }).join(',')+')'); }
     }
     return p.join('&');
   }
@@ -1636,7 +1636,7 @@
     });
   }
   function detalleOT(id){
-    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,domicilio_full,barrio,lat,lng,caja_nap,puerto,precinto,portal_password,tv_online,pack_futbol,plan_id,tecnologia,planes(nombre,tecnologia)),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
+    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,telefono_alt,email,empresa,observaciones,condicion_fiscal,razon_social,localidad,deuda,estado,domicilio_full,barrio,lat,lng,caja_nap,puerto,precinto,portal_password,tv_online,pack_futbol,plan_id,tecnologia,planes(nombre,tecnologia)),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
       var o=d[0]; if(!o)return;
       function fr(k,v){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+esc(v||'—')+'</span></div>'; }
       function frHtml(k,vh){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+vh+'</span></div>'; }
@@ -1651,12 +1651,12 @@
       var nums=o.clientes?('N° Nexa '+o.clientes.numero_cliente+(o.clientes.codigo_ispcube?(' · Cód. ISPcube '+o.clientes.codigo_ispcube):' · sin cargar en ISPcube')):'';
       var oTel=o.clientes?o.clientes.telefono:'', oDom=_domLimpio(o.clientes?o.clientes.domicilio_full:'');
       modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+(oTel?waLink(oTel,cli,o.tipo,oDom,'Coordinar visita'):'')+'</p>'
-        +'<div class="fichagrid">'+fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+(o.clientes?fr('DNI',(o.clientes.tipo_doc||'DNI')+' '+(o.clientes.doc_numero||'—')):'')+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(oTel||'—')+' '+waLink(oTel,cli,o.tipo,oDom)+'</span></div>'+fr('Domicilio',oDom)+fr('Barrio',o.clientes?o.clientes.barrio:'')
+        +'<div class="fichagrid">'+fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+(o.clientes?fr('DNI',(o.clientes.tipo_doc||'DNI')+' '+(o.clientes.doc_numero||'—')):'')+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(oTel||'—')+' '+waLink(oTel,cli,o.tipo,oDom)+'</span></div>'+(o.clientes?fr('📧 Email',o.clientes.email):'')+(o.clientes&&o.clientes.telefono_alt?fr('Tel. alternativo',o.clientes.telefono_alt):'')+fr('Domicilio',oDom)+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(o.clientes.lat,o.clientes.lng)+'</span></div>':'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
         +(o.clientes?fr('Plan contratado',(o.clientes.planes?(o.clientes.planes.nombre+(o.clientes.planes.tecnologia?(' · '+o.clientes.planes.tecnologia):'')):'— sin plan')):'')
         +(o.clientes&&o.clientes.portal_password?fr('🔑 Clave del portal',o.clientes.portal_password):'')
-        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+'</div>'+obsTecHtml
+        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.clientes&&o.clientes.empresa?fr('Empresa',o.clientes.empresa):'')+(o.clientes&&o.clientes.localidad?fr('Localidad',o.clientes.localidad):'')+(o.clientes&&o.clientes.razon_social?fr('Razón social',o.clientes.razon_social):'')+(o.clientes&&o.clientes.condicion_fiscal?fr('Cond. fiscal',o.clientes.condicion_fiscal):'')+(o.clientes&&o.clientes.estado?fr('Estado cliente',o.clientes.estado):'')+(o.clientes&&o.clientes.deuda!=null?fr('Deuda',('$'+o.clientes.deuda)):'')+(o.clientes&&o.clientes.observaciones?fr('🗒️ Obs. del cliente',o.clientes.observaciones):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+'</div>'+obsTecHtml
         +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Cuenta de TV</div><div id="ot-tv-cont" style="margin-top:6px"></div></div>':'')
         +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;margin-top:4px">'
           +'<div><label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select></div>'
@@ -1885,7 +1885,8 @@
       +'<div id="cerr-cont"></div>';
     function leer(){ cerrState.desde=document.getElementById('cerr-desde').value; cerrState.hasta=document.getElementById('cerr-hasta').value; cerrState.cuad=document.getElementById('cerr-cuad').value; cerrState.q=document.getElementById('cerr-q').value.trim(); }
     document.getElementById('cerr-go').addEventListener('click',function(){ leer(); cargarCerrarOT(); });
-    document.getElementById('cerr-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leer(); cargarCerrarOT(); } });
+    document.getElementById('cerr-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ clearTimeout(window._cerrTmr); leer(); cargarCerrarOT(); } });
+    document.getElementById('cerr-q').addEventListener('input',function(){ clearTimeout(window._cerrTmr); window._cerrTmr=setTimeout(function(){ leer(); cargarCerrarOT(); },350); });
     document.getElementById('cerr-hoy').addEventListener('click',function(){ var h=_hoyISO(); cerrState.desde=h; cerrState.hasta=h; cerrState.cuad=document.getElementById('cerr-cuad').value; cerrState.q=document.getElementById('cerr-q').value.trim(); vCerrarOT(); });
     document.getElementById('cerr-todas').addEventListener('click',function(){ cerrState.desde=''; cerrState.hasta=''; cerrState.cuad=document.getElementById('cerr-cuad').value; cerrState.q=document.getElementById('cerr-q').value.trim(); vCerrarOT(); });
     document.getElementById('cerr-cuad').addEventListener('change',function(){ leer(); cargarCerrarOT(); });
@@ -3652,7 +3653,8 @@
       +'</div><div id="act-tabla"><div class="center">Cargando…</div></div>';
     function leerFiltros(){ st.desde=document.getElementById('act-desde').value; st.hasta=document.getElementById('act-hasta').value; st.user=document.getElementById('act-user').value; st.cuad=document.getElementById('act-cuad').value; st.ent=document.getElementById('act-ent').value; st.q=document.getElementById('act-q').value.trim(); }
     document.getElementById('act-apply').addEventListener('click',function(){ leerFiltros(); cargarActividad(); });
-    document.getElementById('act-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leerFiltros(); cargarActividad(); } });
+    document.getElementById('act-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ clearTimeout(window._actTmr); leerFiltros(); cargarActividad(); } });
+    document.getElementById('act-q').addEventListener('input',function(){ clearTimeout(window._actTmr); window._actTmr=setTimeout(function(){ leerFiltros(); cargarActividad(); },350); });
     // cargar usuarios para el filtro una sola vez
     if(!window._actUsuarios){ sbGet('usuarios?select=id,nombre,rol&order=nombre').then(function(d){ window._actUsuarios=d||[]; var sel=document.getElementById('act-user'); if(sel){ sel.innerHTML='<option value="">Todos los usuarios</option>'+window._actUsuarios.map(function(u){return '<option value="'+u.id+'"'+(st.user==u.id?' selected':'')+'>'+esc(u.nombre)+'</option>';}).join(''); } }); }
     cargarActividad();
@@ -4466,7 +4468,8 @@
       +'<div id="tv-tabla"></div>';
     function leer(){ tvState.q=document.getElementById('tv-q').value.trim(); tvState.estado=document.getElementById('tv-estado').value; }
     document.getElementById('tv-buscar').addEventListener('click',function(){ leer(); cargarTV(); });
-    document.getElementById('tv-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ leer(); cargarTV(); } });
+    document.getElementById('tv-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ clearTimeout(window._tvTmr); leer(); cargarTV(); } });
+    document.getElementById('tv-q').addEventListener('input',function(){ clearTimeout(window._tvTmr); window._tvTmr=setTimeout(function(){ leer(); cargarTV(); },350); });
     document.getElementById('tv-nueva').addEventListener('click',function(){ fichaTV(null); });
     Promise.all([ sbCount('cuentas_tv?estado=eq.DISPONIBLE&select=id'), sbCount('cuentas_tv?estado=eq.EN_USO&select=id'), sbCount('cuentas_tv?estado=eq.BAJA_PENDIENTE&select=id'), sbCount('cuentas_tv?select=id'), sbCount('cuentas_tv?estado=eq.EN_USO&select=id,clientes!inner(estado)&clientes.estado=eq.bloqueado').catch(function(){return 0;}) ]).then(function(c){
       var k=document.getElementById('tv-kpis'); if(k) k.innerHTML=kpi(c[0],'Disponibles','g')+kpi(c[1],'En uso','b')+kpi(c[2],'A cambiar clave','w')+kpi(c[3],'Total','')+(c[4]?kpi(c[4],'⚠️ Cliente bloqueado','r'):'');
