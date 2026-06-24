@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.57';
+  var VER='v1.58';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -910,6 +910,9 @@
         +'<div class="muted" style="font-size:12px">'+esc(o.descripcion||'')+'</div>'
         +'<div class="muted" style="font-size:12px;margin-top:3px">'+(c.contacto?('👤 '+esc(c.contacto)+' · '):'')+(c.telefono?('📞 '+esc(c.telefono)+' · '):'')+(c.direccion?('📍 '+esc(c.direccion)):'')+'</div>'
         +'<div style="font-size:12px;margin-top:4px">🔧 '+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'  ·  🕐 <b>'+_minTxt(totMs/60000)+'</b> en '+ses.length+' sesión'+(ses.length===1?'':'es')+'</div></div>';
+      // ── Trabajo PARCIAL (el técnico cerró parcial y lo continúa): aviso de estado ──
+      var _esParcial=(!!o.parcial && o.estado!=='FINALIZADA');
+      if(_esParcial){ h+='<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:13px;color:#92400e">🔶 <b>Trabajo parcial — en pausa.</b> El técnico cerró parcial y lo va a continuar (otro día o cuando llegue el material). Abajo ves lo hecho hasta ahora: horas, materiales y notas. Recién cuando lo cierre como <b>final</b> se va a poder validar.</div>'; }
       // ── Trabajo no planificado (autogenerado): marca + resolución del cliente libre ──
       var _esAuto=!!o.autogenerada, sinCli=(_esAuto && !o.cliente_servicio_id);
       if(_esAuto){ h+='<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:13px;color:#991b1b">🔴 <b>Trabajo no planificado</b> — generado por '+esc(o.cuadrillas?o.cuadrillas.nombre:'la cuadrilla')+'. Revisalo con más atención.</div>'; }
@@ -966,7 +969,7 @@
         h+='<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12.5px;color:#92400e;font-weight:600;margin-top:14px">✏️ Estás editando — los cambios <b>no se guardan</b> hasta que toques 💾 Guardar.</div>';
         h+='<div class="toolbar" style="margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="vs-save" style="font-size:15px;padding:11px 26px">💾 Guardar cambios</button><button class="btn btn-2" id="vs-cancel">✖ Cancelar</button></div>';
       } else {
-        h+='<div class="toolbar" style="margin-top:14px;flex-wrap:wrap"><button class="btn btn-pri" id="vs-edit">✏️ Editar horas y materiales</button>'+(sinCli?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;color:#991b1b;font-weight:600">🔒 Falta vincular el cliente "'+esc(o.cliente_libre||'')+'" antes de finalizar.</div>':(_esFin?'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 13px;font-size:12.5px;color:#166534;font-weight:600">✅ Servicio finalizado</div>':'<button class="btn btn-ok" id="vs-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>'))+'<button class="btn btn-2" id="vs-print">🖨️ Imprimir</button><button class="btn btn-x" id="vs-del" style="margin-left:auto">🗑️ Eliminar</button></div>'
+        h+='<div class="toolbar" style="margin-top:14px;flex-wrap:wrap"><button class="btn btn-pri" id="vs-edit">✏️ Editar horas y materiales</button>'+(sinCli?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;color:#991b1b;font-weight:600">🔒 Falta vincular el cliente "'+esc(o.cliente_libre||'')+'" antes de finalizar.</div>':(_esFin?'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 13px;font-size:12.5px;color:#166534;font-weight:600">✅ Servicio finalizado</div>':(_esParcial?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12.5px;color:#92400e;font-weight:600">🔶 Parcial — esperá el cierre final del técnico para validar</div>':'<button class="btn btn-ok" id="vs-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>')))+'<button class="btn btn-2" id="vs-print">🖨️ Imprimir</button><button class="btn btn-x" id="vs-del" style="margin-left:auto">🗑️ Eliminar</button></div>'
           +'<div id="ot-hist" style="margin-top:16px"></div>';
       }
       view.innerHTML=h;
@@ -5096,7 +5099,7 @@
         +'<div style="grid-column:1/-1">'+_svInput('svof-titulo','Título / nombre del trabajo',o.titulo,'ej: Cambio de focos / Cableado oficina',true)+'</div>'
         +'<div style="grid-column:1/-1"><label class="l">Descripción de la tarea</label><textarea id="svof-desc" style="min-height:60px" placeholder="Qué hay que hacer…">'+esc(o.descripcion||'')+'</textarea></div>'
         +'</div><div id="svof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
-        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+((ed&&(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'||o.estado==='EN_CURSO'))?'<button class="btn btn-pri" id="svof-detalle">📋 Horas y materiales</button>':'')+(ed?'<button class="btn btn-2" id="svof-print">🖨️ Imprimir</button>':'')+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="svof-save">💾 '+(ed?'Guardar':'Crear servicio')+'</button>'+((ed&&(o.parcial||o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'||o.estado==='EN_CURSO'))?'<button class="btn btn-pri" id="svof-detalle">📋 '+(o.parcial?'Ver lo hecho hasta ahora':'Horas y materiales')+'</button>':'')+(ed?'<button class="btn btn-2" id="svof-print">🖨️ Imprimir</button>':'')+(ed?'<button class="btn btn-x" id="svof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="svof-close">Cerrar</button></div>';
       modal(h,'wide');
       document.getElementById('svof-close').addEventListener('click',cerrarModal);
       var _svdt=document.getElementById('svof-detalle'); if(_svdt) _svdt.addEventListener('click',function(){ cerrarModal(); valDetalle(o.id); });
