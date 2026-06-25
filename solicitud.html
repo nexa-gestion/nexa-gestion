@@ -63,7 +63,7 @@
     <div class="sub">Internet · Solicitud de conexión</div>
   </div>
   <div id="app"></div>
-  <div class="foot">Nexa SAS · Tus datos se usan solo para coordinar la instalación. · v0.12</div>
+  <div class="foot">Nexa SAS · Tus datos se usan solo para coordinar la instalación. · v0.13</div>
 </div>
 
 <script>
@@ -96,6 +96,12 @@
     d=d.replace(/^15/,'');                           // 15 al inicio
     d=d.replace(/^(\d{4})15(\d{6,7})$/, '$1$2');     // 15 entre área (4 díg) y número
     return d.length>=10 ? d : '';
+  }
+  // Saca TODOS los números válidos (10 díg nacionales) de un campo, separando por | / , ; tab, doble espacio o " - ".
+  function telsDe(s){
+    var out=[];
+    String(s||'').split(/[|\/,;\n\t]+|\s{2,}|\s-\s/).forEach(function(t){ var n=normTelAr(t); if(n && n.length===10 && out.indexOf(n)<0) out.push(n); });
+    return out;
   }
 
   // ── cargar referencia (planes + barrios) ──────────────────────────────
@@ -283,12 +289,12 @@
     var dniLimpio=String(f.doc_numero||'').replace(/\D/g,'');
     if(dniLimpio.length!==8){ err.textContent='El DNI tiene que tener 8 números (sin puntos ni letras).'; return; }
     f.doc_numero=dniLimpio;
-    var tel1=normTelAr(f.telefono);
-    if(!tel1){ err.textContent='Revisá el teléfono: poné código de área + número (ej: 3764 123456).'; return; }
-    var tel2=normTelAr(f.telefono_alt);
-    if(!tel2){ err.textContent='Necesitamos un teléfono alternativo válido (de un familiar o contacto).'; return; }
-    if(tel1===tel2){ err.textContent='El teléfono alternativo tiene que ser distinto al principal.'; return; }
-    f.telefono=tel1; f.telefono_alt=tel2;   // guardamos normalizados
+    // Junta los números de ambos campos, separa si hay varios pegados, y reparte: 1°=teléfono, 2°=alternativo, 3°+=observaciones
+    var nums=telsDe(f.telefono).concat(telsDe(f.telefono_alt)).filter(function(n,i,a){return a.indexOf(n)===i;});
+    if(nums.length===0){ err.textContent='Revisá el teléfono: poné un número válido, solo números (ej: 3764 123456).'; return; }
+    if(nums.length===1){ err.textContent='Necesitamos un 2º teléfono (alternativo). Cargá otro número de contacto distinto.'; return; }
+    f.telefono=nums[0]; f.telefono_alt=nums[1];
+    f._telExtra = nums.length>2 ? ('Tel. adicional: '+nums.slice(2).join(', ')) : '';
     if(!emailValido(f.email)){ err.textContent='Revisá tu correo electrónico, parece inválido (ej: nombre@gmail.com).'; return; }
     if(f.email.toLowerCase()!==(f.email2||'').toLowerCase()){ err.textContent='Los dos correos no coinciden.'; return; }
     if(!f.barrio){ err.textContent='Elegí tu barrio o chacra.'; return; }
@@ -311,7 +317,7 @@
       telefono:f.telefono, telefono_alt:f.telefono_alt||null,
       email:f.email, calle:f.calle, numero:f.numero, piso:f.piso||null, depto:f.depto||null,
       barrio:barrio, empresa:empresaDeBarrio(f.barrio)||null, domicilio_full:domFull,
-      observaciones:[f.referencia, gps.desc?('Cómo llegar: '+gps.desc):''].filter(Boolean).join(' · ')||null,
+      observaciones:[f.referencia, gps.desc?('Cómo llegar: '+gps.desc):'', f._telExtra||''].filter(Boolean).join(' · ')||null,
       lat:gps.lat, lng:gps.lng, plan_id:planId, plan_texto:planTexto,
       tv_online:!!f.tv, pack_futbol:!!f.futbol,
       ya_es_cliente:!!f.yaCliente, numero_cliente_existente:(f.yaCliente?(f.numCli||null):null),
@@ -337,11 +343,20 @@
     });
     }
     if(!conds.length){ postSolicitud(); return; }
-    fetch(SB_URL+'/rest/v1/solicitudes_alta?estado=in.(pendiente,convertida)&or=('+conds.join(',')+')&select=id&limit=1',{headers:H})
-      .then(function(r){return r.ok?r.json():[];}).then(function(d){
-        if(Array.isArray(d)&&d.length){ btn.disabled=false; btn.textContent='Enviar solicitud ✓'; err.textContent='Ya tenés una solicitud en curso con esos datos (DNI, teléfono o correo). Nos vamos a comunicar pronto.'; return; }
-        postSolicitud();
-      }).catch(function(){ postSolicitud(); });   // si falla el chequeo, dejamos enviar igual
+    // Anti-duplicado (mejorado): bloquea SOLO si (1) hay una solicitud PENDIENTE en curso, o (2) ya figura como CLIENTE ACTIVO
+    // (no eliminado/baja). Una solicitud "convertida" cuyo cliente fue dado de baja/eliminado YA NO bloquea → un ex-cliente puede volver a pedir.
+    var _reset=function(){ btn.disabled=false; btn.textContent='Enviar solicitud ✓'; };
+    var qSol=SB_URL+'/rest/v1/solicitudes_alta?estado=eq.pendiente&or=('+conds.join(',')+')&select=id&limit=1';
+    var qCli=SB_URL+'/rest/v1/clientes?estado=not.in.(eliminado,baja)&or=('+conds.join(',')+')&select=id&limit=1';
+    Promise.all([
+      fetch(qSol,{headers:H}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];}),
+      f.yaCliente ? Promise.resolve([]) : fetch(qCli,{headers:H}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];})
+    ]).then(function(rr){
+      var sol=rr[0]||[], cli=rr[1]||[];
+      if(Array.isArray(sol)&&sol.length){ _reset(); err.textContent='Ya tenés una solicitud en curso con esos datos (DNI, teléfono o correo). Nos vamos a comunicar pronto.'; return; }
+      if(Array.isArray(cli)&&cli.length){ _reset(); err.textContent='Esos datos ya figuran como cliente de Nexa. Si querés sumar otro servicio, marcá «Ya soy cliente de Nexa» arriba.'; return; }
+      postSolicitud();
+    }).catch(function(){ postSolicitud(); });   // si falla el chequeo, dejamos enviar igual
   }
 
   function exito(){
