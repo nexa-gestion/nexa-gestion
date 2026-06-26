@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.58';
+  var VER='v1.59';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1286,12 +1286,17 @@
       codigo_ispcube:(s.codigo_ispcube||null),
       vendedor_id:(s.vendedor_id||null),
       estado:'prospecto',fecha_alta:new Date().toISOString().substring(0,10) };
-    // Anti-duplicado: si ya existe un cliente con este DNI, genero la OT sobre ÉL (no creo uno nuevo)
+    // Anti-duplicado: si ya existe un cliente con este DNI (INCLUSO eliminado/baja), genero la OT sobre ÉL.
+    // Si estaba eliminado/baja, lo REACTIVO (vuelve a prospecto, limpio eliminado_isp_at) en vez de crear un duplicado
+    // → así no choca el UNIQUE de codigo_ispcube y un ex-cliente puede reinstalarse.
     var dni=_dniUtil(s.doc_numero);
-    var buscar = dni ? sbGet('clientes?doc_numero=eq.'+encodeURIComponent(s.doc_numero)+'&estado=neq.eliminado&select=id,numero_cliente,nombre,apellido,codigo_ispcube&limit=1') : Promise.resolve([]);
+    var buscar = dni ? sbGet('clientes?doc_numero=eq.'+encodeURIComponent(s.doc_numero)+'&select=id,numero_cliente,nombre,apellido,codigo_ispcube,estado&order=id.asc&limit=1') : Promise.resolve([]);
     return buscar.then(function(ex){
-      if(Array.isArray(ex)&&ex.length){ var c=ex[0]; c._reused=true;
-        var pre=(s.codigo_ispcube&&!c.codigo_ispcube)? sbPatch('clientes?id=eq.'+c.id,{codigo_ispcube:s.codigo_ispcube}) : Promise.resolve();
+      if(Array.isArray(ex)&&ex.length){ var c=ex[0]; c._reused=true; var revivir=(c.estado==='eliminado'||c.estado==='baja'); c._reactivado=revivir;
+        var upd={};
+        if(revivir){ upd.estado='prospecto'; upd.eliminado_isp_at=null; upd.fecha_baja=null; if(s.plan_id) upd.plan_id=s.plan_id; upd.tv_online=!!s.tv_online; upd.pack_futbol=!!s.pack_futbol; }
+        if(s.codigo_ispcube && !c.codigo_ispcube) upd.codigo_ispcube=s.codigo_ispcube;
+        var pre = Object.keys(upd).length ? sbPatch('clientes?id=eq.'+c.id,upd) : Promise.resolve();
         return pre.then(function(){ return _crearOTdesdeSolicitud(c.id,s); }).then(function(){ return c; }); }
       return sbPost('clientes',cli).then(function(r){ var c=r&&r[0]; if(!c) throw new Error('cliente');
         return _crearOTdesdeSolicitud(c.id,s).then(function(){ return c; });
