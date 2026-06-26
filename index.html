@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.59';
+  var VER='v1.60';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -628,24 +628,27 @@
       var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,rech:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(_esRech(o))p.rech++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
       var _cpc=(typeof cortesPorCuad!=='undefined')?cortesPorCuad:{};
       Object.keys(_cpc).forEach(function(cid){ if(!_act[cid]) return; var p=perf[cid]; if(!p){ p=perf[cid]={id:Number(cid),nombre:_cuadNombre(cid)||('Cuadrilla '+cid),total:0,fin:0,rech:0,durSum:0,durN:0}; } p.cortes=_cpc[cid]; });
+      // los cortes de desconexión hechos por la cuadrilla CUENTAN como tareas del día finalizadas (los hizo en la calle con la app)
+      var actCortes=0; Object.keys(perf).forEach(function(k){ actCortes+=(perf[k].cortes||0); });
+      var totalT=total+actCortes, finT=fin+actCortes, pcT=totalT?Math.round(finT/totalT*100):0;
       var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return ((b.total+(b.cortes||0))-(a.total+(a.cortes||0)))||(b.fin-a.fin); });
-      var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar'],['nr',G.nr,'#b45309','Rechazadas']];
-      var compBar=seg.filter(function(s){return s[1]>0;}).map(function(s){ return '<div style="width:'+(s[1]/(total||1)*100)+'%;background:'+s[2]+'"></div>'; }).join('');
-      var compLeg=seg.map(function(s){ var p=Math.round(s[1]/(total||1)*100); return '<div><span class="dot" style="background:'+s[2]+'"></span>'+s[3]+' <b style="color:#0f172a">'+s[1]+'</b> <span style="color:#94a3b8">('+p+'%)</span></div>'; }).join('');
+      var seg=[['val',G.val,'#16a34a','Validados'],['fval',G.fval,'#dc2626','Falta validar'],['enc',G.enc,'#2563eb','En curso'],['sin',G.sin,'#94a3b8','Sin empezar'],['nr',G.nr,'#b45309','Rechazadas'],['cortes',actCortes,'#0891b2','Cortes desconexión']];
+      var compBar=seg.filter(function(s){return s[1]>0;}).map(function(s){ return '<div style="width:'+(s[1]/(totalT||1)*100)+'%;background:'+s[2]+'"></div>'; }).join('');
+      var compLeg=seg.filter(function(s){return s[0]!=='cortes'||s[1]>0;}).map(function(s){ var p=Math.round(s[1]/(totalT||1)*100); return '<div><span class="dot" style="background:'+s[2]+'"></span>'+s[3]+' <b style="color:#0f172a">'+s[1]+'</b> <span style="color:#94a3b8">('+p+'%)</span></div>'; }).join('');
       var perfHead='<div class="perf-head"><div></div><div>Cuadrilla</div><div style="text-align:center">Del día</div><div style="text-align:center">Finalizadas</div><div style="text-align:center">% Avance</div><div>Progreso</div></div>';
-      var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr), pcrTxt=p.total?(pcr+'%'):'—';
+      var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], ct=(p.cortes||0), pt=p.total+ct, pf=p.fin+ct, pcr=pt?Math.round(pf/pt*100):0, pcc=_pctCol(pcr), pcrTxt=pt?(pcr+'%'):'—';
         return '<div class="perf-row clk" data-cuad="'+p.id+'">'
           +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
-          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+(p.cortes?(' · <span style="color:#0891b2;font-weight:700">🔌 '+p.cortes+' corte'+(p.cortes===1?'':'s')+' de desconexión</span>'):'')+'</div></div>'
-          +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">del día</div>'+(p.cortes?('<div style="font-size:11px;color:#0891b2;font-weight:700;margin-top:2px;white-space:nowrap">🔌 '+p.cortes+'</div>'):'')+'</div>'
-          +'<div><div class="perf-big" style="color:#16a34a">'+p.fin+'</div><div class="perf-cap">finalizadas</div></div>'
+          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+(ct?(' · <span style="color:#0891b2;font-weight:700">🔌 '+ct+' corte'+(ct===1?'':'s')+' de desconexión</span>'):'')+'</div></div>'
+          +'<div><div class="perf-big">'+pt+'</div><div class="perf-cap">del día</div>'+(ct?('<div style="font-size:11px;color:#0891b2;font-weight:700;margin-top:2px;white-space:nowrap">🔌 '+ct+' de '+pt+'</div>'):'')+'</div>'
+          +'<div><div class="perf-big" style="color:#16a34a">'+pf+'</div><div class="perf-cap">finalizadas</div>'+(ct?('<div style="font-size:11px;color:#0891b2;font-weight:700;margin-top:2px;white-space:nowrap">🔌 incluye '+ct+'</div>'):'')+'</div>'
           +'<div><div class="perf-big" style="color:'+pcc+'">'+pcrTxt+'</div><div class="perf-cap">avance</div></div>'
-          +'<div><div style="height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pcr+'%;background:'+pcc+';transition:width .4s"></div></div><div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right">'+p.fin+' / '+p.total+'</div></div>'
+          +'<div><div style="height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pcr+'%;background:'+pcc+';transition:width .4s"></div></div><div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right">'+pf+' / '+pt+'</div></div>'
           +'</div><div class="perf-det" id="perf-det-'+p.id+'" style="display:none"></div>';
       }).join('') : '<div class="center" style="padding:18px;color:#94a3b8">No hay OTs coordinadas para este día.</div>';
       var body=document.getElementById('dia-body'); if(!body) return;
-      body.innerHTML='<div class="ohero" style="margin-bottom:8px"><div class="ohero-ring">'+_ring(pc,'del día')+'</div>'
-        +'<div class="ohero-body"><div class="ohero-big">'+fin+' <span style="font-size:18px;color:#94a3b8;font-weight:700">/ '+total+' OTs finalizadas</span></div><div class="ohero-sub">'+perfArr.length+' cuadrilla'+(perfArr.length===1?'':'s')+' con trabajo · '+esc(_fechaLinda(dia))+'</div>'
+      body.innerHTML='<div class="ohero" style="margin-bottom:8px"><div class="ohero-ring">'+_ring(pcT,'del día')+'</div>'
+        +'<div class="ohero-body"><div class="ohero-big">'+finT+' <span style="font-size:18px;color:#94a3b8;font-weight:700">/ '+totalT+' tareas finalizadas</span></div><div class="ohero-sub">'+perfArr.length+' cuadrilla'+(perfArr.length===1?'':'s')+' con trabajo · '+esc(_fechaLinda(dia))+(actCortes?(' · 🔌 '+actCortes+' incluye cortes de desconexión'):'')+'</div>'
         +'<div class="compbar">'+(compBar||'<div style="width:100%;background:#f1f5f9"></div>')+'</div><div class="compleg">'+compLeg+'</div></div></div>'
         +(sinAsig.length?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin:6px 0;font-size:12.5px">📌 <b>'+sinAsig.length+'</b> OT coordinada'+(sinAsig.length===1?'':'s')+' para este día <b>sin cuadrilla asignada</b> ('+sinAsig.map(function(o){return 'N° '+esc(o.numero);}).join(', ')+').</div>':'')
         +'<div style="margin-top:10px">'+perfHead+perfRows+'</div>';
