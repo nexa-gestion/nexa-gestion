@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.61';
+  var VER='v1.62';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -685,6 +685,9 @@
       var rb=document.getElementById('rp-pend-'+cuadId); if(rb) rb.addEventListener('click',function(e){ e.stopPropagation(); reprogramarOTs(pend.map(function(o){return o.id;}),{ fecha:nextDia }); });
     }).catch(function(){ det.innerHTML='<div class="muted" style="font-size:12px;color:var(--rojo)">No se pudo cargar.</div>'; });
   }
+  // ── Cronómetro EN VIVO de tareas en curso (tiempo corriendo desde que el técnico tocó «iniciar») ──
+  function _liveHMS(iniIso){ var ms=Date.now()-Date.parse(iniIso); if(!(ms>0)) return '0:00:00'; var s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60, p=function(n){return (n<10?'0':'')+n;}; return h+':'+p(m)+':'+p(ss); }
+  function _svLiveTick(){ var els=document.querySelectorAll('.sv-live'); if(!els.length){ if(window._svLiveInt){ clearInterval(window._svLiveInt); window._svLiveInt=null; } return; } Array.prototype.forEach.call(els,function(e){ var ini=e.getAttribute('data-ini'); if(ini) e.textContent=_liveHMS(ini); }); }
   // ── Panel de SERVICIOS en el dashboard (misma lógica, area=SERVICIOS, sin navegador propio: sigue el día de arriba) ──
   function _dashRenderDiaServ(dia){
     var cont=document.getElementById('dash-dia-serv'); if(!cont) return;
@@ -720,13 +723,21 @@
           +'<div><div style="height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pcr+'%;background:'+pcc+';transition:width .4s"></div></div><div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right">'+p.fin+' / '+p.total+'</div></div>'
           +'</div><div class="perf-det" id="perf-det-s-'+p.id+'" style="display:none"></div>';
       }).join('') : '<div class="center" style="padding:18px;color:#94a3b8">No hay servicios coordinados para este día.</div>';
+      // 🔴 En curso AHORA: servicios que el técnico está haciendo en este momento, con cronómetro en vivo
+      var enCurso=act.filter(function(o){ return o.estado==='EN_CURSO' && o.inicio_tec_at; });
+      var liveHtml=enCurso.length?('<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 14px;margin:8px 0"><div style="font-weight:800;color:#1e3a8a;margin-bottom:8px">🔴 En curso ahora ('+enCurso.length+')</div>'+enCurso.map(function(o){ var cli=(o.clientes_servicios&&o.clientes_servicios.nombre)||'(cliente)'; var cuad=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(o.cuadrilla_id)||'—'; return '<div class="pd-row enc-live" data-otv="'+o.id+'" style="cursor:pointer;align-items:center"><span>🔧 <b>OT '+esc(o.numero)+'</b> · '+esc(cli)+' <span class="muted">· '+esc(cuad)+'</span></span><span style="white-space:nowrap;font-weight:800;color:#dc2626;font-size:15px">⏱️ <span class="sv-live" data-ini="'+esc(o.inicio_tec_at)+'" style="font-variant-numeric:tabular-nums">'+_liveHMS(o.inicio_tec_at)+'</span></span></div>'; }).join('')+'<div style="font-size:11px;color:#64748b;margin-top:4px">⏱️ corre desde que el técnico tocó «iniciar» en el domicilio · tocá para ver el detalle</div></div>'):'';
       var body=document.getElementById('dia-body-serv'); if(!body) return;
       body.innerHTML='<div class="ohero" style="margin-bottom:8px"><div class="ohero-ring">'+_ring(pc,'del día')+'</div>'
         +'<div class="ohero-body"><div class="ohero-big">'+fin+' <span style="font-size:18px;color:#94a3b8;font-weight:700">/ '+total+' servicios finalizados</span></div><div class="ohero-sub">'+perfArr.length+' cuadrilla'+(perfArr.length===1?'':'s')+' con servicios · '+esc(_fechaLinda(dia))+'</div>'
         +'<div class="compbar">'+(compBar||'<div style="width:100%;background:#f1f5f9"></div>')+'</div><div class="compleg">'+compLeg+'</div></div></div>'
+        +liveHtml
         +(sinAsig.length?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin:6px 0;font-size:12.5px">📌 <b>'+sinAsig.length+'</b> servicio'+(sinAsig.length===1?'':'s')+' para este día <b>sin técnico asignado</b>.</div>':'')
         +'<div style="margin-top:10px">'+perfHead+perfRows+'</div>';
       Array.prototype.forEach.call(body.querySelectorAll('.perf-row.clk'),function(el){ el.addEventListener('click',function(){ _perfToggleServ(el.getAttribute('data-cuad')); }); });
+      Array.prototype.forEach.call(body.querySelectorAll('.enc-live'),function(el){ el.addEventListener('click',function(){ valDetalle(el.getAttribute('data-otv')); }); });
+      // cronómetro en vivo (1s); se autolimpia cuando ya no hay tareas en curso en pantalla
+      if(window._svLiveInt){ clearInterval(window._svLiveInt); window._svLiveInt=null; }
+      if(document.querySelector('.sv-live')){ window._svLiveInt=setInterval(_svLiveTick,1000); }
     }).catch(function(){ var body=document.getElementById('dia-body-serv'); if(body) body.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
   }
   function _perfToggleServ(cuadId){
