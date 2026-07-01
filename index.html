@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.65';
+  var VER='v1.66';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4545,7 +4545,7 @@
   function vCuentasTV(){
     view.innerHTML='<h1>Cuentas TV (Espacio Giga)</h1><p class="sub">Pool de cuentas de TV online. Reemplaza la planilla.</p>'
       +'<div class="kpis" id="tv-kpis"></div>'
-      +'<div class="toolbar" style="margin-top:14px"><input id="tv-q" placeholder="Buscar usuario / mail / abonado" style="min-width:240px" value="'+esc(tvState.q)+'">'
+      +'<div class="toolbar" style="margin-top:14px"><input id="tv-q" placeholder="🔎 Buscar nombre, N° cliente, N° ISP, usuario, mail, abonado…" style="min-width:280px;flex:1" value="'+esc(tvState.q)+'">'
       +'<select id="tv-estado"><option value="">Todos</option>'+opt(['DISPONIBLE','EN_USO','BAJA_PENDIENTE'],tvState.estado)+'<option value="__BLOQ__"'+(tvState.estado==='__BLOQ__'?' selected':'')+'>⚠️ Cliente bloqueado</option></select>'
       +'<button class="btn btn-pri" id="tv-buscar">Buscar</button>'
       +'<button class="btn btn-ok" id="tv-nueva" style="margin-left:auto">+ Nueva cuenta</button></div>'
@@ -4563,11 +4563,12 @@
   function cargarTV(){
     var cont=document.getElementById('tv-tabla'); if(!cont) return; cont.innerHTML='<div class="center"><div class="spin"></div></div>';
     var bloq=tvState.estado==='__BLOQ__';
-    var p='cuentas_tv?select=*,clientes'+(bloq?'!inner':'')+'(numero_cliente,nombre,apellido,estado)&order=mail&limit=1000';
+    var p='cuentas_tv?select=*,clientes'+(bloq?'!inner':'')+'(numero_cliente,nombre,apellido,estado,codigo_ispcube)&order=mail&limit=1000';
     if(bloq) p+='&estado=eq.EN_USO&clientes.estado=eq.bloqueado';
     else if(tvState.estado) p+='&estado=eq.'+tvState.estado;
-    if(tvState.q){ var q=tvState.q.replace(/[(),]/g,' '); p+='&or=(usuario.ilike.*'+q+'*,mail.ilike.*'+q+'*,abonado_numero.ilike.*'+q+'*,cic.ilike.*'+q+'*)'; }
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
+      // búsqueda de texto CLIENT-SIDE: cada palabra en cualquier campo/orden, sobre la cuenta + el cliente vinculado (nombre/apellido, N° cliente Nexa, N° ISP)
+      if(tvState.q){ var toks=tvState.q.toLowerCase().trim().split(/\s+/).filter(Boolean); if(toks.length) d=d.filter(function(t){ var c=t.clientes||{}; var hay=((t.usuario||'')+' '+(t.mail||'')+' '+(t.abonado_numero||'')+' '+(t.cic||'')+' '+(t.nro_isp||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.numero_cliente||'')+' '+(c.codigo_ispcube||'')).toLowerCase(); return toks.every(function(x){ return hay.indexOf(x)>=0; }); }); }
       if(!d.length){ cont.innerHTML='<div class="center">Sin cuentas.</div>'; return; }
       var cols=[
         {k:'usuario',t:'Usuario',sort:function(t){return t.usuario||'';},r:function(t){return '<span style="font-family:monospace;font-size:12px"><b>'+esc(t.usuario||'—')+'</b></span>';}},
