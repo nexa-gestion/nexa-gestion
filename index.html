@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.66';
+  var VER='v1.67';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3153,11 +3153,14 @@
     var cut=new Date(Date.now()-30*864e5).toISOString();
     Promise.all([
       sbGet('clientes?estado=eq.baja&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000'),
-      sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000')
+      sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000'),
+      // clientes con una INSTALACIÓN abierta (aún NO instalados = prospectos) → NUNCA generarles un corte de desconexión
+      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
     ]).then(function(r){
+      var porInstalar={}; (Array.isArray(r[2])?r[2]:[]).forEach(function(o){ if(o.cliente_id) porInstalar[o.cliente_id]=true; });
       var cands=[];
-      (r[0]||[]).forEach(function(c){ cands.push([c.id,'baja_isp']); });
-      (r[1]||[]).forEach(function(c){ cands.push([c.id,'bloqueado_30d']); });
+      (r[0]||[]).forEach(function(c){ if(!porInstalar[c.id]) cands.push([c.id,'baja_isp']); });
+      (r[1]||[]).forEach(function(c){ if(!porInstalar[c.id]) cands.push([c.id,'bloqueado_30d']); });
       if(!cands.length){ cb(0); return; }
       _dxBloqueados(cands.map(function(x){return x[0];}), function(ya){
         var nuevos=cands.filter(function(x){ return !ya[x[0]]; }).map(function(x){ return {cliente_id:x[0],estado:'PENDIENTE',origen:x[1],created_by:USER.id}; });
