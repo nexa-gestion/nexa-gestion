@@ -71,7 +71,7 @@
   <section class="cover">
     <div class="logo">NEXA</div>
     <div class="t">Manual de uso del Sistema de Gestión</div>
-    <div class="v">Manual v2 · actualizado al sistema <b>v0.91</b> · 13-06-2026<br>Panel: nexa-gestion.github.io/nexa-gestion · Alta pública: /solicitud.html</div>
+    <div class="v">Manual v3 · actualizado al sistema <b>v1.50</b> · 21-06-2026<br>Panel: nexa-gestion.github.io/nexa-gestion · Alta pública: /solicitud.html</div>
     <p style="margin-top:30px;color:#64748b;max-width:560px;margin-left:auto;margin-right:auto;font-size:14px">
       Guía paso a paso para el equipo de Nexa: administración / atención, soporte técnico, depósito y técnicos de campo.
       Explica todo el recorrido, desde que el cliente pide la conexión hasta que la orden de trabajo queda finalizada.
@@ -92,6 +92,8 @@
       <li><a href="#tv">Cuentas de TV (Espacio Giga)</a></li>
       <li><a href="#vendedores">Vendedores y comisiones</a></li>
       <li><a href="#faq">Preguntas frecuentes</a></li>
+      <li><a href="#servicios">Servicios (trabajos fuera de internet) <span class="chip c-prox">NUEVO</span></a></li>
+      <li><a href="#desconexiones">Desconexiones y bajas <span class="chip c-prox">NUEVO</span></a></li>
       <li><a href="#versiones">Control de versiones del manual</a></li>
     </ol>
   </section>
@@ -387,12 +389,62 @@
     <p>A futuro: GPS, WiFi/SSID y datos del cliente (teléfono/email/DNI). La caja/puerto/precinto sólo se <b>leen</b> de ISPcube, no se escriben.</p>
   </section>
 
+  <!-- 9b. SERVICIOS -->
+  <section class="seccion" id="servicios">
+    <h2>11 · Servicios (trabajos que no son internet)</h2>
+    <p>El módulo <b>Servicios</b> registra trabajos a terceros que no son una conexión de internet (instalaciones de cámaras, redes, mantenimientos, etc.). Tiene clientes propios, sus propios tipos de trabajo, horas de cuadrilla, materiales y mano de obra.</p>
+    <table>
+      <tr><th>Pestaña</th><th>Para qué</th></tr>
+      <tr><td>Órdenes de trabajo</td><td>Crear y ver todas las OT de servicio, con su estado.</td></tr>
+      <tr><td>Validación</td><td>Revisar las que el técnico cerró (CERRADA_TECNICO) y finalizarlas.</td></tr>
+      <tr><td>Clientes / Tipos / Catálogo / Stock</td><td>Datos maestros: clientes de servicio, tipos de trabajo, materiales y stock propio.</td></tr>
+    </table>
+    <h3>Editar y eliminar (incluso ya finalizadas)</h3>
+    <p>Tanto en <b>Validación</b> como en una orden <b>ya finalizada</b> se puede abrir el detalle (botón <b>📋 Horas y materiales</b>) y corregir:</p>
+    <ul>
+      <li><b>Horarios de la sesión</b> — si el técnico no arrancó/cerró a la hora real, se editan el inicio y el fin y el total de horas se recalcula solo.</li>
+      <li><b>Materiales</b> — agregar, quitar o cambiar la cantidad si se cargó mal.</li>
+      <li><b>Eliminar la orden</b> — botón 🗑️ con confirmación en dos toques. Al borrar, el material que había consumido <b>vuelve a stock</b> de la cuadrilla.</li>
+    </ul>
+    <div class="nota">⚠️ Eliminar una orden finalizada <b>no se puede deshacer</b> y revierte su stock. Usalo para corregir cargas de prueba o errores, no para borrar trabajo real ya cobrado.</div>
+  </section>
+
+  <!-- 9c. DESCONEXIONES -->
+  <section class="seccion" id="desconexiones">
+    <h2>12 · Desconexiones y bajas</h2>
+    <p>El módulo <b>Desconexiones</b> arma la lista de clientes a cortar (bajas pedidas por el ISP o morosos bloqueados), se la reparte a las cuadrillas y registra el corte en la calle desde la app del técnico.</p>
+    <h3>Pestañas</h3>
+    <table>
+      <tr><th>Pestaña</th><th>Qué muestra</th></tr>
+      <tr><td>⏳ Pendientes</td><td>Clientes a cortar, todavía sin cuadrilla.</td></tr>
+      <tr><td>📍 Asignadas</td><td>Ya repartidas a una cuadrilla, esperando el corte.</td></tr>
+      <tr><td>📝 Pendiente admin</td><td>Cortadas por el técnico, esperando revisión. Muestran qué cuadrilla las hizo y la fecha del trabajo.</td></tr>
+      <tr><td>🤝 Compromisos</td><td>Clientes que prometieron pagar (ver abajo).</td></tr>
+      <tr><td>✅ Cerradas</td><td>Terminadas. La columna <b>"Cómo cerró"</b> dice si fue 🟢 porque pagó, ⛔ baja del ISP, o ✅ finalizada.</td></tr>
+    </table>
+    <p>Arriba hay <b>filtros</b> por cuadrilla, estado, fecha y entre fechas, y un botón <b>🔄 Actualizar</b>.</p>
+    <h3>Compromiso de pago</h3>
+    <p>Cuando el técnico llega y el cliente promete pagar, en vez de cortar puede registrar un <b>compromiso de pago</b>:</p>
+    <ul>
+      <li><b>1ª vez:</b> 7 días. Sale de la lista de corte por ese plazo.</li>
+      <li><b>2ª y última vez:</b> 3 días (la app le avisa al técnico que ya tuvo uno y no cumplió).</li>
+      <li>Después del 2°, no van más: corresponde cortar.</li>
+      <li>Si se vence sin pagar, <b>vuelve solo</b> a la lista de pendientes.</li>
+      <li>El técnico también puede marcar <b>✅ Ya pagó (verificado)</b> cuando confirmó el pago con comercial: la baja se cierra definitiva.</li>
+    </ul>
+    <p>El <b>administrador</b> maneja todo esto desde la pestaña 🤝 Compromisos: devolver al pool, cerrar como pagó, u otorgar otro compromiso sin límite.</p>
+    <h3>Salen solos cuando pagan</h3>
+    <p>Cuando un cliente regulariza la deuda (queda en <b>deuda 0</b>), el sistema lo saca solo de la lista de corte —tanto al abrir el módulo como cuando corre el sincronizador con ISPcube—. No hace falta sacarlo a mano.</p>
+    <div class="nota">El <b>cierre final</b> de una baja borra al cliente del sistema. Es una acción de alto impacto: se hace solo desde el flujo de desconexiones, nunca a mano.</div>
+  </section>
+
   <!-- 10. CONTROL DE VERSIONES -->
   <section class="seccion" id="versiones">
-    <h2>11 · Control de versiones del manual</h2>
+    <h2>13 · Control de versiones del manual</h2>
     <p>Este manual se actualiza junto con el sistema. Cada cambio importante queda anotado acá.</p>
     <table>
       <tr><th>Manual</th><th>Sistema</th><th>Fecha</th><th>Qué cambió</th></tr>
+      <tr><td>v3</td><td>v1.50</td><td>21-06-2026</td><td>Dos módulos nuevos documentados: <b>Servicios</b> (trabajos fuera de internet, con stock propio; ahora se pueden <b>editar horarios y materiales y eliminar órdenes incluso ya finalizadas</b>, devolviendo el material a stock) y <b>Desconexiones y bajas</b> (lista de cortes por cuadrilla con columnas y filtros, <b>compromiso de pago</b> de 7/3 días desde la app del técnico, "ya pagó verificado", y salida automática cuando el cliente queda en deuda 0). Además: el <b>dashboard</b> ahora suma los cortes de desconexión por cuadrilla por día y se puede hacer clic en cada trabajo o corte para ver su detalle.</td></tr>
       <tr><td>v2</td><td>v0.91</td><td>13-06-2026</td><td>Nuevo módulo <b>Vendedores y comisiones</b> (links por vendedor, cuenta corriente, pagos con comprobante, acceso del vendedor). Además: dashboard "Operación por día", buscadores en Órdenes/Validación/Solicitudes, botón Rechazar en la app del técnico, detalle de stock por material, módulo Actividad y panel responsive en celular.</td></tr>
       <tr><td>v1</td><td>v0.31</td><td>10-06-2026</td><td>Primera versión del manual: flujo completo, roles, depósito, cuentas TV, estados y app del técnico (diseño).</td></tr>
     </table>
@@ -400,7 +452,7 @@
   </section>
 
   <footer>
-    Sistema de Gestión Nexa · Manual v2 (sistema v0.91) · Generado para capacitación del equipo.
+    Sistema de Gestión Nexa · Manual v3 (sistema v1.50) · Generado para capacitación del equipo.
   </footer>
 </div>
 

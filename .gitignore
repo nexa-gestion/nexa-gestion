@@ -1,0 +1,31 @@
+# === Material de trabajo LOCAL — NO se publica a GitHub Pages ===
+.DS_Store
+.claude/
+
+# SQL (los corre Gastón a mano en Supabase)
+*.sql
+
+# Docs / análisis / notas de trabajo
+*.md
+*.pdf
+
+# Planillas y datos crudos
+*.xlsx
+*.xls
+*.csv
+*.json
+*.kml
+*.kmz
+planillas/
+kmz/
+capturas/
+BACKUPS_PWA/
+
+# Scripts locales de una sola vez (no van al deploy)
+migrar_ispcube.py
+cargar_geo_kmz.py
+github-workflow_sync-ispcube.yml
+cloudflare_worker_sync.js
+
+# NOTA: quedan versionados (no ignorados): *.html, sync_ispcube.py, .github/, .gitignore
+#   Los .md ya trackeados (README.md, DM_NEXA_2026-06-21.md) NO se ven afectados por la regla *.md.

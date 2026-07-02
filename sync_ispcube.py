@@ -428,32 +428,48 @@ def limpiar_desconexiones_eliminados():
     return n
 
 def cerrar_desconexiones_por_retiro():
-    # Bajas abiertas del pool cuyo RETIRO ya se hizo con una OT de retiro de equipos FINALIZADA (retiro a mano)
-    # → se cierran para que no queden colgadas en el pool de los técnicos.
+    # El RETIRO se hizo con una OT de retiro FINALIZADA → la baja PASA A PENDIENTE_ADMIN (no se cancela)
+    # para que siga el circuito deposito -> soporte -> comercial. Avanza las PENDIENTE/ASIGNADA y crea una
+    # en PENDIENTE_ADMIN si el cliente no tenia ninguna. Deja quietas las que ya estan en el circuito o resueltas.
     try:
         ret60 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60*86400))
-        ots = sb_get("ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id&limit=5000" % ret60) or []
-        ids = sorted({o["cliente_id"] for o in ots if o.get("cliente_id")})
-        dids = []
+        ots = sb_get("ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id,numero,fin_tec_at,cuadrilla_id&order=fin_tec_at.desc&limit=5000" % ret60) or []
+        por_cli = {}
+        for o in ots:
+            if o.get("cliente_id") and o["cliente_id"] not in por_cli:
+                por_cli[o["cliente_id"]] = o  # el retiro mas reciente por cliente
+        ids = list(por_cli.keys())
+        dx_por_cli = {}
         for i in range(0, len(ids), 150):
             part = ",".join(str(x) for x in ids[i:i+150])
-            r = sb_get("desconexiones?cliente_id=in.(%s)&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,COMPROMISO_PAGO,EN_REVISION)&select=id&limit=2000" % part) or []
-            dids += [x["id"] for x in r]
+            r = sb_get("desconexiones?cliente_id=in.(%s)&select=id,cliente_id,estado&limit=3000" % part) or []
+            for x in r:
+                dx_por_cli.setdefault(x["cliente_id"], []).append(x)
     except Exception as e:
         print("WARN cerrar_desconexiones_por_retiro:", e); return 0
-    if not dids: return 0
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    avanzar, crear = [], []
+    for cid, ot in por_cli.items():
+        dxs = dx_por_cli.get(cid, [])
+        body = {"estado": "PENDIENTE_ADMIN", "corte_at": ot.get("fin_tec_at") or now,
+                "cuadrilla_id": ot.get("cuadrilla_id"), "obs_tecnico": "Corte/retiro hecho por OT N %s" % ot.get("numero"),
+                "compromiso_vence": None}
+        abierta = next((x for x in dxs if x["estado"] in ("PENDIENTE", "ASIGNADA")), None)
+        en_flujo_o_resuelta = any(x["estado"] in ("PENDIENTE_ADMIN", "EN_REVISION", "FINALIZADO", "CANCELADA", "ANULADA_PAGO") for x in dxs)
+        if abierta:
+            avanzar.append((abierta["id"], body))
+        elif not en_flujo_o_resuelta:
+            crear.append(dict(body, cliente_id=cid, origen="baja_isp"))
+    if not avanzar and not crear: return 0
     if DRY:
-        print(f"📦 Desconexiones a cerrar por retiro ya hecho por OT (DRY): {len(dids)}"); return len(dids)
+        print(f"📦 Retiros por OT → Pendiente admin (DRY): {len(avanzar)} avanzar, {len(crear)} crear"); return len(avanzar) + len(crear)
     n = 0
-    for did in dids:
-        try:
-            sb_patch("desconexiones?id=eq." + str(did),
-                     {"estado": "CANCELADA",
-                      "resolucion": "Retiro ya cumplido por una OT de retiro de equipos — cerrada por el sync",
-                      "resuelto_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                      "compromiso_vence": None})
-            n += 1
-        except Exception as e: print(f"  ERROR cerrar desconexion retiro {did}: {e}")
+    for did, body in avanzar:
+        try: sb_patch("desconexiones?id=eq." + str(did), body); n += 1
+        except Exception as e: print(f"  ERROR avanzar desconexion retiro {did}: {e}")
+    for i in range(0, len(crear), 200):
+        try: sb_post("desconexiones", crear[i:i+200]); n += len(crear[i:i+200])
+        except Exception as e: print(f"  ERROR crear desconexion retiro lote {i}: {e}")
     return n
 
 def main():
