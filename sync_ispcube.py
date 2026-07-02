@@ -354,7 +354,15 @@ def generar_desconexiones_pendientes():
         # No generar baja para el que YA pagó (deuda<=0); null y >0 sí entran (puede no tener dato de deuda).
         baja = sb_get("clientes?estado=eq.baja&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000") or []
         blo  = sb_get("clientes?estado=eq.bloqueado&bloqueado_desde=lt.%s&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000" % cut) or []
-        cand_ids = [c["id"] for c in baja] + [c["id"] for c in blo]
+        # Excluir: (a) clientes con INSTALACION abierta (prospectos aun NO instalados) y
+        #          (b) clientes con un RETIRO ya FINALIZADO por OT (retiro hecho a mano) -> no duplicar en el pool.
+        ret60 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60*86400))
+        por_instalar = set()
+        for x in (sb_get("ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id&limit=5000") or []):
+            if x.get("cliente_id"): por_instalar.add(x["cliente_id"])
+        for x in (sb_get("ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id&limit=5000" % ret60) or []):
+            if x.get("cliente_id"): por_instalar.add(x["cliente_id"])
+        cand_ids = [c["id"] for c in baja if c["id"] not in por_instalar] + [c["id"] for c in blo if c["id"] not in por_instalar]
         yaset = set()
         for i in range(0, len(cand_ids), 150):
             part = ",".join(str(x) for x in cand_ids[i:i+150])
@@ -362,8 +370,8 @@ def generar_desconexiones_pendientes():
             for x in (r or []): yaset.add(x["cliente_id"])
     except Exception as e:
         print("WARN generar_desconexiones:", e); return 0
-    nuevos  = [{"cliente_id": c["id"], "estado": "PENDIENTE", "origen": "baja_isp"}      for c in baja if c["id"] not in yaset]
-    nuevos += [{"cliente_id": c["id"], "estado": "PENDIENTE", "origen": "bloqueado_30d"} for c in blo  if c["id"] not in yaset]
+    nuevos  = [{"cliente_id": c["id"], "estado": "PENDIENTE", "origen": "baja_isp"}      for c in baja if c["id"] not in yaset and c["id"] not in por_instalar]
+    nuevos += [{"cliente_id": c["id"], "estado": "PENDIENTE", "origen": "bloqueado_30d"} for c in blo  if c["id"] not in yaset and c["id"] not in por_instalar]
     if not nuevos: return 0
     if DRY:
         print("🔌 Desconexiones a auto-generar (DRY): %d" % len(nuevos)); return len(nuevos)
@@ -417,6 +425,35 @@ def limpiar_desconexiones_eliminados():
                       "resuelto_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
             n += 1
         except Exception as e: print(f"  ERROR cerrar desconexion eliminado {o['id']}: {e}")
+    return n
+
+def cerrar_desconexiones_por_retiro():
+    # Bajas abiertas del pool cuyo RETIRO ya se hizo con una OT de retiro de equipos FINALIZADA (retiro a mano)
+    # → se cierran para que no queden colgadas en el pool de los técnicos.
+    try:
+        ret60 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60*86400))
+        ots = sb_get("ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id&limit=5000" % ret60) or []
+        ids = sorted({o["cliente_id"] for o in ots if o.get("cliente_id")})
+        dids = []
+        for i in range(0, len(ids), 150):
+            part = ",".join(str(x) for x in ids[i:i+150])
+            r = sb_get("desconexiones?cliente_id=in.(%s)&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,COMPROMISO_PAGO,EN_REVISION)&select=id&limit=2000" % part) or []
+            dids += [x["id"] for x in r]
+    except Exception as e:
+        print("WARN cerrar_desconexiones_por_retiro:", e); return 0
+    if not dids: return 0
+    if DRY:
+        print(f"📦 Desconexiones a cerrar por retiro ya hecho por OT (DRY): {len(dids)}"); return len(dids)
+    n = 0
+    for did in dids:
+        try:
+            sb_patch("desconexiones?id=eq." + str(did),
+                     {"estado": "CANCELADA",
+                      "resolucion": "Retiro ya cumplido por una OT de retiro de equipos — cerrada por el sync",
+                      "resuelto_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                      "compromiso_vence": None})
+            n += 1
+        except Exception as e: print(f"  ERROR cerrar desconexion retiro {did}: {e}")
     return n
 
 def main():
@@ -549,12 +586,14 @@ def main():
             except Exception as e: print(f"  ERROR eliminar {cid}: {e}")
         if eliminados: print(f"\n🗑️ Marcados 'eliminado' (borrados de ISPcube): {eliminados}")
 
-    # Desconexiones: limpiar las de clientes eliminados, auto-generar las pendientes y auto-anular las de rehabilitados
+    # Desconexiones: limpiar las de clientes eliminados, cerrar las cuyo retiro ya se hizo por OT,
+    # auto-generar las pendientes y auto-anular las de rehabilitados (pagaron)
     limpiadas = limpiar_desconexiones_eliminados()
+    cerradas_retiro = cerrar_desconexiones_por_retiro()
     generadas = generar_desconexiones_pendientes()
     anuladas = anular_desconexiones_rehabilitados()
 
-    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados, {generadas} desconexiones generadas, {anuladas} anuladas, {limpiadas} cerradas por eliminado. {round(time.time()-t0)}s")
+    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados, {generadas} desconexiones generadas, {anuladas} anuladas, {limpiadas} cerradas por eliminado, {cerradas_retiro} cerradas por retiro. {round(time.time()-t0)}s")
     if log_id:
         try: sb_patch("sync_log?id=eq." + str(log_id),
                       {"estado": "ok", "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

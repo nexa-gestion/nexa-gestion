@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.67';
+  var VER='v1.68';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3150,17 +3150,21 @@
     })();
   }
   function _dxAutoGenerar(cb){
-    var cut=new Date(Date.now()-30*864e5).toISOString();
+    var cut=new Date(Date.now()-30*864e5).toISOString(), ret60=new Date(Date.now()-60*864e5).toISOString();
     Promise.all([
       sbGet('clientes?estado=eq.baja&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000'),
       sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000'),
-      // clientes con una INSTALACIÓN abierta (aún NO instalados = prospectos) → NUNCA generarles un corte de desconexión
-      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
+      // clientes con una INSTALACIÓN abierta (aún NO instalados = prospectos) → NUNCA generarles un corte
+      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];}),
+      // clientes con un RETIRO ya FINALIZADO por OT (retiro hecho a mano) → no generar una desconexión duplicada en el pool
+      sbGet('ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.'+ret60+'&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
     ]).then(function(r){
-      var porInstalar={}; (Array.isArray(r[2])?r[2]:[]).forEach(function(o){ if(o.cliente_id) porInstalar[o.cliente_id]=true; });
+      var porExcluir={};
+      (Array.isArray(r[2])?r[2]:[]).forEach(function(o){ if(o.cliente_id) porExcluir[o.cliente_id]=true; });
+      (Array.isArray(r[3])?r[3]:[]).forEach(function(o){ if(o.cliente_id) porExcluir[o.cliente_id]=true; });
       var cands=[];
-      (r[0]||[]).forEach(function(c){ if(!porInstalar[c.id]) cands.push([c.id,'baja_isp']); });
-      (r[1]||[]).forEach(function(c){ if(!porInstalar[c.id]) cands.push([c.id,'bloqueado_30d']); });
+      (r[0]||[]).forEach(function(c){ if(!porExcluir[c.id]) cands.push([c.id,'baja_isp']); });
+      (r[1]||[]).forEach(function(c){ if(!porExcluir[c.id]) cands.push([c.id,'bloqueado_30d']); });
       if(!cands.length){ cb(0); return; }
       _dxBloqueados(cands.map(function(x){return x[0];}), function(ya){
         var nuevos=cands.filter(function(x){ return !ya[x[0]]; }).map(function(x){ return {cliente_id:x[0],estado:'PENDIENTE',origen:x[1],created_by:USER.id}; });
@@ -3188,6 +3192,21 @@
       d=Array.isArray(d)?d:[];
       if(!d.length){ cb(); return; }
       Promise.all(d.map(function(o){ return sbPatch('desconexiones?id=eq.'+o.id,{estado:'CANCELADA',resolucion:'Cliente ya eliminado de ISPcube (baja hecha fuera del sistema)',resuelto_at:new Date().toISOString()}).catch(function(){}); })).then(function(){ toast('🗑️ '+d.length+' baja(s) cerradas: el cliente ya no está en ISPcube'); cb(); });
+    }).catch(function(){ cb(); });
+  }
+  // Barrido: cierra las desconexiones del pool cuyo RETIRO ya se hizo con una OT de retiro de equipos finalizada
+  // (se genera la orden aparte, el técnico la cumple, pero la desconexión del pool quedaba abierta → esto la cierra).
+  function _dxCerrarPorRetiro(cb){
+    var ret60=new Date(Date.now()-60*864e5).toISOString();
+    sbGet('ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.'+ret60+'&cliente_id=not.is.null&select=cliente_id&limit=5000').then(function(ots){
+      var ids=[], seen={}; (Array.isArray(ots)?ots:[]).forEach(function(o){ if(o.cliente_id && !seen[o.cliente_id]){ seen[o.cliente_id]=1; ids.push(o.cliente_id); } });
+      if(!ids.length){ cb(); return; }
+      var jobs=[]; for(var i=0;i<ids.length;i+=150){ jobs.push(sbGet('desconexiones?cliente_id=in.('+ids.slice(i,i+150).join(',')+')&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,COMPROMISO_PAGO,EN_REVISION)&select=id&limit=2000').catch(function(){return [];})); }
+      Promise.all(jobs).then(function(rr){
+        var dids=[]; rr.forEach(function(a){ (Array.isArray(a)?a:[]).forEach(function(x){ dids.push(x.id); }); });
+        if(!dids.length){ cb(); return; }
+        Promise.all(dids.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'CANCELADA',resolucion:'Retiro ya cumplido por una OT de retiro de equipos — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); })).then(function(){ toast('📦 '+dids.length+' baja(s) cerradas: el retiro ya se hizo por OT'); cb(); });
+      });
     }).catch(function(){ cb(); });
   }
   // Barrido: los compromisos de pago vencidos vuelven al pool de PENDIENTE (conservan compromiso_count).
@@ -3258,10 +3277,11 @@
     // El botón 🔄 Actualizar lo vuelve a correr a demanda.
     if(window._dxMaintDone){ _render(); return; }
     window._dxMaintDone=true;
-    var pend=4, done=function(){ if(--pend<=0) _render(); };
+    var pend=5, done=function(){ if(--pend<=0) _render(); };
     _dxAutoGenerar(function(gen){ if(gen>0) toast('➕ '+gen+' desconexión(es) nuevas en Pendientes'); done(); });
     _dxLimpiarEliminados(done);
     _dxAutoAnular(done);
+    _dxCerrarPorRetiro(done);
     _dxVencerCompromisos(done);
   }
   function _dxFiltrados(){
