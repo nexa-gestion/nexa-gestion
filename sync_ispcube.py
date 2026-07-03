@@ -29,6 +29,13 @@ PAGE   = int(os.environ.get("PAGE_LIMIT", "500"))
 
 STATUS_MAP = {"enabled": "activo", "blocked": "bloqueado", "no_service": "baja"}
 
+def _ncode(v):
+    # Normaliza el código de ISPcube para comparar/matchear: los numéricos se rellenan
+    # a 6 dígitos con ceros ("6477" -> "006477") para que un código cargado a mano sin
+    # ceros no se trate como distinto y el sync NO lo marque 'eliminado' por error.
+    s = str(v or "").strip()
+    return s.zfill(6) if s.isdigit() else s
+
 # Campos de conexión FTTH (nombres candidatos; el modo DIAG confirma los reales)
 CAJA_KEYS   = ["ftthbox_name", "ftthbox", "caja_fibra", "fiber_box", "nap", "caja"]
 PUERTO_KEYS = ["fiber_port", "port", "puerto", "puerto_fibra", "ftth_port", "fiberport"]
@@ -134,7 +141,7 @@ def fetch_nexa():
             SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde&codigo_ispcube=not.is.null&order=id.asc",
             headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
         chunk = json.load(urllib.request.urlopen(r, timeout=60))
-        for c in chunk: out[c["codigo_ispcube"]] = c
+        for c in chunk: out[_ncode(c["codigo_ispcube"])] = c
         if len(chunk) < 1000: break
         page += 1
     return out
@@ -175,7 +182,7 @@ def barrio_de(addr):
     return addr.split(" - ")[0].strip() if " - " in addr else None
 
 def nuevo_cliente(c, planes, bemap, portmap=None):
-    code = str(c.get("code") or "").strip()
+    code = _ncode(c.get("code"))
     addr = c.get("address") or c.get("tax_residence")
     barrio = barrio_de(addr)
     plan = c.get("plan_name")
@@ -505,13 +512,16 @@ def main():
 
     updates, graduados, nuevos, isp_codes, evitados = [], [], [], set(), []
     for c in isp:
-        code = str(c.get("code") or "").strip()
+        code = _ncode(c.get("code"))
         if not code: continue
         isp_codes.add(code)
         est = STATUS_MAP.get(c.get("status"))
         deu = _f(c.get("duedebt"))
         if code in nexa:
             cur = nexa[code]; upd = {}
+            # auto-corrige el código guardado torcido (ej "6477" -> "006477") para que
+            # quede uniforme y no vuelva a fallar el matcheo / las búsquedas del panel
+            if str(cur.get("codigo_ispcube") or "") != code: upd["codigo_ispcube"] = code
             if est and est != cur["estado"]: upd["estado"] = est
             # fecha REAL de bloqueo desde ISPcube (block_date) → vía "bloqueado +30d" de desconexiones
             if est == "bloqueado":

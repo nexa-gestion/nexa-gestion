@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.72';
+  var VER='v1.73';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -361,6 +361,9 @@
   // como sbPatch pero RECHAZA si el server devuelve error (4xx/5xx) — usar cuando un fallo no debe seguir de largo
   function sbPatchOk(path,body){ return fetch(SB_URL+'/rest/v1/'+path,{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(body)}).then(function(r){ if(!r.ok) return r.text().then(function(t){ throw new Error('PATCH '+r.status+' '+t); }); return r.json(); }); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  // Normaliza el código ISPcube a 6 dígitos (mismo formato que el sync). Si se carga "6477" a
+  // mano, lo guarda "006477" para que el sync NO lo trate como distinto y marque 'eliminado'.
+  function padISP(v){ var s=(v==null?'':String(v)).trim(); if(!s) return null; return /^\d+$/.test(s)?('000000'+s).slice(-6):s; }
   // ===== Tabla genérica reutilizable: orden por columna (click en cabecera) + selector ⚙️ de columnas con memoria =====
   // cols: [{k, t, def(false=oculta por defecto), sort:function(row)->valor (omitir => no ordenable), r:function(row)->html}]
   // opts: { key (clave única p/ memoria), onRow:function(row,ev), rowStyle:function(row)->css, note:'texto al pie' }
@@ -1741,7 +1744,7 @@
         var cuad=document.getElementById('ot-cuad-edit').value, est=document.getElementById('ot-est').value, trab=document.getElementById('ot-trab-edit').value;
         // Código ISPcube: si lo cargaste/cambiaste, lo guardo en el cliente (destraba «falta ISP» y habilita asignar). Actualizo en memoria ANTES del bloqueo para permitir cargar+asignar en el mismo Guardar.
         var _ispEl=document.getElementById('ot-isp-edit');
-        if(o.clientes && _ispEl){ var _ispVal=_ispEl.value.trim()||null, _ispPrev=(o.clientes.codigo_ispcube||null); if(_ispVal!==_ispPrev){ o.clientes.codigo_ispcube=_ispVal; sbPatchOk('clientes?id=eq.'+o.clientes.id,{codigo_ispcube:_ispVal}).then(function(){ toast(_ispVal?'Código ISPcube guardado ✓':'Código ISPcube borrado'); }).catch(function(){ o.clientes.codigo_ispcube=_ispPrev; toast('⚠️ No se guardó el código ISPcube: ese código ya está usado por otro cliente. Revisalo.'); }); } }
+        if(o.clientes && _ispEl){ var _ispVal=padISP(_ispEl.value), _ispPrev=(o.clientes.codigo_ispcube||null); if(_ispVal!==_ispPrev){ o.clientes.codigo_ispcube=_ispVal; sbPatchOk('clientes?id=eq.'+o.clientes.id,{codigo_ispcube:_ispVal}).then(function(){ toast(_ispVal?'Código ISPcube guardado ✓':'Código ISPcube borrado'); }).catch(function(){ o.clientes.codigo_ispcube=_ispPrev; toast('⚠️ No se guardó el código ISPcube: ese código ya está usado por otro cliente. Revisalo.'); }); } }
         // Bloqueo: no se puede asignar cuadrilla si el cliente todavía no está en ISPcube
         if(cuad && !_otAsignable(o)){ toast('⚠️ No se puede asignar: el cliente todavía no está cargado en ISPcube.'); return; }
         var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null), fecha_agendada:document.getElementById('ot-fecha-edit').value||null };
