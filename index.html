@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.70';
+  var VER='v1.72';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1618,7 +1618,7 @@
   }
   function nuevaOT(cliente){
     var buscar = cliente ? '<div class="ficha-row"><span class="k">Cliente</span><span class="v">N°'+esc(cliente.numero_cliente)+' · '+esc(cliente.nombre||'')+' '+esc(cliente.apellido||'')+'</span></div>'
-      : '<label class="l">Buscar cliente <span class="muted" style="text-transform:none;font-weight:400">(opcional — dejalo vacío para obra de red)</span></label><input id="ot-cli-q" placeholder="🔎 N° cliente, N° ISP, DNI o nombre…"><div id="ot-cli-res"></div><div id="ot-cli-sel" class="muted" style="margin-top:6px"></div>';
+      : '<label class="l">Buscar cliente <span class="muted" style="text-transform:none;font-weight:400">(opcional — dejalo vacío para obra de red)</span></label><input id="ot-cli-q" placeholder="🔎 N° cliente, N° ISP o nombre…"><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#475569;margin-top:6px;cursor:pointer;user-select:none"><input type="checkbox" id="ot-cli-dni" style="width:auto"> 🪪 Buscar por DNI</label><div id="ot-cli-res"></div><div id="ot-cli-sel" class="muted" style="margin-top:6px"></div>';
     var selId = cliente ? cliente.id : null;
     function autoTrab(tec){ var cod=/ftth/i.test(tec||'')?'FTTH':(/(inalamb|wireless|wifi)/i.test(tec||'')?'WIRELESS':null); if(!cod) return; var f=REF.tiposTrab.filter(function(t){return t.codigo===cod;})[0]; var sel=document.getElementById('ot-trab'); if(f&&sel&&!sel.value) sel.value=f.id; }
     modal('<h2>Nueva orden de trabajo</h2>'+buscar
@@ -1636,18 +1636,21 @@
       var qi=document.getElementById('ot-cli-q');
       var _cliTmr;
       function _otCliBuscar(){ var res=document.getElementById('ot-cli-res'); if(!res) return; var q=qi.value.trim().replace(/[(),]/g,' '); if(!q){ res.innerHTML=''; return; }
-        // busca por nombre/apellido, DNI, N° cliente Nexa y N° ISP (con y sin ceros adelante)
-        var ors=['nombre.ilike.*'+q+'*','apellido.ilike.*'+q+'*','doc_numero.ilike.*'+q+'*'];
-        if(/^\d+$/.test(q)){ ors.push('numero_cliente.eq.'+q); ors.push('codigo_ispcube.eq.'+q); ors.push('codigo_ispcube.eq.'+('000000'+q).slice(-6)); }
-        else { ors.push('codigo_ispcube.ilike.*'+q+'*'); }
-        sbGet('clientes?or=('+ors.join(',')+')&estado=neq.eliminado&select=id,numero_cliente,nombre,apellido,tecnologia,codigo_ispcube,doc_numero&limit=10').then(function(rs){
+        var porDni=!!(document.getElementById('ot-cli-dni')&&document.getElementById('ot-cli-dni').checked);
+        var padded=('000000'+q).slice(-6), esNum=/^\d+$/.test(q), ors;
+        if(porDni){ ors=['doc_numero.ilike.*'+q+'*']; }  // 🪪 modo DNI: solo por documento
+        else { ors=['nombre.ilike.*'+q+'*','apellido.ilike.*'+q+'*']; if(esNum){ ors.push('numero_cliente.eq.'+q); ors.push('codigo_ispcube.eq.'+q); ors.push('codigo_ispcube.eq.'+padded); } else { ors.push('codigo_ispcube.ilike.*'+q+'*'); } }
+        sbGet('clientes?or=('+ors.join(',')+')&select=id,numero_cliente,nombre,apellido,tecnologia,codigo_ispcube,doc_numero,estado&limit=15').then(function(rs){
           rs=Array.isArray(rs)?rs:[];
-          res.innerHTML=rs.length? rs.map(function(c){return '<div style="padding:6px;border:1px solid var(--bord);border-radius:8px;margin-top:4px;cursor:pointer" data-cid="'+c.id+'" data-tec="'+esc(c.tecnologia||'')+'">N°'+esc(c.numero_cliente)+' · '+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+(c.codigo_ispcube?(' <span class="muted">· ISP '+esc(c.codigo_ispcube)+'</span>'):'')+(c.doc_numero?(' <span class="muted">· DNI '+esc(c.doc_numero)+'</span>'):'')+'</div>';}).join('') : '<div class="muted" style="font-size:12px;margin-top:4px">Sin resultados.</div>';
+          // el match EXACTO de N° cliente o N° ISP va primero (ej: buscar 6477 → 006477 arriba)
+          if(esNum && !porDni){ var _ex=function(c){ return (String(c.numero_cliente)===q||c.codigo_ispcube===q||c.codigo_ispcube===padded)?0:1; }; rs.sort(function(a,b){ return _ex(a)-_ex(b); }); }
+          res.innerHTML=rs.length? rs.map(function(c){return '<div style="padding:6px;border:1px solid var(--bord);border-radius:8px;margin-top:4px;cursor:pointer" data-cid="'+c.id+'" data-tec="'+esc(c.tecnologia||'')+'">N°'+esc(c.numero_cliente)+' · '+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+(c.codigo_ispcube?(' <span class="muted">· ISP '+esc(c.codigo_ispcube)+'</span>'):'')+(c.doc_numero?(' <span class="muted">· DNI '+esc(c.doc_numero)+'</span>'):'')+((c.estado==='eliminado'||c.estado==='baja')?(' <span style="color:#dc2626;font-weight:700">· ⚠️ '+esc(c.estado)+'</span>'):'')+'</div>';}).join('') : '<div class="muted" style="font-size:12px;margin-top:4px">Sin resultados.</div>';
           Array.prototype.forEach.call(res.querySelectorAll('[data-cid]'),function(el){ el.addEventListener('click',function(){ selId=el.getAttribute('data-cid'); document.getElementById('ot-cli-sel').innerHTML='✓ '+el.textContent.trim(); res.innerHTML=''; autoTrab(el.getAttribute('data-tec')); }); });
         });
       }
       qi.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); clearTimeout(_cliTmr); _otCliBuscar(); } });
       qi.addEventListener('input',function(){ clearTimeout(_cliTmr); _cliTmr=setTimeout(_otCliBuscar,300); });
+      var _dniChk=document.getElementById('ot-cli-dni'); if(_dniChk) _dniChk.addEventListener('change',function(){ qi.placeholder=this.checked?'🪪 Escribí el DNI…':'🔎 N° cliente, N° ISP o nombre…'; _otCliBuscar(); qi.focus(); });
     }
     document.getElementById('ot-go').addEventListener('click',function(){
       var trab=document.getElementById('ot-trab').value;
