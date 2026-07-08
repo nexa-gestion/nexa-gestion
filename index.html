@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.73';
+  var VER='v1.74';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4826,7 +4826,7 @@
   // Solo OTs FINALIZADA + validado_admin_at no nulo. Se filtra por validado_admin_at (fecha de finalización).
   // Horas = suma de ot_sesiones. Cliente facturable = principal (cliente_padre_id) o él mismo.
   // Plata = SOLO compras directas (origen=COMPRA_DIRECTA, costo_unitario), separada por pagado_por.
-  var _repState={ desde:null, hasta:null }, _repCharts=[];
+  var _repState={ desde:null, hasta:null, cuad:'', tipo:'' }, _repCharts=[], _repCuads=[], _repTipos=[];
   function _repDestroy(){ _repCharts.forEach(function(c){ try{ c.destroy(); }catch(e){} }); _repCharts=[]; }
   function _repMoney(n){ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); }
   function _repYM(iso){ var d=new Date(new Date(iso).getTime()-3*3600000); return d.getUTCFullYear()+'-'+('0'+(d.getUTCMonth()+1)).slice(-2); }   // año-mes en hora AR
@@ -4943,15 +4943,23 @@
   function _svRepGerencial(){
     var body=document.getElementById('svrep-body');
     if(!_repState.desde){ _repState.desde=_hoyISO().substring(0,8)+'01'; _repState.hasta=_hoyISO(); }
-    body.innerHTML='<div class="toolbar" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">'
-      +'<div><label class="l">Desde</label><input type="date" id="rep-desde" value="'+esc(_repState.desde)+'"></div>'
-      +'<div><label class="l">Hasta</label><input type="date" id="rep-hasta" value="'+esc(_repState.hasta)+'"></div>'
-      +'<button class="btn btn-pri" id="rep-ver">Ver reporte</button>'
-      +'<button class="btn btn-2" id="rep-mes">Este mes</button>'
-      +'</div><div id="rep-cont"></div>';
-    document.getElementById('rep-ver').addEventListener('click',function(){ _repState.desde=document.getElementById('rep-desde').value; _repState.hasta=document.getElementById('rep-hasta').value; _repCargarGerencial(); });
-    document.getElementById('rep-mes').addEventListener('click',function(){ _repState.desde=_hoyISO().substring(0,8)+'01'; _repState.hasta=_hoyISO(); _svRepGerencial(); });
-    _repCargarGerencial();
+    body.innerHTML='<div class="muted" style="font-size:13px;padding:10px">Cargando…</div>';
+    Promise.all([ sbGet('cuadrillas?select=id,nombre&order=nombre'), sbGet('tipos_trabajo?area=eq.SERVICIOS&select=id,nombre&order=nombre') ]).then(function(r){
+      _repCuads=r[0]||[]; _repTipos=r[1]||[];
+      var cuadOpts='<option value="">Todos los técnicos</option>'+_repCuads.map(function(c){return '<option value="'+c.id+'"'+(String(_repState.cuad||'')===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+      var tipoOpts='<option value="">Todos los tipos</option>'+_repTipos.map(function(t){return '<option value="'+t.id+'"'+(String(_repState.tipo||'')===String(t.id)?' selected':'')+'>'+esc(t.nombre)+'</option>';}).join('');
+      body.innerHTML='<div class="toolbar" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">'
+        +'<div><label class="l">Desde</label><input type="date" id="rep-desde" value="'+esc(_repState.desde)+'"></div>'
+        +'<div><label class="l">Hasta</label><input type="date" id="rep-hasta" value="'+esc(_repState.hasta)+'"></div>'
+        +'<div><label class="l">Técnico / cuadrilla</label><select id="rep-cuad">'+cuadOpts+'</select></div>'
+        +'<div><label class="l">Tipo de tarea</label><select id="rep-tipo">'+tipoOpts+'</select></div>'
+        +'<button class="btn btn-pri" id="rep-ver">Ver reporte</button>'
+        +'<button class="btn btn-2" id="rep-mes">Este mes</button>'
+        +'</div><div id="rep-cont"></div>';
+      document.getElementById('rep-ver').addEventListener('click',function(){ _repState.desde=document.getElementById('rep-desde').value; _repState.hasta=document.getElementById('rep-hasta').value; _repState.cuad=document.getElementById('rep-cuad').value; _repState.tipo=document.getElementById('rep-tipo').value; _repCargarGerencial(); });
+      document.getElementById('rep-mes').addEventListener('click',function(){ _repState.desde=_hoyISO().substring(0,8)+'01'; _repState.hasta=_hoyISO(); _repState.cuad=document.getElementById('rep-cuad').value; _repState.tipo=document.getElementById('rep-tipo').value; _svRepGerencial(); });
+      _repCargarGerencial();
+    });
   }
   function _repCargarGerencial(){
     var cont=document.getElementById('rep-cont'); if(!cont) return;
@@ -4960,7 +4968,8 @@
     var desde=_repState.desde, hasta=_repState.hasta;
     if(!desde||!hasta){ cont.innerHTML='<div class="muted" style="padding:14px">Elegí el rango de fechas.</div>'; return; }
     var gte=desde+'T03:00:00Z', lt=_addDias(hasta,1)+'T03:00:00Z';
-    var q='ordenes_trabajo?area=eq.SERVICIOS&estado=eq.FINALIZADA&validado_admin_at=not.is.null&validado_admin_at=gte.'+gte+'&validado_admin_at=lt.'+lt+'&select=id,numero,cliente_servicio_id,cuadrilla_id,validado_admin_at&limit=5000';
+    var fCuad=_repState.cuad?('&cuadrilla_id=eq.'+_repState.cuad):'', fTipo=_repState.tipo?('&tipo_trabajo_id=eq.'+_repState.tipo):'';
+    var q='ordenes_trabajo?area=eq.SERVICIOS&estado=eq.FINALIZADA&validado_admin_at=not.is.null&validado_admin_at=gte.'+gte+'&validado_admin_at=lt.'+lt+fCuad+fTipo+'&select=id,numero,titulo,tipo_trabajo_id,cliente_servicio_id,cuadrilla_id,asignada_at,inicio_tec_at,fin_tec_at,validado_admin_at&order=validado_admin_at.desc&limit=5000';
     Promise.all([ sbGet(q), sbGet('clientes_servicios?select=id,nombre,cliente_padre_id'), sbGet('cuadrillas?select=id,nombre') ]).then(function(r){
       var ots=r[0]||[], clis=r[1]||[], cuads=r[2]||[];
       if(!ots.length){ cont.innerHTML='<div class="center" style="padding:34px;color:#94a3b8">No hay OTs de servicio finalizadas en este rango.</div>'; return; }
@@ -4976,25 +4985,56 @@
     function principalId(cliId){ var c=cliMap[cliId]; return (c&&c.cliente_padre_id)?c.cliente_padre_id:cliId; }
     function cliNombre(id){ return (cliMap[id]&&cliMap[id].nombre)||('Cliente '+id); }
     var msPorOt={}; ses.forEach(function(s){ if(s.inicio&&s.fin){ var d=new Date(s.fin)-new Date(s.inicio); if(d>0) msPorOt[s.ot_id]=(msPorOt[s.ot_id]||0)+d; } });
+    var tipoNom={}; _repTipos.forEach(function(t){ tipoNom[t.id]=t.nombre; });
+    var DUD=300000;   // sesión total < 5 min = tiempo dudoso (no lo registraron bien)
     var otPrincipal={};
-    var hCli={}, hCuad={}, hMes={}, totalMs=0;
+    var hCli={}, hCuad={}, hMes={}, totalMs=0, totalDud=0;
+    var tecAgg={}, tipoAgg={}, otRows=[];
     ots.forEach(function(o){ var ms=msPorOt[o.id]||0; totalMs+=ms; var pid=principalId(o.cliente_servicio_id); otPrincipal[o.id]=pid;
-      hCli[pid]=(hCli[pid]||0)+ms; var cu=o.cuadrilla_id||'0'; hCuad[cu]=(hCuad[cu]||0)+ms; var ym=_repYM(o.validado_admin_at); hMes[ym]=(hMes[ym]||0)+ms; });
+      hCli[pid]=(hCli[pid]||0)+ms; var cu=o.cuadrilla_id||'0'; hCuad[cu]=(hCuad[cu]||0)+ms; var ym=_repYM(o.validado_admin_at); hMes[ym]=(hMes[ym]||0)+ms;
+      var dud=(ms<DUD); if(dud) totalDud++;
+      var ta=tecAgg[cu]||(tecAgg[cu]={ots:0,ms:0,dud:0}); ta.ots++; ta.ms+=ms; if(dud) ta.dud++;
+      var tlbl=tipoNom[o.tipo_trabajo_id]||o.titulo||'—'; tipoAgg[tlbl]=(tipoAgg[tlbl]||0)+1;
+      otRows.push({ id:o.id, num:o.numero, fecha:fmtFecha(o.validado_admin_at), cli:cliNombre(o.cliente_servicio_id), tipo:tlbl, tec:(cuadMap[cu]||(cu==='0'?'(sin técnico)':('Cuad '+cu))), min:Math.round(ms/60000), horas:_minTxt(ms/60000), dud:dud });
+    });
     var cdCli={}, totNexa=0, totCli=0;
     mats.forEach(function(m){ var monto=(Number(m.cantidad)||0)*(Number(m.costo_unitario)||0); if(!monto) return; var pid=otPrincipal[m.ot_id]; if(pid==null) return; var bk=cdCli[pid]||(cdCli[pid]={nexa:0,cliente:0});
       if(m.pagado_por==='NEXA'){ bk.nexa+=monto; totNexa+=monto; } else if(m.pagado_por==='CLIENTE'){ bk.cliente+=monto; totCli+=monto; } });
     var kpis='<div class="dkpis">'
       +dkpi(_minTxt(totalMs/60000),'Horas trabajadas','en el rango','blue')
-      +dkpi(ots.length,'OTs finalizadas','validadas','green')
+      +dkpi(ots.length,'OTs / tareas cumplidas','finalizadas y validadas','green')
       +dkpi(_repMoney(totNexa),'Compras directas Nexa','se factura al cliente','amber')
-      +dkpi(_repMoney(totCli),'Compras directas Cliente','solo registro, no se factura','gray')
+      +dkpi(totalDud,'Horas dudosas','OTs con < 5 min cargados',totalDud?'red':'gray')
       +'</div>';
-    var nota='<div class="muted" style="font-size:12px;margin:2px 0 12px">💡 Los montos en $ son <b>solo compras directas</b>. No incluyen materiales de stock (sin costo cargado).</div>';
+    var nota='<div class="muted" style="font-size:12px;margin:2px 0 12px">💡 Las <b>horas</b> salen de lo que el técnico registra (inicio/fin). Las OTs con menos de 5 min cargados salen marcadas <b style="color:#dc2626">⚠️ dudoso</b> — probablemente no registraron bien el tiempo. Los $ son solo compras directas (no incluyen stock).</div>';
+    // ── Rendimiento por técnico ──
+    var tecKeys=Object.keys(tecAgg).sort(function(a,b){ return tecAgg[b].ms-tecAgg[a].ms; });
+    var tecTabla='<div class="dkpi" style="border-left-color:#0891b2;overflow-x:auto"><div class="dkpi-lbl" style="color:#334155;font-size:13px;margin-bottom:8px">👷 Rendimiento por técnico / cuadrilla</div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:#64748b;border-bottom:2px solid var(--bord)">'
+      +'<th style="padding:6px 8px">Técnico</th><th style="padding:6px 8px;text-align:right">OTs</th><th style="padding:6px 8px;text-align:right">Horas</th><th style="padding:6px 8px;text-align:right">Prom. h/OT</th><th style="padding:6px 8px;text-align:right">⚠️ dudosas</th></tr></thead><tbody>'
+      +tecKeys.map(function(cu){ var t=tecAgg[cu]; var nom=cuadMap[cu]||(cu==='0'?'(sin técnico)':('Cuad '+cu)); var prom=t.ots?(t.ms/t.ots):0;
+        return '<tr style="border-bottom:1px solid var(--bord)"><td style="padding:6px 8px;font-weight:700">'+esc(nom)+'</td><td style="padding:6px 8px;text-align:right">'+t.ots+'</td><td style="padding:6px 8px;text-align:right">'+_minTxt(t.ms/60000)+'</td><td style="padding:6px 8px;text-align:right">'+_minTxt(prom/60000)+'</td><td style="padding:6px 8px;text-align:right">'+(t.dud?('<b style="color:#dc2626">'+t.dud+'</b>'):'<span class="muted">—</span>')+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+    // ── Tareas por tipo ──
+    var tipoKeys=Object.keys(tipoAgg).sort(function(a,b){ return tipoAgg[b]-tipoAgg[a]; });
+    var tipoBox='<div class="dkpi" style="border-left-color:#7c3aed"><div class="dkpi-lbl" style="color:#334155;font-size:13px;margin-bottom:8px">🧰 Tareas cumplidas por tipo</div><div style="display:flex;flex-wrap:wrap;gap:8px">'
+      +tipoKeys.map(function(k){ return '<span style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:999px;padding:4px 12px;font-size:13px;color:#5b21b6">'+esc(k)+' · <b>'+tipoAgg[k]+'</b></span>'; }).join('')+'</div></div>';
+    // ── Lista de OTs cumplidas (clickeable + copiar) ──
+    var listaRows=otRows.map(function(r){ return '<tr class="rep-ot" data-ot="'+r.id+'" style="border-bottom:1px solid var(--bord);cursor:pointer">'
+      +'<td style="padding:6px 8px;font-weight:700">'+esc(r.num)+'</td><td style="padding:6px 8px">'+esc(r.fecha)+'</td><td style="padding:6px 8px">'+esc(r.cli)+'</td><td style="padding:6px 8px">'+esc(r.tipo)+'</td><td style="padding:6px 8px">'+esc(r.tec)+'</td>'
+      +'<td style="padding:6px 8px;text-align:right">'+esc(r.horas)+(r.dud?' <span style="color:#dc2626" title="menos de 5 min — tiempo dudoso">⚠️</span>':'')+'</td></tr>'; }).join('');
+    var lista='<div class="dkpi" style="border-left-color:#16a34a;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap"><div class="dkpi-lbl" style="color:#334155;font-size:13px">📋 OTs cumplidas ('+otRows.length+')</div><button class="btn btn-2" id="rep-copy" style="font-size:12px">📋 Copiar a Excel</button></div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:#64748b;border-bottom:2px solid var(--bord)"><th style="padding:6px 8px">N°</th><th style="padding:6px 8px">Fecha</th><th style="padding:6px 8px">Cliente</th><th style="padding:6px 8px">Tipo</th><th style="padding:6px 8px">Técnico</th><th style="padding:6px 8px;text-align:right">Horas</th></tr></thead><tbody>'+listaRows+'</tbody></table></div>';
     function card(title,cid){ return '<div class="dkpi" style="border-left-color:#2563eb"><div class="dkpi-lbl" style="color:#334155;font-size:12px">'+title+'</div><div style="position:relative;height:240px;margin-top:8px"><canvas id="'+cid+'"></canvas></div></div>'; }
-    var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">'
+    var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-top:14px">'
       +card('Horas por cliente','rep-c1')+card('Horas por técnico','rep-c2')
       +card('Horas por mes','rep-c3')+card('Compras directas por cliente · Nexa vs Cliente','rep-c4')+'</div>';
-    cont.innerHTML=kpis+nota+grid;
+    cont.innerHTML=kpis+nota+'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:14px">'+tecTabla+tipoBox+'</div>'+lista+grid;
+    // handlers: abrir OT + copiar a Excel (TSV)
+    Array.prototype.forEach.call(cont.querySelectorAll('.rep-ot'),function(el){ el.addEventListener('click',function(){ valDetalle(el.getAttribute('data-ot')); }); });
+    var _copyBtn=document.getElementById('rep-copy');
+    if(_copyBtn){ var tsv='N°\tFecha\tCliente\tTipo\tTécnico\tMinutos\tDudoso\n'+otRows.map(function(r){ return r.num+'\t'+r.fecha+'\t'+r.cli+'\t'+r.tipo+'\t'+r.tec+'\t'+r.min+'\t'+(r.dud?'SÍ':''); }).join('\n');
+      _copyBtn.addEventListener('click',function(){ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(tsv).then(function(){ var o=_copyBtn.textContent; _copyBtn.textContent='✓ copiado'; setTimeout(function(){ _copyBtn.textContent=o; },1500); },function(){ prompt('Copiá:',tsv); }); } else prompt('Copiá:',tsv); }); }
     ensureChartJs(function(){
       if(!document.getElementById('rep-c1')) return;   // el usuario cambió de pestaña antes de que cargue
       _repDestroy();
