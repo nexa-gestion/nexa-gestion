@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.75';
+  var VER='v1.76';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4854,17 +4854,20 @@
     sbGet('clientes_servicios?cliente_padre_id=is.null&select=id,nombre&order=nombre').then(function(clis){
       clis=clis||[];
       if(!_repState.desde){ _repState.desde=_hoyISO().substring(0,8)+'01'; _repState.hasta=_hoyISO(); }
+      if(_repState.vh==null) _repState.vh=Number(localStorage.getItem('nexa_vh_serv')||0)||0;
       var opts='<option value="">— elegí un cliente —</option><option value="ALL"'+(_repState.cli==='ALL'?' selected':'')+'>📊 Todos los clientes (resumen)</option>'+clis.map(function(c){return '<option value="'+c.id+'"'+(String(_repState.cli||'')===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
       body.innerHTML='<div class="toolbar" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">'
         +'<div><label class="l">Cliente (principal)</label><select id="fac-cli">'+opts+'</select></div>'
         +'<div id="fac-sub-box" style="display:none"><label class="l">Sub-cliente <span class="muted">(opcional)</span></label><select id="fac-sub"><option value="">Todos los sub-clientes</option></select></div>'
         +'<div><label class="l">Desde</label><input type="date" id="fac-desde" value="'+esc(_repState.desde)+'"></div>'
         +'<div><label class="l">Hasta</label><input type="date" id="fac-hasta" value="'+esc(_repState.hasta)+'"></div>'
+        +'<div><label class="l">Valor hora $ <span class="muted">(mano de obra)</span></label><input type="number" id="fac-vh" min="0" step="100" value="'+esc(_repState.vh||'')+'" placeholder="0" style="width:120px"></div>'
         +'<button class="btn btn-pri" id="fac-ver">Ver detalle</button>'
         +'</div><div id="fac-cont"></div>';
       document.getElementById('fac-cli').addEventListener('change',function(){ _repState.cli=this.value; _repState.sub=''; if(this.value==='ALL'){ document.getElementById('fac-sub-box').style.display='none'; } else _facLoadSubs(this.value); });
       document.getElementById('fac-sub').addEventListener('change',function(){ _repState.sub=this.value; });
-      document.getElementById('fac-ver').addEventListener('click',function(){ _repState.cli=document.getElementById('fac-cli').value; var ss=document.getElementById('fac-sub'); _repState.sub=ss?ss.value:''; _repState.desde=document.getElementById('fac-desde').value; _repState.hasta=document.getElementById('fac-hasta').value; _facCargar(); });
+      document.getElementById('fac-vh').addEventListener('change',function(){ _repState.vh=Math.max(0,Number(this.value)||0); localStorage.setItem('nexa_vh_serv',_repState.vh); if(_repState.cli) _facCargar(); });
+      document.getElementById('fac-ver').addEventListener('click',function(){ _repState.cli=document.getElementById('fac-cli').value; var ss=document.getElementById('fac-sub'); _repState.sub=ss?ss.value:''; _repState.desde=document.getElementById('fac-desde').value; _repState.hasta=document.getElementById('fac-hasta').value; _repState.vh=Math.max(0,Number(document.getElementById('fac-vh').value)||0); localStorage.setItem('nexa_vh_serv',_repState.vh); _facCargar(); });
       if(_repState.cli==='ALL'){ _facCargar(); }
       else if(_repState.cli){ _facLoadSubs(_repState.cli); _facCargar(); }
       else document.getElementById('fac-cont').innerHTML='<div class="center" style="padding:30px;color:#94a3b8">Elegí un cliente y un rango para ver el detalle a facturar.</div>';
@@ -4929,9 +4932,12 @@
         +'<div style="margin-top:4px"><span class="muted" style="font-size:12px">Compras directas:</span>'+cdTxt+'</div>'
         +'</div>';
     });
+    var _vh=Math.max(0,Number(_repState.vh)||0), _mo=Math.round((totMs/3600000)*_vh), _totFac=_mo+totNexa;
     var bloqueA='<div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:12px;padding:14px"><div style="font-weight:800;color:#14532d;margin-bottom:6px">✅ Se factura al cliente</div>'
-      +'<div style="font-size:13px">Horas trabajadas: <b style="font-size:18px">'+_minTxt(totMs/60000)+'</b></div>'
-      +'<div style="font-size:13px;margin-top:3px">Compras directas (Nexa): <b style="font-size:18px;color:#15803d">'+_repMoney(totNexa)+'</b></div></div>';
+      +'<div style="font-size:13px">Horas trabajadas: <b style="font-size:18px">'+_minTxt(totMs/60000)+'</b>'+(_vh>0?(' <span class="muted">× $'+_vh.toLocaleString('es-AR')+'/h</span>'):'')+'</div>'
+      +'<div style="font-size:13px;margin-top:3px">Mano de obra: <b style="font-size:18px;color:#15803d">'+(_vh>0?_repMoney(_mo):'<span class="muted" style="font-size:13px">poné el valor hora ↑</span>')+'</b></div>'
+      +'<div style="font-size:13px;margin-top:3px">Compras directas (Nexa): <b style="font-size:18px;color:#15803d">'+_repMoney(totNexa)+'</b></div>'
+      +'<div style="font-size:13px;margin-top:6px;border-top:1px solid #bbf7d0;padding-top:6px">TOTAL a facturar: <b style="font-size:20px;color:#15803d">'+_repMoney(_totFac)+'</b></div></div>';
     var bloqueB='<div style="border:1px solid var(--bord);background:#f8fafc;border-radius:12px;padding:14px"><div style="font-weight:800;color:#475569;margin-bottom:6px">📋 Solo registro (lo puso el cliente)</div>'
       +'<div style="font-size:13px">Compras directas (Cliente): <b style="font-size:18px;color:#64748b">'+_repMoney(totCli)+'</b></div>'
       +'<div class="muted" style="font-size:12px;margin-top:4px">No se factura — es solo registro de lo que aportó el cliente.</div></div>';
@@ -4973,38 +4979,46 @@
     Object.keys(node).forEach(function(cid){ var p=pidOf(cid); var pr=princ[p]||(princ[p]={id:p,nombre:nom(p),tot:{ots:0,ms:0,nexa:0,cliente:0},rows:[]}); var a=node[cid]; pr.tot.ots+=a.ots; pr.tot.ms+=a.ms; pr.tot.nexa+=a.nexa; pr.tot.cliente+=a.cliente; pr.rows.push({id:cid,nombre:nom(cid),self:(String(cid)===String(p)),a:a}); });
     var lista=Object.keys(princ).map(function(k){return princ[k];}).sort(function(a,b){ return (b.tot.ms-a.tot.ms)||(b.tot.ots-a.tot.ots); });
     var G={ots:0,ms:0,nexa:0,cliente:0}; lista.forEach(function(p){ G.ots+=p.tot.ots; G.ms+=p.tot.ms; G.nexa+=p.tot.nexa; G.cliente+=p.tot.cliente; });
+    var vh=Math.max(0,Number(_repState.vh)||0);
+    function moDe(ms){ return Math.round((ms/3600000)*vh); }
+    var Gmo=moDe(G.ms), Gtot=Gmo+G.nexa;
+    var moCell=function(ms,fs){ return vh>0?_repMoney(moDe(ms)):'<span class="muted"'+(fs?' style="font-size:'+fs+'"':'')+'>—</span>'; };
     var kpis='<div class="dkpis">'
       +dkpi(lista.length,'Clientes con trabajo','en el rango','cyan')
       +dkpi(G.ots,'OTs finalizadas','total','green')
-      +dkpi(_minTxt(G.ms/60000),'Horas trabajadas','total','blue')
-      +dkpi(_repMoney(G.nexa),'Compras Nexa','se factura (+ mano de obra a tarifar)','amber')
+      +dkpi(_minTxt(G.ms/60000),'Horas trabajadas',vh>0?('× $'+vh.toLocaleString('es-AR')+'/h'):'poné el valor hora ↑','blue')
+      +dkpi(_repMoney(Gtot),'TOTAL a facturar','mano de obra + compras Nexa','green')
       +'</div>';
-    var head='<tr style="text-align:left;color:#64748b;border-bottom:2px solid var(--bord)"><th style="padding:7px 8px">Cliente</th><th style="padding:7px 8px;text-align:right">OTs</th><th style="padding:7px 8px;text-align:right">Horas</th><th style="padding:7px 8px;text-align:right">Compras Nexa</th><th style="padding:7px 8px;text-align:right">Compras Cliente</th></tr>';
+    var head='<tr style="text-align:left;color:#64748b;border-bottom:2px solid var(--bord)"><th style="padding:7px 8px">Cliente</th><th style="padding:7px 8px;text-align:right">OTs</th><th style="padding:7px 8px;text-align:right">Horas</th><th style="padding:7px 8px;text-align:right">Mano de obra</th><th style="padding:7px 8px;text-align:right">Compras Nexa</th><th style="padding:7px 8px;text-align:right">TOTAL</th></tr>';
     var body='';
     lista.forEach(function(p){
       var multi=(p.rows.length>1)||(!p.rows[0].self);
+      var pTot=moDe(p.tot.ms)+p.tot.nexa;
       body+='<tr class="fac-princ" data-cli="'+p.id+'" style="border-bottom:1px solid var(--bord);cursor:pointer;background:#f8fafc" title="Ver el detalle facturable de este cliente">'
         +'<td style="padding:7px 8px;font-weight:800">'+esc(p.nombre)+' <span style="color:var(--azul);font-size:11px">🔍</span></td>'
         +'<td style="padding:7px 8px;text-align:right;font-weight:700">'+p.tot.ots+'</td>'
         +'<td style="padding:7px 8px;text-align:right">'+_minTxt(p.tot.ms/60000)+'</td>'
-        +'<td style="padding:7px 8px;text-align:right;color:#15803d;font-weight:700">'+_repMoney(p.tot.nexa)+'</td>'
-        +'<td style="padding:7px 8px;text-align:right;color:#64748b">'+_repMoney(p.tot.cliente)+'</td></tr>';
+        +'<td style="padding:7px 8px;text-align:right">'+moCell(p.tot.ms)+'</td>'
+        +'<td style="padding:7px 8px;text-align:right;color:#15803d">'+_repMoney(p.tot.nexa)+'</td>'
+        +'<td style="padding:7px 8px;text-align:right;color:#15803d;font-weight:800">'+_repMoney(pTot)+'</td></tr>';
       if(multi){ p.rows.sort(function(a,b){ return ((b.self?1:0)-(a.self?1:0))||(b.a.ms-a.a.ms); }).forEach(function(rw){
+        var rTot=moDe(rw.a.ms)+rw.a.nexa;
         body+='<tr style="border-bottom:1px solid var(--bord)"><td style="padding:5px 8px 5px 22px;color:#475569;font-size:12.5px">↳ '+esc(rw.nombre)+(rw.self?' <span class="muted">(directo)</span>':'')+'</td>'
           +'<td style="padding:5px 8px;text-align:right;font-size:12.5px">'+rw.a.ots+'</td>'
           +'<td style="padding:5px 8px;text-align:right;font-size:12.5px">'+_minTxt(rw.a.ms/60000)+'</td>'
+          +'<td style="padding:5px 8px;text-align:right;font-size:12.5px">'+moCell(rw.a.ms,'12.5px')+'</td>'
           +'<td style="padding:5px 8px;text-align:right;font-size:12.5px;color:#15803d">'+_repMoney(rw.a.nexa)+'</td>'
-          +'<td style="padding:5px 8px;text-align:right;font-size:12.5px;color:#64748b">'+_repMoney(rw.a.cliente)+'</td></tr>';
+          +'<td style="padding:5px 8px;text-align:right;font-size:12.5px;color:#15803d;font-weight:700">'+_repMoney(rTot)+'</td></tr>';
       }); }
     });
-    var totRow='<tr style="border-top:2px solid #334155;font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">'+G.ots+'</td><td style="padding:8px;text-align:right">'+_minTxt(G.ms/60000)+'</td><td style="padding:8px;text-align:right;color:#15803d">'+_repMoney(G.nexa)+'</td><td style="padding:8px;text-align:right;color:#64748b">'+_repMoney(G.cliente)+'</td></tr>';
+    var totRow='<tr style="border-top:2px solid #334155;font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">'+G.ots+'</td><td style="padding:8px;text-align:right">'+_minTxt(G.ms/60000)+'</td><td style="padding:8px;text-align:right">'+moCell(G.ms)+'</td><td style="padding:8px;text-align:right;color:#15803d">'+_repMoney(G.nexa)+'</td><td style="padding:8px;text-align:right;color:#15803d">'+_repMoney(Gtot)+'</td></tr>';
     var tabla='<div class="dkpi" style="border-left-color:#0891b2;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap"><div class="dkpi-lbl" style="color:#334155;font-size:13px">🧾 Facturación por cliente · '+esc(fmtFecha(_repState.desde))+' a '+esc(fmtFecha(_repState.hasta))+'</div><button class="btn btn-2" id="fac-copy" style="font-size:12px">📋 Copiar a Excel</button></div>'
       +'<table style="width:100%;border-collapse:collapse;font-size:13px"><thead>'+head+'</thead><tbody>'+body+totRow+'</tbody></table></div>';
-    var nota='<div class="muted" style="font-size:12px;margin:8px 0 12px">💡 Tocá un cliente para ver su detalle facturable. Los $ son <b>solo compras directas</b> (Nexa = se factura · Cliente = solo registro). La <b>mano de obra / horas</b> todavía no tiene tarifa — cuando definas el precio, este cuadro suma el total a facturar en $.</div>';
+    var nota='<div class="muted" style="font-size:12px;margin:8px 0 12px">💡 <b>Mano de obra</b> = horas × valor hora ($'+(vh>0?vh.toLocaleString('es-AR'):'0')+') · <b>TOTAL</b> = mano de obra + compras Nexa. '+(vh>0?'':'<b style="color:#dc2626">Cargá el «Valor hora $» arriba para ver los montos.</b> ')+'Las compras Cliente son solo registro (no se facturan). ⚠️ Ojo: las horas con &lt;5 min salen marcadas en el detalle — revisá que el tiempo esté bien cargado antes de facturar. Tocá un cliente para ver su detalle.</div>';
     cont.innerHTML=kpis+tabla+nota;
     Array.prototype.forEach.call(cont.querySelectorAll('.fac-princ'),function(el){ el.addEventListener('click',function(){ var id=el.getAttribute('data-cli'); var sc=document.getElementById('fac-cli'); if(sc) sc.value=id; _repState.cli=id; _repState.sub=''; _facLoadSubs(id); _facCargar(); }); });
     var cb=document.getElementById('fac-copy');
-    if(cb){ var tsv='Cliente\tSubcliente\tOTs\tMinutos\tComprasNexa\tComprasCliente\n'+lista.map(function(p){ var lines=[p.nombre+'\t\t'+p.tot.ots+'\t'+Math.round(p.tot.ms/60000)+'\t'+Math.round(p.tot.nexa)+'\t'+Math.round(p.tot.cliente)]; if((p.rows.length>1)||(!p.rows[0].self)){ p.rows.forEach(function(rw){ lines.push(p.nombre+'\t'+rw.nombre+'\t'+rw.a.ots+'\t'+Math.round(rw.a.ms/60000)+'\t'+Math.round(rw.a.nexa)+'\t'+Math.round(rw.a.cliente)); }); } return lines.join('\n'); }).join('\n')+'\nTOTAL\t\t'+G.ots+'\t'+Math.round(G.ms/60000)+'\t'+Math.round(G.nexa)+'\t'+Math.round(G.cliente);
+    if(cb){ var tsv='Cliente\tSubcliente\tOTs\tMinutos\tManoObra\tComprasNexa\tTotal\tComprasCliente\n'+lista.map(function(p){ var lines=[p.nombre+'\t\t'+p.tot.ots+'\t'+Math.round(p.tot.ms/60000)+'\t'+moDe(p.tot.ms)+'\t'+Math.round(p.tot.nexa)+'\t'+(moDe(p.tot.ms)+p.tot.nexa)+'\t'+Math.round(p.tot.cliente)]; if((p.rows.length>1)||(!p.rows[0].self)){ p.rows.forEach(function(rw){ lines.push(p.nombre+'\t'+rw.nombre+'\t'+rw.a.ots+'\t'+Math.round(rw.a.ms/60000)+'\t'+moDe(rw.a.ms)+'\t'+Math.round(rw.a.nexa)+'\t'+(moDe(rw.a.ms)+rw.a.nexa)+'\t'+Math.round(rw.a.cliente)); }); } return lines.join('\n'); }).join('\n')+'\nTOTAL\t\t'+G.ots+'\t'+Math.round(G.ms/60000)+'\t'+Gmo+'\t'+Math.round(G.nexa)+'\t'+Gtot+'\t'+Math.round(G.cliente);
       cb.addEventListener('click',function(){ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(tsv).then(function(){ var o=cb.textContent; cb.textContent='✓ copiado'; setTimeout(function(){ cb.textContent=o; },1500); },function(){ prompt('Copiá:',tsv); }); } else prompt('Copiá:',tsv); }); }
   }
 
