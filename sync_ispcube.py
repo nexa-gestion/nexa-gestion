@@ -401,9 +401,9 @@ def anular_desconexiones_rehabilitados():
         pago += sb_get("desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
         # cortes auto con deuda null (cliente activo o baja) + su cliente_id/estado
         nulls = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,cliente_id,clientes!inner(estado,deuda)&clientes.deuda=is.null&limit=2000") or []
-        # clientes con INSTALACION finalizada hace ≤7 días (recién instalados)
+        # clientes con INSTALACION pendiente (aún no instalado / soporte no creó la conexión) o finalizada hace ≤7 días
         instal = set()
-        for x in (sb_get("ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id&limit=5000" % inst7) or []):
+        for x in (sb_get("ordenes_trabajo?tipo=eq.INSTALACION&or=(estado.in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO),and(estado.eq.FINALIZADA,fin_tec_at.gte.%s))&cliente_id=not.is.null&select=cliente_id&limit=5000" % inst7) or []):
             if x.get("cliente_id"): instal.add(x["cliente_id"])
     except Exception as e:
         print("WARN anular_desconexiones:", e); return 0
@@ -415,7 +415,7 @@ def anular_desconexiones_rehabilitados():
         if o["id"] in seen: continue
         est = (o.get("clientes") or {}).get("estado")
         if est == "activo" or o.get("cliente_id") in instal:
-            seen.add(o["id"]); items.append((o["id"], "Cliente recién instalado / reactivado (sin deuda) — cerrada por el sync"))
+            seen.add(o["id"]); items.append((o["id"], "Cliente nuevo (pendiente / recién instalado) o reactivado, sin deuda — cerrada por el sync"))
     if not items: return 0
     if DRY:
         print(f"🟢 Desconexiones a cerrar (pago/reactivado) (DRY): {len(items)}"); return len(items)
