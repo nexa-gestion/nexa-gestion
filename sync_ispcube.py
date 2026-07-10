@@ -392,30 +392,39 @@ def generar_desconexiones_pendientes():
 
 def anular_desconexiones_rehabilitados():
     # Se cierran solas: (a) bajas automáticas / compromisos cuyo cliente PAGÓ (deuda<=0), y
-    # (b) bajas automáticas cuyo cliente volvió a ACTIVO con deuda null (recién instalado / reactivado:
-    #     el corte se generó cuando pasaba por "no_service" en ISPcube y ya no corresponde).
-    # OJO: activo CON deuda>0 (compromiso de pago) NO se toca. Las MANUALES tampoco.
+    # (b) bajas automáticas con deuda null cuyo cliente NO está instalado y establecido en Nexa:
+    #     está ACTIVO (reactivado) o tiene instalación pero no establecida (pendiente / cancelada /
+    #     recién instalado ≤7d = nunca se instaló de verdad todavía → no hay nada que cortar).
+    #     Los viejos migrados (sin OT de instalación) NO se tocan: siguen cortables. deuda>0 tampoco.
     inst7 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 7*86400))
     try:
         pago  = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
         pago += sb_get("desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
         # cortes auto con deuda null (cliente activo o baja) + su cliente_id/estado
         nulls = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,cliente_id,clientes!inner(estado,deuda)&clientes.deuda=is.null&limit=2000") or []
-        # clientes con INSTALACION pendiente (aún no instalado / soporte no creó la conexión) o finalizada hace ≤7 días
-        instal = set()
-        for x in (sb_get("ordenes_trabajo?tipo=eq.INSTALACION&or=(estado.in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO),and(estado.eq.FINALIZADA,fin_tec_at.gte.%s))&cliente_id=not.is.null&select=cliente_id&limit=5000" % inst7) or []):
-            if x.get("cliente_id"): instal.add(x["cliente_id"])
+        nulls = nulls if isinstance(nulls, list) else []
+        # cruce con Nexa: de esos clientes, sus INSTALACIONES → has_inst (tiene alguna) / est_old (FINALIZADA hace >7d = establecido)
+        cids = list({o["cliente_id"] for o in nulls if o.get("cliente_id")})
+        has_inst, est_old = set(), set()
+        for i in range(0, len(cids), 150):
+            part = ",".join(str(x) for x in cids[i:i+150])
+            for x in (sb_get("ordenes_trabajo?tipo=eq.INSTALACION&cliente_id=in.(%s)&select=cliente_id,estado,fin_tec_at&limit=5000" % part) or []):
+                cid = x.get("cliente_id")
+                if not cid: continue
+                has_inst.add(cid)
+                if x.get("estado") == "FINALIZADA" and x.get("fin_tec_at") and x["fin_tec_at"] <= inst7: est_old.add(cid)
     except Exception as e:
         print("WARN anular_desconexiones:", e); return 0
     seen, items = set(), []   # items = [(id, resolucion)]
     for o in (pago if isinstance(pago, list) else []):
         if o["id"] not in seen: seen.add(o["id"]); items.append((o["id"], "El cliente pagó (deuda 0) — cerrada por el sync"))
-    # deuda null: cerrar si el cliente está activo (reactivado) o si es recién instalado (ISPcube todavía en baja)
-    for o in (nulls if isinstance(nulls, list) else []):
+    for o in nulls:
         if o["id"] in seen: continue
         est = (o.get("clientes") or {}).get("estado")
-        if est == "activo" or o.get("cliente_id") in instal:
-            seen.add(o["id"]); items.append((o["id"], "Cliente nuevo (pendiente / recién instalado) o reactivado, sin deuda — cerrada por el sync"))
+        cid = o.get("cliente_id")
+        no_establecido = (cid in has_inst) and (cid not in est_old)
+        if est == "activo" or no_establecido:
+            seen.add(o["id"]); items.append((o["id"], "Cliente no instalado en Nexa (pendiente / cancelado / recién instalado) o reactivado, sin deuda — cerrada por el sync"))
     if not items: return 0
     if DRY:
         print(f"🟢 Desconexiones a cerrar (pago/reactivado) (DRY): {len(items)}"); return len(items)

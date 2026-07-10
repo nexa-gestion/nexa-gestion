@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.79';
+  var VER='v1.80';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3195,21 +3195,29 @@
     Promise.all([
       sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000'),
       sbGet('desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000'),
-      // cortes auto con deuda null: se cierran si el cliente está ACTIVO (reactivado) o si en Nexa tiene una
-      // INSTALACIÓN pendiente (aún no instalado / soporte no creó la conexión todavía) o finalizada hace
-      // ≤7 días (recién instalado, ISPcube aún en baja). Ojo: deuda>0 (compromiso de pago) NO entra.
-      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,cliente_id,clientes!inner(estado,deuda)&clientes.deuda=is.null&limit=2000'),
-      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&or=(estado.in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO),and(estado.eq.FINALIZADA,fin_tec_at.gte.'+inst7+'))&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
+      // cortes auto con deuda null: candidatos a cerrar (activo, o cliente que en Nexa no está "instalado y establecido").
+      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,cliente_id,clientes!inner(estado,deuda)&clientes.deuda=is.null&limit=2000')
     ]).then(function(rr){
       var idsPago=[].concat(Array.isArray(rr[0])?rr[0]:[],Array.isArray(rr[1])?rr[1]:[]).map(function(x){return x.id;});
-      var instal={}; (Array.isArray(rr[3])?rr[3]:[]).forEach(function(o){ if(o.cliente_id) instal[o.cliente_id]=1; });
-      var seen={}; idsPago.forEach(function(id){ seen[id]=1; });
-      var idsAct=[];
-      (Array.isArray(rr[2])?rr[2]:[]).forEach(function(o){ if(seen[o.id]) return; var est=o.clientes&&o.clientes.estado; if(est==='activo'||instal[o.cliente_id]){ seen[o.id]=1; idsAct.push(o.id); } });
-      if(!idsPago.length && !idsAct.length){ cb(); return; }
-      var jobs=idsPago.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'El cliente pagó (deuda 0) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); })
-        .concat(idsAct.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'Cliente nuevo (pendiente / recién instalado) o reactivado, sin deuda — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); }));
-      Promise.all(jobs).then(function(){ var t=idsPago.length+idsAct.length; toast('🟢 '+t+' baja(s) cerradas automáticamente'); cb(); });
+      var nulls=Array.isArray(rr[2])?rr[2]:[];
+      // Cruce con Nexa: junto los clientes de esos cortes y traigo SUS instalaciones (en tandas).
+      var cids=[], vis={}; nulls.forEach(function(o){ if(o.cliente_id&&!vis[o.cliente_id]){ vis[o.cliente_id]=1; cids.push(o.cliente_id); } });
+      var chunks=[]; for(var i=0;i<cids.length;i+=150) chunks.push(cids.slice(i,i+150));
+      Promise.all(chunks.map(function(part){ return sbGet('ordenes_trabajo?tipo=eq.INSTALACION&cliente_id=in.('+part.join(',')+')&select=cliente_id,estado,fin_tec_at&limit=5000').catch(function(){return [];}); })).then(function(parts){
+        // hasInst = tiene alguna instalación en Nexa · estOld = instalación FINALIZADA hace >7 días (instalado y establecido)
+        var hasInst={}, estOld={};
+        parts.forEach(function(rows){ (Array.isArray(rows)?rows:[]).forEach(function(o){ if(!o.cliente_id) return; hasInst[o.cliente_id]=1; if(o.estado==='FINALIZADA'&&o.fin_tec_at&&o.fin_tec_at<=inst7) estOld[o.cliente_id]=1; }); });
+        var seen={}; idsPago.forEach(function(id){ seen[id]=1; });
+        var idsAct=[];
+        // Cerrar el corte si: el cliente está ACTIVO (reactivado) o tiene instalación en Nexa PERO no está
+        // establecido (pendiente / cancelada / recién instalado ≤7d = nunca se instaló de verdad todavía).
+        // Los viejos migrados (sin OT de instalación) NO se tocan: siguen siendo cortables. deuda>0 tampoco.
+        nulls.forEach(function(o){ if(seen[o.id]) return; var est=o.clientes&&o.clientes.estado; var cid=o.cliente_id; var noEstablecido=(hasInst[cid] && !estOld[cid]); if(est==='activo'||noEstablecido){ seen[o.id]=1; idsAct.push(o.id); } });
+        if(!idsPago.length && !idsAct.length){ cb(); return; }
+        var jobs=idsPago.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'El cliente pagó (deuda 0) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); })
+          .concat(idsAct.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'Cliente no instalado en Nexa (pendiente / cancelado / recién instalado) o reactivado, sin deuda — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); }));
+        Promise.all(jobs).then(function(){ var t=idsPago.length+idsAct.length; toast('🟢 '+t+' baja(s) cerradas automáticamente'); cb(); });
+      });
     }).catch(function(){ cb(); });
   }
   // Cierra las bajas cuyo cliente YA fue eliminado de ISPcube (corte/baja hecho fuera del sistema) → no deben quedar en la cola
