@@ -361,16 +361,27 @@ def generar_desconexiones_pendientes():
         # No generar baja para el que YA pagó (deuda<=0); null y >0 sí entran (puede no tener dato de deuda).
         baja = sb_get("clientes?estado=eq.baja&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000") or []
         blo  = sb_get("clientes?estado=eq.bloqueado&bloqueado_desde=lt.%s&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000" % cut) or []
-        # Excluir: (a) clientes con INSTALACION abierta (prospectos aun NO instalados) y
-        #          (b) clientes con un RETIRO ya FINALIZADO por OT (retiro hecho a mano) -> no duplicar en el pool.
+        # Excluir del pool (no generarles corte):
         ret60 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60*86400))
+        inst7 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 7*86400))
         por_instalar = set()
-        for x in (sb_get("ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id&limit=5000") or []):
+        # (a) RETIRO/DESCONEXION ya FINALIZADO por OT (retiro a mano, ≤60d) → no duplicar en el pool.
+        for x in (sb_get("ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id&limit=5000" % ret60) or []):
             if x.get("cliente_id"): por_instalar.add(x["cliente_id"])
-        # RETIRO/DESCONEXION finalizada (retiro a mano) o INSTALACION recién finalizada (recién instalado:
-        # en ISPcube pasa un rato por "no_service" antes de habilitarse → NO generarle un corte).
-        for x in (sb_get("ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION,INSTALACION)&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id&limit=5000" % ret60) or []):
-            if x.get("cliente_id"): por_instalar.add(x["cliente_id"])
+        # (b) cruce con Nexa: candidato con instalación pero NO establecida (pendiente / cancelada / recién
+        #     instalado ≤7d = nunca se instaló de verdad) → nada que cortar. Los viejos migrados (sin OT de
+        #     instalación) NO se excluyen: siguen cortables.
+        cand0 = list({c["id"] for c in baja} | {c["id"] for c in blo})
+        has_inst, est_old = set(), set()
+        for i in range(0, len(cand0), 150):
+            part = ",".join(str(x) for x in cand0[i:i+150])
+            for x in (sb_get("ordenes_trabajo?tipo=eq.INSTALACION&cliente_id=in.(%s)&select=cliente_id,estado,fin_tec_at&limit=5000" % part) or []):
+                cid = x.get("cliente_id")
+                if not cid: continue
+                has_inst.add(cid)
+                if x.get("estado") == "FINALIZADA" and x.get("fin_tec_at") and x["fin_tec_at"] <= inst7: est_old.add(cid)
+        for cid in cand0:
+            if cid in has_inst and cid not in est_old: por_instalar.add(cid)
         cand_ids = [c["id"] for c in baja if c["id"] not in por_instalar] + [c["id"] for c in blo if c["id"] not in por_instalar]
         yaset = set()
         for i in range(0, len(cand_ids), 150):

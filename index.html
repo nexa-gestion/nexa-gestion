@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.80';
+  var VER='v1.81';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3163,27 +3163,34 @@
     })();
   }
   function _dxAutoGenerar(cb){
-    var cut=new Date(Date.now()-30*864e5).toISOString(), ret60=new Date(Date.now()-60*864e5).toISOString();
+    var cut=new Date(Date.now()-30*864e5).toISOString(), ret60=new Date(Date.now()-60*864e5).toISOString(), inst7=new Date(Date.now()-7*864e5).toISOString();
     Promise.all([
       sbGet('clientes?estado=eq.baja&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000'),
       sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000'),
-      // clientes con una INSTALACIÓN abierta (aún NO instalados = prospectos) → NUNCA generarles un corte
-      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];}),
-      // clientes con un RETIRO ya FINALIZADO (retiro a mano, no duplicar) o una INSTALACIÓN recién finalizada
-      // (recién instalado: en ISPcube pasa un rato por "no_service" antes de habilitarse → NO generarle un corte)
-      sbGet('ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION,INSTALACION)&estado=eq.FINALIZADA&fin_tec_at=gte.'+ret60+'&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
+      // RETIRO/DESCONEXION ya FINALIZADO a mano (≤60d) → no duplicar en el pool
+      sbGet('ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.'+ret60+'&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
     ]).then(function(r){
       var porExcluir={};
       (Array.isArray(r[2])?r[2]:[]).forEach(function(o){ if(o.cliente_id) porExcluir[o.cliente_id]=true; });
-      (Array.isArray(r[3])?r[3]:[]).forEach(function(o){ if(o.cliente_id) porExcluir[o.cliente_id]=true; });
-      var cands=[];
-      (r[0]||[]).forEach(function(c){ if(!porExcluir[c.id]) cands.push([c.id,'baja_isp']); });
-      (r[1]||[]).forEach(function(c){ if(!porExcluir[c.id]) cands.push([c.id,'bloqueado_30d']); });
-      if(!cands.length){ cb(0); return; }
-      _dxBloqueados(cands.map(function(x){return x[0];}), function(ya){
-        var nuevos=cands.filter(function(x){ return !ya[x[0]]; }).map(function(x){ return {cliente_id:x[0],estado:'PENDIENTE',origen:x[1],created_by:USER.id}; });
-        if(!nuevos.length){ cb(0); return; }
-        sbPost('desconexiones',nuevos).then(function(){ cb(nuevos.length); }).catch(function(){ cb(0); });
+      var baja=r[0]||[], blo=r[1]||[];
+      // cruce con Nexa: traigo las INSTALACIONES de los candidatos para no cortar a los que no están instalados y establecidos
+      var cid0=[], vis={}; baja.concat(blo).forEach(function(c){ if(c.id&&!vis[c.id]){ vis[c.id]=1; cid0.push(c.id); } });
+      var chunks=[]; for(var i=0;i<cid0.length;i+=150) chunks.push(cid0.slice(i,i+150));
+      Promise.all(chunks.map(function(part){ return sbGet('ordenes_trabajo?tipo=eq.INSTALACION&cliente_id=in.('+part.join(',')+')&select=cliente_id,estado,fin_tec_at&limit=5000').catch(function(){return [];}); })).then(function(parts){
+        var hasInst={}, estOld={};
+        parts.forEach(function(rows){ (Array.isArray(rows)?rows:[]).forEach(function(o){ if(!o.cliente_id) return; hasInst[o.cliente_id]=1; if(o.estado==='FINALIZADA'&&o.fin_tec_at&&o.fin_tec_at<=inst7) estOld[o.cliente_id]=1; }); });
+        // excluir: tiene instalación en Nexa pero NO establecida (pendiente / cancelada / recién ≤7d = nunca se instaló
+        // de verdad). Los viejos migrados (sin OT de instalación) NO se excluyen → siguen cortables.
+        cid0.forEach(function(cid){ if(hasInst[cid] && !estOld[cid]) porExcluir[cid]=true; });
+        var cands=[];
+        baja.forEach(function(c){ if(!porExcluir[c.id]) cands.push([c.id,'baja_isp']); });
+        blo.forEach(function(c){ if(!porExcluir[c.id]) cands.push([c.id,'bloqueado_30d']); });
+        if(!cands.length){ cb(0); return; }
+        _dxBloqueados(cands.map(function(x){return x[0];}), function(ya){
+          var nuevos=cands.filter(function(x){ return !ya[x[0]]; }).map(function(x){ return {cliente_id:x[0],estado:'PENDIENTE',origen:x[1],created_by:USER.id}; });
+          if(!nuevos.length){ cb(0); return; }
+          sbPost('desconexiones',nuevos).then(function(){ cb(nuevos.length); }).catch(function(){ cb(0); });
+        });
       });
     }).catch(function(){ cb(0); });
   }
