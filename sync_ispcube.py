@@ -367,7 +367,9 @@ def generar_desconexiones_pendientes():
         por_instalar = set()
         for x in (sb_get("ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id&limit=5000") or []):
             if x.get("cliente_id"): por_instalar.add(x["cliente_id"])
-        for x in (sb_get("ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id&limit=5000" % ret60) or []):
+        # RETIRO/DESCONEXION finalizada (retiro a mano) o INSTALACION recién finalizada (recién instalado:
+        # en ISPcube pasa un rato por "no_service" antes de habilitarse → NO generarle un corte).
+        for x in (sb_get("ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION,INSTALACION)&estado=eq.FINALIZADA&fin_tec_at=gte.%s&cliente_id=not.is.null&select=cliente_id&limit=5000" % ret60) or []):
             if x.get("cliente_id"): por_instalar.add(x["cliente_id"])
         cand_ids = [c["id"] for c in baja if c["id"] not in por_instalar] + [c["id"] for c in blo if c["id"] not in por_instalar]
         yaset = set()
@@ -389,28 +391,34 @@ def generar_desconexiones_pendientes():
     return n
 
 def anular_desconexiones_rehabilitados():
-    # El cliente que PAGÓ = deuda <= 0 (NO basta estado 'activo': en ISPcube puede figurar habilitado
-    # por un compromiso de pago aunque deba). Se cierran las bajas automáticas (baja_isp/bloqueado_30d)
-    # y los compromisos de pago cuyo cliente quedó con deuda 0. Las MANUALES no se tocan.
+    # Se cierran solas: (a) bajas automáticas / compromisos cuyo cliente PAGÓ (deuda<=0), y
+    # (b) bajas automáticas cuyo cliente volvió a ACTIVO con deuda null (recién instalado / reactivado:
+    #     el corte se generó cuando pasaba por "no_service" en ISPcube y ya no corresponde).
+    # OJO: activo CON deuda>0 (compromiso de pago) NO se toca. Las MANUALES tampoco.
     try:
-        d  = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
-        d += sb_get("desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
+        pago  = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
+        pago += sb_get("desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
+        react = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(estado,deuda)&clientes.estado=eq.activo&clientes.deuda=is.null&limit=2000") or []
     except Exception as e:
         print("WARN anular_desconexiones:", e); return 0
-    d = d if isinstance(d, list) else []
-    if not d: return 0
+    seen, items = set(), []   # items = [(id, resolucion)]
+    for o in (pago if isinstance(pago, list) else []):
+        if o["id"] not in seen: seen.add(o["id"]); items.append((o["id"], "El cliente pagó (deuda 0) — cerrada por el sync"))
+    for o in (react if isinstance(react, list) else []):
+        if o["id"] not in seen: seen.add(o["id"]); items.append((o["id"], "Cliente activo (recién instalado / reactivado) — cerrada por el sync"))
+    if not items: return 0
     if DRY:
-        print(f"🟢 Desconexiones a cerrar por pago (deuda 0) (DRY): {len(d)}"); return len(d)
+        print(f"🟢 Desconexiones a cerrar (pago/reactivado) (DRY): {len(items)}"); return len(items)
     n = 0
-    for o in d:
+    for did, res in items:
         try:
-            sb_patch("desconexiones?id=eq." + str(o["id"]),
+            sb_patch("desconexiones?id=eq." + str(did),
                      {"estado": "ANULADA_PAGO",
-                      "resolucion": "El cliente pagó (deuda 0) — cerrada por el sync",
+                      "resolucion": res,
                       "resuelto_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                       "compromiso_vence": None})
             n += 1
-        except Exception as e: print(f"  ERROR anular desconexion {o['id']}: {e}")
+        except Exception as e: print(f"  ERROR anular desconexion {did}: {e}")
     return n
 
 def limpiar_desconexiones_eliminados():

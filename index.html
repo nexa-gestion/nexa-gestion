@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.76';
+  var VER='v1.77';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3169,8 +3169,9 @@
       sbGet('clientes?estado=eq.bloqueado&bloqueado_desde=lt.'+cut+'&or=(deuda.gt.0,deuda.is.null)&select=id&limit=3000'),
       // clientes con una INSTALACIÓN abierta (aún NO instalados = prospectos) → NUNCA generarles un corte
       sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];}),
-      // clientes con un RETIRO ya FINALIZADO por OT (retiro hecho a mano) → no generar una desconexión duplicada en el pool
-      sbGet('ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION)&estado=eq.FINALIZADA&fin_tec_at=gte.'+ret60+'&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
+      // clientes con un RETIRO ya FINALIZADO (retiro a mano, no duplicar) o una INSTALACIÓN recién finalizada
+      // (recién instalado: en ISPcube pasa un rato por "no_service" antes de habilitarse → NO generarle un corte)
+      sbGet('ordenes_trabajo?tipo=in.(RETIRO_EQUIPOS,DESCONEXION,INSTALACION)&estado=eq.FINALIZADA&fin_tec_at=gte.'+ret60+'&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
     ]).then(function(r){
       var porExcluir={};
       (Array.isArray(r[2])?r[2]:[]).forEach(function(o){ if(o.cliente_id) porExcluir[o.cliente_id]=true; });
@@ -3192,11 +3193,18 @@
   function _dxAutoAnular(cb){
     Promise.all([
       sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000'),
-      sbGet('desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000')
+      sbGet('desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000'),
+      // cliente que volvió a ACTIVO con deuda null (recién instalado / reactivado): el corte auto ya no corresponde.
+      // Ojo: activo CON deuda>0 (compromiso de pago) NO entra acá → esos siguen en la cola.
+      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(estado,deuda)&clientes.estado=eq.activo&clientes.deuda=is.null&limit=2000')
     ]).then(function(rr){
-      var ids=[].concat(Array.isArray(rr[0])?rr[0]:[],Array.isArray(rr[1])?rr[1]:[]).map(function(x){return x.id;});
-      if(!ids.length){ cb(); return; }
-      Promise.all(ids.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'El cliente pagó (deuda 0) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); })).then(function(){ toast('🟢 '+ids.length+' baja(s) cerradas: el cliente pagó'); cb(); });
+      var idsPago=[].concat(Array.isArray(rr[0])?rr[0]:[],Array.isArray(rr[1])?rr[1]:[]).map(function(x){return x.id;});
+      var idsAct=(Array.isArray(rr[2])?rr[2]:[]).map(function(x){return x.id;});
+      var seen={}; idsPago.forEach(function(id){seen[id]=1;}); idsAct=idsAct.filter(function(id){ return !seen[id]; });
+      if(!idsPago.length && !idsAct.length){ cb(); return; }
+      var jobs=idsPago.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'El cliente pagó (deuda 0) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); })
+        .concat(idsAct.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'Cliente activo (recién instalado / reactivado) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); }));
+      Promise.all(jobs).then(function(){ var t=idsPago.length+idsAct.length; toast('🟢 '+t+' baja(s) cerradas automáticamente'); cb(); });
     }).catch(function(){ cb(); });
   }
   // Cierra las bajas cuyo cliente YA fue eliminado de ISPcube (corte/baja hecho fuera del sistema) → no deben quedar en la cola
