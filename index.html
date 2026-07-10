@@ -238,7 +238,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.77';
+  var VER='v1.78';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3191,19 +3191,24 @@
   // un compromiso de pago de ISPcube). Cubre bajas automáticas (baja_isp/bloqueado_30d) y compromisos de
   // pago. Las MANUALES no se tocan (decisión del admin).
   function _dxAutoAnular(cb){
+    var inst7=new Date(Date.now()-7*864e5).toISOString();
     Promise.all([
       sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000'),
       sbGet('desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000'),
-      // cliente que volvió a ACTIVO con deuda null (recién instalado / reactivado): el corte auto ya no corresponde.
-      // Ojo: activo CON deuda>0 (compromiso de pago) NO entra acá → esos siguen en la cola.
-      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(estado,deuda)&clientes.estado=eq.activo&clientes.deuda=is.null&limit=2000')
+      // cortes auto con deuda null (cliente activo o baja): se cierran si el cliente está ACTIVO (reactivado)
+      // o si tiene una INSTALACIÓN finalizada hace ≤7 días (recién instalado, ISPcube todavía no lo habilitó).
+      // Ojo: deuda>0 (compromiso de pago) NO entra → esos siguen en la cola.
+      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,cliente_id,clientes!inner(estado,deuda)&clientes.deuda=is.null&limit=2000'),
+      sbGet('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&fin_tec_at=gte.'+inst7+'&cliente_id=not.is.null&select=cliente_id&limit=5000').catch(function(){return [];})
     ]).then(function(rr){
       var idsPago=[].concat(Array.isArray(rr[0])?rr[0]:[],Array.isArray(rr[1])?rr[1]:[]).map(function(x){return x.id;});
-      var idsAct=(Array.isArray(rr[2])?rr[2]:[]).map(function(x){return x.id;});
-      var seen={}; idsPago.forEach(function(id){seen[id]=1;}); idsAct=idsAct.filter(function(id){ return !seen[id]; });
+      var instal={}; (Array.isArray(rr[3])?rr[3]:[]).forEach(function(o){ if(o.cliente_id) instal[o.cliente_id]=1; });
+      var seen={}; idsPago.forEach(function(id){ seen[id]=1; });
+      var idsAct=[];
+      (Array.isArray(rr[2])?rr[2]:[]).forEach(function(o){ if(seen[o.id]) return; var est=o.clientes&&o.clientes.estado; if(est==='activo'||instal[o.cliente_id]){ seen[o.id]=1; idsAct.push(o.id); } });
       if(!idsPago.length && !idsAct.length){ cb(); return; }
       var jobs=idsPago.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'El cliente pagó (deuda 0) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); })
-        .concat(idsAct.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'Cliente activo (recién instalado / reactivado) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); }));
+        .concat(idsAct.map(function(id){ return sbPatch('desconexiones?id=eq.'+id,{estado:'ANULADA_PAGO',resolucion:'Cliente recién instalado / reactivado (sin deuda) — cerrada automáticamente',resuelto_at:new Date().toISOString(),compromiso_vence:null}).catch(function(){}); }));
       Promise.all(jobs).then(function(){ var t=idsPago.length+idsAct.length; toast('🟢 '+t+' baja(s) cerradas automáticamente'); cb(); });
     }).catch(function(){ cb(); });
   }
