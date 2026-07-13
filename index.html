@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.85';
+  var VER='v1.86';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -5260,37 +5260,79 @@
       document.getElementById('tele-new').addEventListener('click',function(){ _telEquipoForm({}); });
     }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL de telemetría?</div>'; });
   }
+  function _telVehLabel(v){ var base=(v.tipo_activo==='OTRO')?(v.identificador||'(sin id)'):(v.patente||'(sin patente)'); var mm=[v.marca,v.modelo].filter(Boolean).join(' '); return base+(mm?(' · '+mm):''); }
+  function _telVehOpts(list,selId){ return '<option value="">— sin vehículo —</option>'+list.map(function(v){return '<option value="'+v.id+'"'+(String(selId||'')===String(v.id)?' selected':'')+'>'+esc(_telVehLabel(v))+'</option>';}).join(''); }
   function _telEquipoForm(m){ var ed=!!m.id;
-    Promise.all([ sbGet('clientes_telemetria?activo=eq.true&select=id,nombre&order=nombre'), sbGet('planes_telemetria?activo=eq.true&select=id,nombre&order=orden') ]).then(function(r){
-      var clis=Array.isArray(r[0])?r[0]:[], planes=Array.isArray(r[1])?r[1]:[], simN=(m.sim_nuestra!==false);
-      var estSel=function(v){ var cur=m.estado||'EN_STOCK'; return cur===v?' selected':''; };
+    Promise.all([
+      sbGet('clientes_telemetria?activo=eq.true&select=id,nombre&order=nombre'),
+      sbGet('planes_telemetria?activo=eq.true&select=id,nombre&order=orden'),
+      sbGet('tipos_sensor?activo=eq.true&select=id,nombre&order=orden'),
+      (ed&&m.cliente_id)?sbGet('vehiculos_telemetria?cliente_id=eq.'+m.cliente_id+'&select=*&order=id'):Promise.resolve([]),
+      ed?sbGet('gps_sensores?gps_id=eq.'+m.id+'&select=id,tipo_sensor_id,tipos_sensor(nombre)&order=id'):Promise.resolve([])
+    ]).then(function(r){
+      var clis=Array.isArray(r[0])?r[0]:[], planes=Array.isArray(r[1])?r[1]:[], tsens=Array.isArray(r[2])?r[2]:[], vehs=Array.isArray(r[3])?r[3]:[], sens=Array.isArray(r[4])?r[4]:[], simN=(m.sim_nuestra!==false);
+      var estSel=function(v){ return (m.estado||'EN_STOCK')===v?' selected':''; };
       var cliOpts='<option value="">— sin asignar (stock) —</option>'+clis.map(function(c){return '<option value="'+c.id+'"'+(String(m.cliente_id||'')===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
       var planOpts='<option value="">— sin plan —</option>'+planes.map(function(p){return '<option value="'+p.id+'"'+(String(m.plan_id||'')===String(p.id)?' selected':'')+'>'+esc(p.nombre)+'</option>';}).join('');
-      var h='<h2>'+(ed?'Editar':'Cargar')+' equipo GPS</h2><div class="fsgrid">'
-        +_svInput('teqf-imei','IMEI',m.imei,'identificador del equipo')
-        +_svInput('teqf-serial','Serial',m.serial,'',true)
-        +_svInput('teqf-modelo','Modelo',m.modelo,'ej: Coban / Teltonika',true)
-        +'<div><label class="l">Estado</label><select id="teqf-estado"><option value="EN_STOCK"'+estSel('EN_STOCK')+'>📦 En stock</option><option value="INSTALADO"'+estSel('INSTALADO')+'>✅ Instalado</option><option value="BAJA"'+estSel('BAJA')+'>Baja</option></select></div>'
-        +'<div><label class="l">Cliente <span class="muted">(si está instalado)</span></label><select id="teqf-cli">'+cliOpts+'</select></div>'
-        +'<div><label class="l">Plan <span class="muted">(abono mensual)</span></label><select id="teqf-plan">'+planOpts+'</select></div>'
-        +'<div style="grid-column:1/-1;border-top:1px solid var(--bord);padding-top:8px;margin-top:2px"><label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600"><input type="checkbox" id="teqf-simn" style="width:auto"'+(simN?' checked':'')+'> 📶 Lleva SIM nuestra</label><div class="muted" style="font-size:12px;margin-top:2px">Destildá si el chip lo pone el cliente. Igual podés guardar los datos del chip abajo.</div></div>'
-        +_svInput('teqf-linea','N° de línea (chip)',m.chip_linea,'',true)
-        +_svInput('teqf-iccid','ICCID (SIM)',m.chip_iccid,'',true)
-        +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="teqf-notas" style="min-height:44px">'+esc(m.notas||'')+'</textarea></div>'
-        +'</div><div class="muted" style="font-size:12px;margin-top:6px">💡 El <b>vehículo</b> y los <b>sensores</b> se cargan en la próxima parte (con la orden de instalación). Asignar cliente + plan + estado «Instalado» ya cuenta para el <b>abono mensual</b>.</div>'
+      var tsensOpts='<option value="">— elegí sensor —</option>'+tsens.map(function(t){return '<option value="'+t.id+'">'+esc(t.nombre)+'</option>';}).join('');
+      var sensChips=sens.map(function(s){return '<span class="pill" style="background:#f5f3ff;border:1px solid #ddd6fe;color:#5b21b6;margin:2px 4px 2px 0;display:inline-block" data-sid="'+s.id+'">'+esc((s.tipos_sensor&&s.tipos_sensor.nombre)||'sensor')+' <b data-delsens="'+s.id+'" style="cursor:pointer;color:#dc2626">✕</b></span>';}).join('');
+      var h='<h2>'+(ed?'Editar':'Cargar')+' equipo GPS</h2>'
+        +'<div class="fsgrid">'
+          +_svInput('teqf-imei','IMEI',m.imei,'identificador del equipo')
+          +_svInput('teqf-serial','Serial',m.serial,'',true)
+          +_svInput('teqf-modelo','Modelo',m.modelo,'ej: Coban / Teltonika',true)
+          +'<div><label class="l">Estado</label><select id="teqf-estado"><option value="EN_STOCK"'+estSel('EN_STOCK')+'>📦 En stock</option><option value="INSTALADO"'+estSel('INSTALADO')+'>✅ Instalado</option><option value="BAJA"'+estSel('BAJA')+'>Baja</option></select></div>'
+          +'<div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;border-top:1px solid var(--bord);padding-top:8px"><input type="checkbox" id="teqf-simn" style="width:auto"'+(simN?' checked':'')+'><label for="teqf-simn">📶 Lleva SIM nuestra</label><span class="muted" style="font-weight:400;font-size:12px">(destildá si el chip lo pone el cliente)</span></div>'
+          +_svInput('teqf-linea','N° de línea (chip)',m.chip_linea,'',true)
+          +_svInput('teqf-iccid','ICCID (SIM)',m.chip_iccid,'',true)
+        +'</div>'
+        +'<div style="border-top:1px solid var(--bord);margin-top:10px;padding-top:8px;font-weight:800;color:#334155;font-size:13px">📍 Instalación</div>'
+        +'<div class="fsgrid">'
+          +'<div><label class="l">Cliente</label><select id="teqf-cli">'+cliOpts+'</select></div>'
+          +'<div><label class="l">Plan <span class="muted">(abono)</span></label><select id="teqf-plan">'+planOpts+'</select></div>'
+          +'<div style="grid-column:1/-1"><label class="l">Vehículo / activo <span class="muted">(dónde está instalado)</span></label><div style="display:flex;gap:6px"><select id="teqf-veh" style="flex:1">'+_telVehOpts(vehs,m.vehiculo_id)+'</select><button type="button" class="btn btn-2" id="teqf-vehnew-btn" title="Crear un vehículo/activo nuevo para este cliente">➕ Nuevo</button></div></div>'
+        +'</div>'
+        +'<div id="teqf-vehnew" style="display:none;border:1px dashed var(--bord);border-radius:10px;padding:10px;margin-top:6px;background:#f8fafc">'
+          +'<div class="fsgrid">'
+            +'<div><label class="l">Tipo</label><select id="teqf-vtipo"><option value="VEHICULO">🚗 Vehículo</option><option value="OTRO">📦 Otro (cámara, máquina…)</option></select></div>'
+            +_svInput('teqf-vpat','Patente','','si es vehículo',true)
+            +_svInput('teqf-vid','Identificador','','si NO es vehículo',true)
+            +_svInput('teqf-vmarca','Marca','','',true)
+            +_svInput('teqf-vmodelo','Modelo','','',true)
+          +'</div><div style="margin-top:6px"><button type="button" class="btn btn-ok" id="teqf-vcrear">Crear vehículo</button> <span id="teqf-verr" style="color:var(--rojo);font-size:12px"></span></div>'
+        +'</div>'
+        +(ed?('<div style="border-top:1px solid var(--bord);margin-top:10px;padding-top:8px;font-weight:800;color:#334155;font-size:13px">📡 Sensores <span class="muted" style="font-weight:400">(opcional)</span></div>'
+          +'<div id="teqf-sens-list" style="margin:6px 0">'+(sensChips||'<span class="muted" style="font-size:12px">Sin sensores.</span>')+'</div>'
+          +'<div style="display:flex;gap:6px;align-items:center"><select id="teqf-sens-sel" style="max-width:220px">'+tsensOpts+'</select><button type="button" class="btn btn-2" id="teqf-sens-add">➕ Agregar sensor</button></div>')
+          :'<div class="muted" style="font-size:12px;margin-top:8px">💡 Guardá el equipo y volvé a abrirlo para agregarle <b>sensores</b>.</div>')
+        +'<div style="margin-top:8px"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="teqf-notas" style="min-height:40px;width:100%">'+esc(m.notas||'')+'</textarea></div>'
         +'<div id="teqf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:4px"></div>'
-        +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-ok" id="teqf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="teqf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="teqf-close">Cerrar</button></div>';
+        +'<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn btn-ok" id="teqf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="teqf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="teqf-close">Cerrar</button></div>';
       modal(h,'wide'); document.getElementById('teqf-close').addEventListener('click',cerrarModal);
       function g(id){ var e=document.getElementById(id); return (e&&e.value.trim())||null; }
+      // cliente cambia → recargar vehículos
+      document.getElementById('teqf-cli').addEventListener('change',function(){ var cid=this.value, vsel=document.getElementById('teqf-veh'); if(!cid){ vsel.innerHTML='<option value="">— sin vehículo —</option>'; return; } vsel.innerHTML='<option value="">cargando…</option>'; sbGet('vehiculos_telemetria?cliente_id=eq.'+cid+'&select=*&order=id').then(function(vv){ vsel.innerHTML=_telVehOpts(Array.isArray(vv)?vv:[],''); }); });
+      // toggle nuevo vehículo
+      document.getElementById('teqf-vehnew-btn').addEventListener('click',function(){ var d=document.getElementById('teqf-vehnew'); d.style.display=(d.style.display==='none')?'':'none'; });
+      // crear vehículo
+      document.getElementById('teqf-vcrear').addEventListener('click',function(){ var cid=document.getElementById('teqf-cli').value; var ve=document.getElementById('teqf-verr'); if(!cid){ ve.textContent='Elegí primero el cliente.'; return; } var tipo=document.getElementById('teqf-vtipo').value, pat=g('teqf-vpat'), idf=g('teqf-vid'); if(!pat&&!idf){ ve.textContent='Poné patente o identificador.'; return; } ve.textContent=''; var bt=this; bt.disabled=true;
+        sbPost('vehiculos_telemetria',{cliente_id:Number(cid),tipo_activo:tipo,patente:pat,identificador:idf,marca:g('teqf-vmarca'),modelo:g('teqf-vmodelo')}).then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; var nv=rr[0]; var vsel=document.getElementById('teqf-veh'); var op=document.createElement('option'); op.value=nv.id; op.textContent=_telVehLabel(nv); op.selected=true; vsel.appendChild(op); document.getElementById('teqf-vehnew').style.display='none'; ['teqf-vpat','teqf-vid','teqf-vmarca','teqf-vmodelo'].forEach(function(x){document.getElementById(x).value='';}); toast('Vehículo creado ✓'); bt.disabled=false; }).catch(function(){ ve.textContent='No se pudo crear.'; bt.disabled=false; }); });
+      // sensores (solo ed)
+      if(ed){
+        document.getElementById('teqf-sens-add').addEventListener('click',function(){ var sel=document.getElementById('teqf-sens-sel'); var tid=sel.value; if(!tid){ return; } var nom=sel.options[sel.selectedIndex].textContent; var bt=this; bt.disabled=true;
+          sbPost('gps_sensores',{gps_id:m.id,tipo_sensor_id:Number(tid)}).then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; var lst=document.getElementById('teqf-sens-list'); if(lst.querySelector('.muted')) lst.innerHTML=''; var sp=document.createElement('span'); sp.className='pill'; sp.style.cssText='background:#f5f3ff;border:1px solid #ddd6fe;color:#5b21b6;margin:2px 4px 2px 0;display:inline-block'; sp.setAttribute('data-sid',rr[0].id); sp.innerHTML=esc(nom)+' <b data-delsens="'+rr[0].id+'" style="cursor:pointer;color:#dc2626">✕</b>'; lst.appendChild(sp); sel.value=''; bt.disabled=false; }).catch(function(){ toast('No se pudo agregar el sensor.'); bt.disabled=false; }); });
+        document.getElementById('teqf-sens-list').addEventListener('click',function(e){ var b=e.target.closest('[data-delsens]'); if(!b) return; var sid=b.getAttribute('data-delsens'); fetch(SB_URL+'/rest/v1/gps_sensores?id=eq.'+sid,{method:'DELETE',headers:H}).then(function(rr){ if(!rr.ok) throw 0; var chip=b.closest('[data-sid]'); if(chip) chip.remove(); var lst=document.getElementById('teqf-sens-list'); if(!lst.children.length) lst.innerHTML='<span class="muted" style="font-size:12px">Sin sensores.</span>'; }).catch(function(){ toast('No se pudo quitar.'); }); });
+      }
       document.getElementById('teqf-save').addEventListener('click',function(){
         var imei=(document.getElementById('teqf-imei').value||'').trim();
         if(!imei && !(document.getElementById('teqf-serial').value||'').trim()){ document.getElementById('teqf-err').textContent='Poné al menos IMEI o Serial.'; return; }
-        var estado=document.getElementById('teqf-estado').value, cliVal=document.getElementById('teqf-cli').value, planVal=document.getElementById('teqf-plan').value;
-        var body={ imei:imei||null, serial:g('teqf-serial'), modelo:g('teqf-modelo'), estado:estado, cliente_id:cliVal?Number(cliVal):null, plan_id:planVal?Number(planVal):null, sim_nuestra:document.getElementById('teqf-simn').checked, chip_linea:g('teqf-linea'), chip_iccid:g('teqf-iccid'), notas:g('teqf-notas') };
+        var estado=document.getElementById('teqf-estado').value, cliVal=document.getElementById('teqf-cli').value, planVal=document.getElementById('teqf-plan').value, vehVal=document.getElementById('teqf-veh').value;
+        if(vehVal && estado==='EN_STOCK') estado='INSTALADO';   // si se asigna a un vehículo, queda instalado
+        var body={ imei:imei||null, serial:g('teqf-serial'), modelo:g('teqf-modelo'), estado:estado, cliente_id:cliVal?Number(cliVal):null, vehiculo_id:vehVal?Number(vehVal):null, plan_id:planVal?Number(planVal):null, sim_nuestra:document.getElementById('teqf-simn').checked, chip_linea:g('teqf-linea'), chip_iccid:g('teqf-iccid'), notas:g('teqf-notas') };
         if(estado==='INSTALADO' && !m.instalado_at) body.instalado_at=new Date().toISOString();
         var btn=this; btn.disabled=true; var prom=ed?sbPatch('gps_dispositivos?id=eq.'+m.id,body):sbPost('gps_dispositivos',body);
         prom.then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; cerrarModal(); toast('Equipo guardado ✓'); vTelemetria(); }).catch(function(){ btn.disabled=false; document.getElementById('teqf-err').textContent='No se pudo guardar.'; }); });
-      var del=document.getElementById('teqf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; } fetch(SB_URL+'/rest/v1/gps_dispositivos?id=eq.'+m.id,{method:'DELETE',headers:H}).then(function(rr){ if(!rr.ok) throw 0; cerrarModal(); toast('Equipo eliminado'); vTelemetria(); }).catch(function(){ toast('No se pudo eliminar (¿está instalado / en una orden?).'); }); });
+      var del=document.getElementById('teqf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; } fetch(SB_URL+'/rest/v1/gps_dispositivos?id=eq.'+m.id,{method:'DELETE',headers:H}).then(function(rr){ if(!rr.ok) throw 0; cerrarModal(); toast('Equipo eliminado'); vTelemetria(); }).catch(function(){ toast('No se pudo eliminar (¿está en una orden?).'); }); });
     });
   }
   // ── Facturación de telemetría (SOLO gerencia): abono mensual = Σ GPS instalados × plan ──
