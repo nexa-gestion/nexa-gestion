@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.87';
+  var VER='v1.88';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -5398,8 +5398,9 @@
         +'<div><label class="l">Fecha <span class="muted">(opcional)</span></label><input type="date" id="telof-fecha" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'"></div>'
         +'<div style="grid-column:1/-1"><label class="l">Descripción de la tarea</label><textarea id="telof-desc" style="min-height:56px" placeholder="Qué hay que hacer…">'+esc(o.descripcion||'')+'</textarea></div>'
         +'</div><div id="telof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
-        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="telof-save">💾 '+(ed?'Guardar':'Crear orden')+'</button>'+(ed?'<button class="btn btn-x" id="telof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="telof-close">Cerrar</button></div>';
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="telof-save">💾 '+(ed?'Guardar':'Crear orden')+'</button>'+((ed&&o.estado==='CERRADA_TECNICO')?'<button class="btn btn-pri" id="telof-val">✅ Validar (finalizar)</button>':'')+(ed?'<button class="btn btn-x" id="telof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="telof-close">Cerrar</button></div>';
       modal(h,'wide'); document.getElementById('telof-close').addEventListener('click',cerrarModal);
+      var telVal=document.getElementById('telof-val'); if(telVal) telVal.addEventListener('click',function(){ var b=this; b.disabled=true; sbPatchOk('ordenes_trabajo?id=eq.'+o.id,{estado:'FINALIZADA',validado_admin_at:new Date().toISOString(),validado_por:USER.id}).then(function(){ cerrarModal(); toast('Orden finalizada ✓'); vTelemetria(); }).catch(function(){ b.disabled=false; toast('No se pudo finalizar.'); }); });
       document.getElementById('telof-cli').addEventListener('change',function(){ var cid=this.value, vsel=document.getElementById('telof-veh'); if(!cid){ vsel.innerHTML='<option value="">— sin vehículo —</option>'; return; } vsel.innerHTML='<option value="">cargando…</option>'; sbGet('vehiculos_telemetria?cliente_id=eq.'+cid+'&select=*&order=id').then(function(vv){ vsel.innerHTML=_telVehOpts(Array.isArray(vv)?vv:[],''); }); });
       document.getElementById('telof-save').addEventListener('click',function(){
         var cli=document.getElementById('telof-cli').value, desc=document.getElementById('telof-desc').value.trim(), tipo=document.getElementById('telof-tipo').value;

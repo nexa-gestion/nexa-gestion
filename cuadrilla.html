@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.38';
+  var VER='v0.39';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -152,11 +152,12 @@
     else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,PARCIAL)';
     var agrupa=(listState.filtro==='activas');
     var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
-    var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
+    var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,cliente_telemetria_id,vehiculo_telemetria_id,gps_id,observaciones_tec,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),clientes_telemetria(nombre,direccion,telefono,contacto),vehiculos_telemetria(tipo_activo,patente,identificador),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
       function cardOT(o){
         if(o.area==='SERVICIOS') return cardServ(o);
+        if(o.area==='TELEMETRIA') return cardTel(o);
         var cli=o.clientes, nom=cli?((cli.nombre||'')+' '+(cli.apellido||'')).trim():'(obra de red, sin cliente)';
         var dir=cli&&cli.domicilio_full?esc(cli.domicilio_full):'';
         var irBtn = (cli&&(cli.lat!=null||cli.domicilio_full)) ? '<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(cli)+'">🚗 Ir</a>' : '';
@@ -194,6 +195,7 @@
   // ── DETALLE OT (cierre = próxima tanda) ──
   function vDetalle(o){
     if(o.area==='SERVICIOS'){ vDetalleServ(o); return; }
+    if(o.area==='TELEMETRIA'){ vDetalleTel(o); return; }
     var cli=o.clientes||{}; var nom=((cli.nombre||'')+' '+(cli.apellido||'')).trim()||'(obra de red)';
     app.innerHTML=topBar('OT N° '+o.numero, o.tipo)+'<div class="wrap">'
       +'<div class="card"><div style="margin-bottom:8px">'+pillEstado(o.estado)+' · prioridad '+esc(o.prioridad||'NORMAL')+'</div>'
@@ -574,18 +576,18 @@
     app.innerHTML=h; wireCierreServ();
   }
   function _svFkey(which){ return 'firma'+(which==='tec'?'Tec':'Cli'); }
-  function _initFirma(which){
+  function _initFirma(which,st){ st=st||SV;
     var c=document.getElementById('fp-'+which); if(!c) return; var ctx=c.getContext('2d'); ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#0f172a';
     var k=_svFkey(which);
-    if(SV[k+'Data']){ var im=new Image(); im.onload=function(){ try{ ctx.drawImage(im,0,0,c.width,c.height); }catch(e){} }; im.src=SV[k+'Data']; }
+    if(st[k+'Data']){ var im=new Image(); im.onload=function(){ try{ ctx.drawImage(im,0,0,c.width,c.height); }catch(e){} }; im.src=st[k+'Data']; }
     var drawing=false,last=null;
     function pos(e){ var r=c.getBoundingClientRect(),t=(e.touches&&e.touches[0])||e,sx=c.width/r.width,sy=c.height/r.height; return {x:(t.clientX-r.left)*sx,y:(t.clientY-r.top)*sy}; }
     c.addEventListener('pointerdown',function(e){ e.preventDefault(); drawing=true; last=pos(e); });
-    c.addEventListener('pointermove',function(e){ if(!drawing)return; e.preventDefault(); var p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; SV[k+'Ink']=true; });
-    function end(){ if(drawing){ drawing=false; try{ SV[k+'Data']=c.toDataURL('image/png'); }catch(e){} } }
+    c.addEventListener('pointermove',function(e){ if(!drawing)return; e.preventDefault(); var p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; st[k+'Ink']=true; });
+    function end(){ if(drawing){ drawing=false; try{ st[k+'Data']=c.toDataURL('image/png'); }catch(e){} } }
     c.addEventListener('pointerup',end); c.addEventListener('pointerleave',end);
   }
-  function _clearFirma(which){ var c=document.getElementById('fp-'+which); if(c){ c.getContext('2d').clearRect(0,0,c.width,c.height); } var k=_svFkey(which); SV[k+'Ink']=false; SV[k+'Data']=null; }
+  function _clearFirma(which,st){ st=st||SV; var c=document.getElementById('fp-'+which); if(c){ c.getContext('2d').clearRect(0,0,c.width,c.height); } var k=_svFkey(which); st[k+'Ink']=false; st[k+'Data']=null; }
   function _subirFotosServ(files){
     Array.prototype.forEach.call(files,function(file){
       comprimir(file).then(function(blob){
@@ -597,9 +599,9 @@
       });
     });
   }
-  function _uploadFirma(which){ return new Promise(function(res){ var k=_svFkey(which); if(!SV[k+'Ink']||!SV[k+'Data']){ res(null); return; }
-    try{ var b64=SV[k+'Data'].split(',')[1], bin=atob(b64), arr=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); var blob=new Blob([arr],{type:'image/png'});
-      var nombre=SV.o.id+'/firma_'+which+'_'+Date.now()+'.png';
+  function _uploadFirma(which,st){ st=st||SV; return new Promise(function(res){ var k=_svFkey(which); if(!st[k+'Ink']||!st[k+'Data']){ res(null); return; }
+    try{ var b64=st[k+'Data'].split(',')[1], bin=atob(b64), arr=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); var blob=new Blob([arr],{type:'image/png'});
+      var nombre=st.o.id+'/firma_'+which+'_'+Date.now()+'.png';
       fetch(SB_URL+'/storage/v1/object/ot-fotos/'+nombre,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'image/png','x-upsert':'true'},body:blob})
         .then(function(r){ if(!r.ok) throw 0; res(SB_URL+'/storage/v1/object/public/ot-fotos/'+nombre); }).catch(function(){ res(null); });
     }catch(e){ res(null); } }); }
@@ -647,6 +649,135 @@
         SV.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'CIERRE'})); });
         Promise.all(jobs).then(function(){ toast(esFinal?'Cierre final guardado ✓':'Cierre parcial guardado ✓ (sigue abierta)'); SV=null; listState.filtro=(esFinal?'cerradas':'activas'); vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent=esFinal?'✔️ Confirmar cierre final':'⏸️ Guardar cierre parcial'; });
         });   // cierra sbPost('ot_sesiones').then
+      });
+    });
+  }
+
+  // ════════ TELEMETRÍA (cierre del técnico — instalación / mantenimiento GPS) ════════
+  var TL=null;
+  function _telNom(o){ return (o.clientes_telemetria&&o.clientes_telemetria.nombre)||'—'; }
+  function cardTel(o){
+    var cli=o.clientes_telemetria||{}, dir=cli.direccion?esc(cli.direccion):'';
+    return '<div class="ot"><div class="h"><div><span class="num">N° '+esc(o.numero)+'</span> · 📡 Telemetría</div>'+pillEstado(o.estado)+'</div>'
+      +'<div class="cli">'+esc(_telNom(o))+'</div>'+(o.titulo?'<div class="dir" style="font-weight:600">'+esc(o.titulo)+'</div>':'')+(dir?'<div class="dir">📍 '+dir+'</div>':'')
+      +(cli.telefono?'<div class="dir">📞 '+esc(cli.telefono)+'</div>':'')
+      +(o.descripcion?'<div class="dir" style="margin-top:6px">'+esc(o.descripcion)+'</div>':'')
+      +'<div class="acc">'
+      +(cli.direccion?'<a class="btn btn-2 btn-sm" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(cli.direccion)+'">🚗 Ir</a>':'')
+      +(cli.telefono?'<a class="btn btn-2 btn-sm" href="tel:'+esc(String(cli.telefono).replace(/[^\d+]/g,''))+'">📞</a><a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(cli.telefono)+'">💬</a>':'')
+      +'<button class="btn btn-pri btn-sm ot-abrir" data-id="'+o.id+'">Abrir</button></div></div>';
+  }
+  function vDetalleTel(o){
+    var cli=o.clientes_telemetria||{}, cerrada=(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'), esInst=(o.titulo==='Instalación');
+    app.innerHTML=topBar('OT N° '+o.numero,'Telemetría')+'<div class="wrap">'
+      +'<div class="card"><div style="margin-bottom:8px">'+pillEstado(o.estado)+' · 📡 Telemetría · '+esc(o.titulo||'')+'</div>'
+      +fila('Cliente',_telNom(o))
+      +(cli.contacto?fila('Contacto',cli.contacto):'')
+      +(cli.direccion?fila('Dirección',cli.direccion):'')
+      +(cli.telefono?fila('Teléfono',cli.telefono):'')
+      +(o.descripcion?fila('Descripción',o.descripcion):'')
+      +(o.fecha_agendada?fila('Agendada',fmtFecha(o.fecha_agendada)):'')
+      +'</div>'
+      +(cli.direccion?'<a class="btn btn-2" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(cli.direccion)+'" style="margin-bottom:10px">🏠 Ir por la dirección</a>':'')
+      +(cli.telefono?'<div class="row2" style="margin-bottom:10px"><a class="btn btn-2" href="tel:'+esc(String(cli.telefono).replace(/[^\d+]/g,''))+'">📞 Llamar</a><a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(cli.telefono)+'">💬 WhatsApp</a></div>':'')
+      +(cerrada?'<div class="card" style="text-align:center;color:var(--cyan)">✅ Trabajo cerrado por el técnico</div>'
+          :'<button class="btn btn-ok" id="dt-cerrar">✅ '+(esInst?'Cargar instalación y cerrar':'Cerrar trabajo')+'</button>')
+      +'<button class="btn btn-2" id="dt-volver" style="margin-top:10px">← Volver</button>'
+      +'</div>';
+    wireTop();
+    document.getElementById('dt-volver').addEventListener('click',vLista);
+    var cer=document.getElementById('dt-cerrar'); if(cer) cer.addEventListener('click',function(){ abrirCierreTel(o); });
+  }
+  function abrirCierreTel(o){
+    app.innerHTML=topBar('Cerrar OT N° '+o.numero,'Telemetría')+'<div class="wrap"><div class="center"><div class="spin"></div></div></div>';
+    sbGet('tipos_sensor?activo=eq.true&select=id,nombre&order=orden').then(function(ts){
+      TL={ o:o, tsens:_cieArr(ts), sensSel:[], fotos:[], _obs:(o.observaciones_tec||''), esInst:(o.titulo==='Instalación'), tipoAct:'MOVIL' };
+      renderCierreTel();
+    }).catch(function(){ app.innerHTML=topBar('Cerrar OT N° '+o.numero,'Telemetría')+'<div class="wrap"><div class="center">Error al cargar. Reintentá.</div></div>'; });
+  }
+  function _telSensChips(){ if(!TL.sensSel.length) return '<span class="muted" style="font-size:12px">Sin sensores.</span>'; return TL.sensSel.map(function(s,i){ return '<span class="pill p-asig" style="margin:2px 4px 2px 0;display:inline-block">'+esc(s.nombre)+' <b class="tl-sens-del" data-i="'+i+'" style="cursor:pointer;color:var(--rojo)">✕</b></span>'; }).join(''); }
+  function _telFotosHtml(){ if(!TL.fotos.length) return '<div class="muted" style="font-size:13px">Sin fotos.</div>'; return '<div style="display:flex;gap:8px;flex-wrap:wrap">'+TL.fotos.map(function(f,i){ return '<div style="position:relative"><img src="'+f.preview+'" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)">'+(f.url?'<span style="position:absolute;bottom:2px;right:2px;background:#16a34a;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">✓</span>':'<span style="position:absolute;bottom:2px;right:2px;background:#f59e0b;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px">…</span>')+'<button class="tl-foto-del btn" data-i="'+i+'" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--rojo);color:#fff;padding:0;font-size:13px;line-height:1">✕</button></div>'; }).join('')+'</div>'; }
+  function _telSubirFotos(files){ Array.prototype.forEach.call(files,function(file){ comprimir(file).then(function(blob){ var f={ preview:URL.createObjectURL(blob), url:null }; TL.fotos.push(f); renderCierreTel(); var nombre=TL.o.id+'/'+Date.now()+'_'+Math.floor(Math.random()*1000)+'.jpg'; fetch(SB_URL+'/storage/v1/object/ot-fotos/'+nombre,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'image/jpeg','x-upsert':'true'},body:blob}).then(function(r){ if(!r.ok) throw 0; f.url=SB_URL+'/storage/v1/object/public/ot-fotos/'+nombre; renderCierreTel(); }).catch(function(){ toast('No se pudo subir una foto.'); }); }); }); }
+  function _telReadInputs(){ function v(id){ var e=document.getElementById(id); return e?e.value:undefined; }
+    if(v('tl-pat')!==undefined) TL._pat=v('tl-pat'); if(v('tl-id')!==undefined) TL._id=v('tl-id');
+    if(v('tl-marca')!==undefined) TL._marca=v('tl-marca'); if(v('tl-modelo')!==undefined) TL._modelo=v('tl-modelo');
+    if(v('tl-serial')!==undefined) TL._serial=v('tl-serial'); if(v('tl-gpsmodelo')!==undefined) TL._gpsmodelo=v('tl-gpsmodelo');
+    if(v('tl-obs')!==undefined) TL._obs=v('tl-obs'); }
+  function renderCierreTel(){
+    var o=TL.o, fijo=(TL.tipoAct==='FIJO');
+    var h=topBar('Cerrar OT N° '+o.numero,'Telemetría')+'<div class="wrap">'
+      +'<div class="card"><div style="font-weight:800">'+esc(_telNom(o))+'</div><div class="dir" style="font-weight:600">'+esc(o.titulo||'')+'</div>'+(o.descripcion?'<div class="dir muted">'+esc(o.descripcion)+'</div>':'')+'</div>';
+    if(TL.esInst){
+      h+='<div class="card"><div class="label">🚗 ¿Dónde se instaló?</div><div class="row2"><button type="button" class="btn '+(fijo?'btn-2':'btn-ok')+'" id="tl-movil">🚗 Móvil (vehículo)</button><button type="button" class="btn '+(fijo?'btn-ok':'btn-2')+'" id="tl-fijo">📦 Fijo</button></div>'
+        +(fijo?'<div style="margin-top:8px"><div class="label">Identificador</div><input id="tl-id" placeholder="ej: Cámara frigorífica 3" value="'+esc(TL._id||'')+'"></div>'
+              :'<div style="margin-top:8px"><div class="label">Patente</div><input id="tl-pat" placeholder="ej: AB123CD" value="'+esc(TL._pat||'')+'"></div>')
+        +'<div class="row2" style="margin-top:8px"><div><div class="label">Marca</div><input id="tl-marca" value="'+esc(TL._marca||'')+'"></div><div><div class="label">Modelo</div><input id="tl-modelo" value="'+esc(TL._modelo||'')+'"></div></div></div>'
+        +'<div class="card"><div class="label">📡 Equipo GPS instalado</div><div class="label">Serial / IMEI</div><input id="tl-serial" placeholder="serial o IMEI del equipo" value="'+esc(TL._serial||'')+'"><div class="label" style="margin-top:8px">Modelo del GPS <span class="muted">(opcional)</span></div><input id="tl-gpsmodelo" value="'+esc(TL._gpsmodelo||'')+'"></div>'
+        +'<div class="card"><div class="label">🔌 Sensores instalados <span class="muted">(opcional)</span></div><div id="tl-sens-chips" style="margin:6px 0">'+_telSensChips()+'</div><div style="display:flex;gap:6px"><select id="tl-sens-sel" style="flex:1"><option value="">— elegí sensor —</option>'+TL.tsens.map(function(t){return '<option value="'+t.id+'">'+esc(t.nombre)+'</option>';}).join('')+'</select><button type="button" class="btn btn-2" id="tl-sens-add">+ Agregar</button></div></div>';
+    }
+    h+='<div class="card"><div class="label">📝 Observaciones</div><textarea id="tl-obs" rows="3" style="width:100%" placeholder="Detalle de lo que se hizo…">'+esc(TL._obs||'')+'</textarea></div>'
+      +'<div class="card"><div class="label">📷 Fotos <span class="muted">(opcional)</span></div>'+_telFotosHtml()+'<label class="btn btn-2" style="margin-top:8px;display:block;text-align:center">📷 Agregar foto<input id="tl-foto-in" type="file" accept="image/*" capture="environment" multiple style="display:none"></label></div>'
+      +'<div class="card"><div class="label">✍️ Firma del cliente <span class="muted">(opcional)</span></div>'+_firmaPad('cli')+'</div>'
+      +'<div class="err" id="tl-err"></div><button class="btn btn-ok" id="tl-confirmar">✔️ Confirmar cierre</button><button class="btn btn-2" id="tl-volver" style="margin-top:10px">← Cancelar</button></div>';
+    app.innerHTML=h; wireCierreTel();
+  }
+  function wireCierreTel(){
+    wireTop();
+    document.getElementById('tl-volver').addEventListener('click',function(){ vDetalleTel(TL.o); });
+    var mv=document.getElementById('tl-movil'); if(mv) mv.addEventListener('click',function(){ _telReadInputs(); TL.tipoAct='MOVIL'; renderCierreTel(); });
+    var fj=document.getElementById('tl-fijo'); if(fj) fj.addEventListener('click',function(){ _telReadInputs(); TL.tipoAct='FIJO'; renderCierreTel(); });
+    var sa=document.getElementById('tl-sens-add'); if(sa) sa.addEventListener('click',function(){ var sel=document.getElementById('tl-sens-sel'); if(!sel.value) return; _telReadInputs(); TL.sensSel.push({id:Number(sel.value),nombre:sel.options[sel.selectedIndex].textContent}); renderCierreTel(); });
+    var sc=document.getElementById('tl-sens-chips'); if(sc) sc.addEventListener('click',function(e){ var b=e.target.closest('.tl-sens-del'); if(!b) return; _telReadInputs(); TL.sensSel.splice(+b.getAttribute('data-i'),1); renderCierreTel(); });
+    var fi=document.getElementById('tl-foto-in'); if(fi) fi.addEventListener('change',function(e){ _telReadInputs(); _telSubirFotos(e.target.files); });
+    each('.tl-foto-del',function(b){ b.onclick=function(){ _telReadInputs(); TL.fotos.splice(+b.getAttribute('data-i'),1); renderCierreTel(); }; });
+    _initFirma('cli',TL); var cc=document.getElementById('fp-clear-cli'); if(cc) cc.addEventListener('click',function(){ _clearFirma('cli',TL); });
+    document.getElementById('tl-confirmar').addEventListener('click',confirmarCierreTel);
+  }
+  function confirmarCierreTel(){
+    _telReadInputs();
+    var o=TL.o, err=document.getElementById('tl-err'); err.textContent='';
+    if(TL.esInst){
+      var lugar=(TL.tipoAct==='FIJO')?(TL._id||'').trim():(TL._pat||'').trim();
+      if(!lugar){ err.textContent=(TL.tipoAct==='FIJO'?'Poné el identificador de dónde está instalado.':'Poné la patente.'); return; }
+      if(!(TL._serial||'').trim()){ err.textContent='Poné el serial / IMEI del equipo GPS.'; return; }
+    }
+    if(TL.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá a que terminen de subir las fotos.'; return; }
+    var btn=document.getElementById('tl-confirmar'); btn.disabled=true; btn.textContent='Guardando…';
+    var fin=new Date().toISOString();
+    _uploadFirma('cli',TL).then(function(firmaCli){
+      getGPS().then(function(g){
+        var chain=Promise.resolve({vehId:o.vehiculo_telemetria_id||null, gpsId:o.gps_id||null});
+        if(TL.esInst){
+          var serial=(TL._serial||'').trim();
+          chain=chain.then(function(ctx){
+            // 1) crear vehículo/activo
+            return sbPost('vehiculos_telemetria',{ cliente_id:o.cliente_telemetria_id, tipo_activo:(TL.tipoAct==='FIJO'?'OTRO':'VEHICULO'), patente:(TL.tipoAct==='FIJO'?null:(TL._pat||'').trim()||null), identificador:(TL.tipoAct==='FIJO'?(TL._id||'').trim()||null:null), marca:(TL._marca||'').trim()||null, modelo:(TL._modelo||'').trim()||null }).then(function(rv){ ctx.vehId=(Array.isArray(rv)&&rv[0])?rv[0].id:null; return ctx; });
+          }).then(function(ctx){
+            // 2) buscar el GPS por serial/imei; si existe lo marco instalado, si no lo creo
+            return sbGet('gps_dispositivos?or=(imei.eq.'+encodeURIComponent(serial)+',serial.eq.'+encodeURIComponent(serial)+')&select=id&limit=1').then(function(gg){
+              var body={ estado:'INSTALADO', cliente_id:o.cliente_telemetria_id, vehiculo_id:ctx.vehId, instalado_at:fin };
+              if(TL._gpsmodelo&&(TL._gpsmodelo||'').trim()) body.modelo=(TL._gpsmodelo||'').trim();
+              if(Array.isArray(gg)&&gg[0]){ return sbPatchOk('gps_dispositivos?id=eq.'+gg[0].id,body).then(function(){ ctx.gpsId=gg[0].id; return ctx; }); }
+              body.imei=serial; body.serial=serial;
+              return sbPost('gps_dispositivos',body).then(function(rn){ ctx.gpsId=(Array.isArray(rn)&&rn[0])?rn[0].id:null; return ctx; });
+            });
+          }).then(function(ctx){
+            // 3) sensores
+            if(!TL.sensSel.length || !ctx.gpsId) return ctx;
+            return sbPost('gps_sensores',TL.sensSel.map(function(s){return {gps_id:ctx.gpsId,tipo_sensor_id:s.id};})).then(function(){ return ctx; });
+          });
+        }
+        chain.then(function(ctx){
+          var upd={ estado:'CERRADA_TECNICO', fin_tec_at:fin, observaciones_tec:(TL._obs||'').trim()||null };
+          if(ctx.vehId) upd.vehiculo_telemetria_id=ctx.vehId;
+          if(ctx.gpsId) upd.gps_id=ctx.gpsId;
+          if(firmaCli) upd.firma_cliente_url=firmaCli;
+          if(g){ upd.lat_fin=g.lat; upd.lng_fin=g.lng; }
+          var jobs=[ sbPatchOk('ordenes_trabajo?id=eq.'+o.id,upd) ];
+          TL.fotos.filter(function(f){return f.url;}).forEach(function(f){ jobs.push(sbPost('ot_fotos',{ot_id:o.id,url:f.url,tipo:'CIERRE'})); });
+          jobs.push(sbPost('ot_historial',{ ot_id:o.id, evento:'CIERRE_TECNICO', estado_anterior:o.estado||null, estado_nuevo:'CERRADA_TECNICO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:(TL._obs||'Cierre de telemetría') }).catch(function(){}));
+          Promise.all(jobs).then(function(){ toast('Trabajo cerrado ✓'); TL=null; listState.filtro='cerradas'; vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent='✔️ Confirmar cierre'; });
+        }).catch(function(){ err.textContent='No se pudo cerrar (revisá los datos). Reintentá.'; btn.disabled=false; btn.textContent='✔️ Confirmar cierre'; });
       });
     });
   }
