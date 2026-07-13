@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.82';
+  var VER='v1.83';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -5234,7 +5234,84 @@
   function _telStub(msg){ var b=document.getElementById('tel-body'); if(b) b.innerHTML='<div class="center" style="padding:44px;color:#94a3b8">'+esc(msg)+'</div>'; }
   function _telEquipos(){ _telStub('📡 Equipos GPS, vehículos y sensores — en la próxima fase.'); }
   function _telOrdenes(){ _telStub('📋 Órdenes de instalación / mantenimiento — en la próxima fase.'); }
-  function _telAbm(){ _telStub('⚙️ Configuración (planes y tipos de sensor) — en la próxima fase.'); }
+  // ── Configuración: ABM de Materiales, Planes y Tipos de sensor ──
+  function _telAbm(){
+    var b=document.getElementById('tel-body'); var at=_telState.abmtab||'materiales';
+    var subs=[['materiales','📦 Materiales'],['planes','💵 Planes'],['sensores','📡 Tipos de sensor']];
+    b.innerHTML='<div class="toolbar" style="gap:6px;flex-wrap:wrap">'+subs.map(function(x){return '<button class="btn '+(at===x[0]?'btn-pri':'btn-2')+' telabm-tab" data-a="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="telabm-body"></div>';
+    Array.prototype.forEach.call(b.querySelectorAll('.telabm-tab'),function(x){ x.addEventListener('click',function(){ _telState.abmtab=x.getAttribute('data-a'); _telAbm(); }); });
+    if(at==='planes') _telAbmPlanes(); else if(at==='sensores') _telAbmSensores(); else _telAbmMateriales();
+  }
+  function _telAbmMateriales(){
+    var b=document.getElementById('telabm-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('materiales_telemetria?select=*&order=orden,nombre').then(function(d){ d=Array.isArray(d)?d:[];
+      b.innerHTML='<div class="toolbar"><input id="telm-q" placeholder="🔎 Buscar material…" style="flex:1;min-width:200px"><button class="btn btn-ok" id="telm-new">➕ Nuevo material</button></div>'
+        +'<div class="muted" style="font-size:12px;margin:2px 0 8px">Marcá <b>«lleva serial»</b> en los que se cargan por N° de serie (equipos GPS, módems, sensores). El resto van por cantidad.</div><div id="telm-tabla"></div>';
+      var cols=[
+        {k:'nombre',t:'Material',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}},
+        {k:'serial',t:'¿Lleva serial?',sort:function(o){return o.con_serial?1:0;},r:function(o){return o.con_serial?'<span style="color:#15803d;font-weight:700">🔢 Sí</span>':'<span class="muted">por cantidad</span>';}},
+        {k:'unidad',t:'Unidad',sort:function(o){return o.unidad||'';},r:function(o){return esc(o.unidad||'—');}}
+      ];
+      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q?d.filter(function(o){return (o.nombre||'').toLowerCase().indexOf(q)>=0;}):d; gridRender(document.getElementById('telm-tabla'),cols,rs,{key:'telm',note:rs.length+' material(es)',onRow:function(o){ _telMaterialForm(o); }}); }
+      pinta('');
+      document.getElementById('telm-q').addEventListener('input',function(){ pinta(this.value); });
+      document.getElementById('telm-new').addEventListener('click',function(){ _telMaterialForm({}); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL de <b>materiales_telemetria</b>?</div>'; });
+  }
+  function _telMaterialForm(m){ var ed=!!m.id;
+    var h='<h2>'+(ed?'Editar':'Nuevo')+' material</h2><div class="fsgrid">'
+      +_svInput('telmf-nombre','Nombre',m.nombre,'ej: GPS Coban / Cable / Sensor combustible')
+      +_svInput('telmf-unidad','Unidad',m.unidad,'ej: unidad, metro',true)
+      +'<div style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600"><input type="checkbox" id="telmf-serial" style="width:auto"'+(m.con_serial?' checked':'')+'> 🔢 Este material lleva número de serie</label><div class="muted" style="font-size:12px;margin-top:3px">Si lo marcás, en el depósito se carga y sigue por serial (uno por uno). Si no, va por cantidad.</div></div>'
+      +'<div style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="telmf-activo" style="width:auto"'+(m.activo!==false?' checked':'')+'> Activo</label></div>'
+      +'</div><div id="telmf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="telmf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="telmf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="telmf-close">Cerrar</button></div>';
+    modal(h,'wide'); document.getElementById('telmf-close').addEventListener('click',cerrarModal);
+    document.getElementById('telmf-save').addEventListener('click',function(){ var nombre=(document.getElementById('telmf-nombre').value||'').trim(); if(!nombre){ document.getElementById('telmf-err').textContent='El nombre es obligatorio.'; return; }
+      var body={ nombre:nombre, unidad:(document.getElementById('telmf-unidad').value||'').trim()||null, con_serial:document.getElementById('telmf-serial').checked, activo:document.getElementById('telmf-activo').checked };
+      var btn=this; btn.disabled=true; var prom=ed?sbPatch('materiales_telemetria?id=eq.'+m.id,body):sbPost('materiales_telemetria',body);
+      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Material guardado ✓'); _telAbm(); }).catch(function(){ btn.disabled=false; document.getElementById('telmf-err').textContent='No se pudo guardar.'; }); });
+    var del=document.getElementById('telmf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; } fetch(SB_URL+'/rest/v1/materiales_telemetria?id=eq.'+m.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Material eliminado'); _telAbm(); }).catch(function(){ toast('No se pudo eliminar (¿está en uso?).'); }); });
+  }
+  function _telAbmPlanes(){
+    var b=document.getElementById('telabm-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('planes_telemetria?select=*&order=orden,nombre').then(function(d){ d=Array.isArray(d)?d:[];
+      b.innerHTML='<div class="toolbar"><button class="btn btn-ok" id="telp-new">➕ Nuevo plan</button></div><div class="muted" style="font-size:12px;margin:2px 0 8px">Definen el <b>abono mensual</b>. Cada GPS tiene un plan.</div><div id="telp-tabla"></div>';
+      var cols=[{k:'nombre',t:'Plan',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}},{k:'precio',t:'Abono mensual',sort:function(o){return Number(o.precio_mensual)||0;},r:function(o){return '<b>'+_repMoney(o.precio_mensual)+'</b>';}}];
+      gridRender(document.getElementById('telp-tabla'),cols,d,{key:'telp',note:d.length+' plan(es)',onRow:function(o){ _telPlanForm(o); }});
+      document.getElementById('telp-new').addEventListener('click',function(){ _telPlanForm({}); });
+    });
+  }
+  function _telPlanForm(p){ var ed=!!p.id;
+    var h='<h2>'+(ed?'Editar':'Nuevo')+' plan</h2><div class="fsgrid">'
+      +_svInput('telpf-nombre','Nombre',p.nombre,'ej: Básico / Plus')
+      +'<div><label class="l">Abono mensual ($)</label><input id="telpf-precio" type="number" min="0" step="100" value="'+esc(p.precio_mensual!=null?p.precio_mensual:'')+'"></div>'
+      +'<div style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="telpf-activo" style="width:auto"'+(p.activo!==false?' checked':'')+'> Activo</label></div>'
+      +'</div><div id="telpf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="telpf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="telpf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="telpf-close">Cerrar</button></div>';
+    modal(h,'wide'); document.getElementById('telpf-close').addEventListener('click',cerrarModal);
+    document.getElementById('telpf-save').addEventListener('click',function(){ var nombre=(document.getElementById('telpf-nombre').value||'').trim(); if(!nombre){document.getElementById('telpf-err').textContent='El nombre es obligatorio.';return;} var body={nombre:nombre,precio_mensual:Number(document.getElementById('telpf-precio').value)||0,activo:document.getElementById('telpf-activo').checked}; var btn=this;btn.disabled=true; var prom=ed?sbPatch('planes_telemetria?id=eq.'+p.id,body):sbPost('planes_telemetria',body); prom.then(function(r){if(!Array.isArray(r)||!r.length)throw 0;cerrarModal();toast('Plan guardado ✓');_telAbm();}).catch(function(){btn.disabled=false;document.getElementById('telpf-err').textContent='No se pudo guardar.';}); });
+    var del=document.getElementById('telpf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){this.setAttribute('data-ok','1');this.textContent='¿Eliminar? Tocá de nuevo';return;} fetch(SB_URL+'/rest/v1/planes_telemetria?id=eq.'+p.id,{method:'DELETE',headers:H}).then(function(r){if(!r.ok)throw 0;cerrarModal();toast('Plan eliminado');_telAbm();}).catch(function(){toast('No se pudo eliminar (¿está en uso?).');}); });
+  }
+  function _telAbmSensores(){
+    var b=document.getElementById('telabm-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('tipos_sensor?select=*&order=orden,nombre').then(function(d){ d=Array.isArray(d)?d:[];
+      b.innerHTML='<div class="toolbar"><button class="btn btn-ok" id="tels-new">➕ Nuevo tipo de sensor</button></div><div id="tels-tabla"></div>';
+      var cols=[{k:'nombre',t:'Tipo de sensor',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}}];
+      gridRender(document.getElementById('tels-tabla'),cols,d,{key:'tels',note:d.length+' tipo(s)',onRow:function(o){ _telSensorForm(o); }});
+      document.getElementById('tels-new').addEventListener('click',function(){ _telSensorForm({}); });
+    });
+  }
+  function _telSensorForm(s){ var ed=!!s.id;
+    var h='<h2>'+(ed?'Editar':'Nuevo')+' tipo de sensor</h2><div class="fsgrid">'
+      +_svInput('telsf-nombre','Nombre',s.nombre,'ej: Combustible / Temperatura')
+      +'<div style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="telsf-activo" style="width:auto"'+(s.activo!==false?' checked':'')+'> Activo</label></div>'
+      +'</div><div id="telsf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="telsf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="telsf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="telsf-close">Cerrar</button></div>';
+    modal(h,'wide'); document.getElementById('telsf-close').addEventListener('click',cerrarModal);
+    document.getElementById('telsf-save').addEventListener('click',function(){ var nombre=(document.getElementById('telsf-nombre').value||'').trim(); if(!nombre){document.getElementById('telsf-err').textContent='El nombre es obligatorio.';return;} var body={nombre:nombre,activo:document.getElementById('telsf-activo').checked}; var btn=this;btn.disabled=true; var prom=ed?sbPatch('tipos_sensor?id=eq.'+s.id,body):sbPost('tipos_sensor',body); prom.then(function(r){if(!Array.isArray(r)||!r.length)throw 0;cerrarModal();toast('Guardado ✓');_telAbm();}).catch(function(){btn.disabled=false;document.getElementById('telsf-err').textContent='No se pudo guardar.';}); });
+    var del=document.getElementById('telsf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){this.setAttribute('data-ok','1');this.textContent='¿Eliminar? Tocá de nuevo';return;} fetch(SB_URL+'/rest/v1/tipos_sensor?id=eq.'+s.id,{method:'DELETE',headers:H}).then(function(r){if(!r.ok)throw 0;cerrarModal();toast('Eliminado');_telAbm();}).catch(function(){toast('No se pudo eliminar (¿está en uso?).');}); });
+  }
   // ── Clientes de telemetría (tabla propia clientes_telemetria) ──
   function _telClientes(){
     var b=document.getElementById('tel-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
