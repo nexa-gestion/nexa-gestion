@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.84';
+  var VER='v1.85';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -5225,11 +5225,14 @@
   function vTelemetria(){
     if(!(USER&&(USER.rol==='superadmin'||USER.rol==='gerencial'||USER.rol==='administrativo'))){ view.innerHTML='<h1>📡 Telemetría</h1><div class="center">Sin acceso.</div>'; return; }
     var t=_telState.tab||'clientes';
+    var _telGer=(USER.rol==='superadmin'||USER.rol==='gerencial');
     var tabs=[['clientes','👥 Clientes'],['equipos','📡 Equipos GPS'],['ordenes','📋 Órdenes'],['abm','⚙️ Configuración']];
+    if(_telGer) tabs.push(['factura','💵 Facturación']);
+    if(t==='factura' && !_telGer) t='clientes';   // solo gerencia ve facturación
     view.innerHTML='<h1>📡 Telemetría <span class="muted" style="font-size:14px;font-weight:400">· rastreo GPS</span></h1><p class="sub">Clientes, vehículos, equipos GPS y órdenes de instalación / mantenimiento.</p>'
       +'<div class="toolbar" style="gap:6px;flex-wrap:wrap">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' tel-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="tel-body"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.tel-tab'),function(b){ b.addEventListener('click',function(){ _telState.tab=b.getAttribute('data-t'); vTelemetria(); }); });
-    if(t==='clientes') _telClientes(); else if(t==='equipos') _telEquipos(); else if(t==='ordenes') _telOrdenes(); else _telAbm();
+    if(t==='clientes') _telClientes(); else if(t==='equipos') _telEquipos(); else if(t==='ordenes') _telOrdenes(); else if(t==='factura') _telFactura(); else _telAbm();
   }
   function _telStub(msg){ var b=document.getElementById('tel-body'); if(b) b.innerHTML='<div class="center" style="padding:44px;color:#94a3b8">'+esc(msg)+'</div>'; }
   function _telEqEstado(e){ return e==='INSTALADO'?'<span style="color:#15803d;font-weight:700">✅ instalado</span>':(e==='BAJA'?'<span class="pill p-baja">baja</span>':'<span style="color:#64748b;font-weight:700">📦 en stock</span>'); }
@@ -5258,28 +5261,61 @@
     }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL de telemetría?</div>'; });
   }
   function _telEquipoForm(m){ var ed=!!m.id;
-    var simN=(m.sim_nuestra!==false);
-    var h='<h2>'+(ed?'Editar':'Cargar')+' equipo GPS</h2><div class="fsgrid">'
-      +_svInput('teqf-imei','IMEI',m.imei,'identificador del equipo')
-      +_svInput('teqf-serial','Serial',m.serial,'',true)
-      +_svInput('teqf-modelo','Modelo',m.modelo,'ej: Coban / Teltonika',true)
-      +'<div><label class="l">Estado</label><select id="teqf-estado"><option value="EN_STOCK"'+(m.estado!=='BAJA'&&m.estado!=='INSTALADO'?' selected':'')+'>📦 En stock</option>'+(m.estado==='INSTALADO'?'<option value="INSTALADO" selected>✅ Instalado</option>':'')+'<option value="BAJA"'+(m.estado==='BAJA'?' selected':'')+'>Baja</option></select></div>'
-      +'<div style="grid-column:1/-1;border-top:1px solid var(--bord);padding-top:8px;margin-top:2px"><label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600"><input type="checkbox" id="teqf-simn" style="width:auto"'+(simN?' checked':'')+'> 📶 Lleva SIM nuestra</label><div class="muted" style="font-size:12px;margin-top:2px">Destildá si el chip lo pone el cliente. Igual podés guardar los datos del chip abajo.</div></div>'
-      +_svInput('teqf-linea','N° de línea (chip)',m.chip_linea,'',true)
-      +_svInput('teqf-iccid','ICCID (SIM)',m.chip_iccid,'',true)
-      +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="teqf-notas" style="min-height:44px">'+esc(m.notas||'')+'</textarea></div>'
-      +'</div><div class="muted" style="font-size:12px;margin-top:6px">💡 Para <b>instalar</b> este equipo en un cliente/vehículo (con plan y sensores) vamos a usar la orden de trabajo — próxima fase.</div>'
-      +'<div id="teqf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:4px"></div>'
-      +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-ok" id="teqf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="teqf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="teqf-close">Cerrar</button></div>';
-    modal(h,'wide'); document.getElementById('teqf-close').addEventListener('click',cerrarModal);
-    function g(id){ var e=document.getElementById(id); return (e&&e.value.trim())||null; }
-    document.getElementById('teqf-save').addEventListener('click',function(){
-      var imei=(document.getElementById('teqf-imei').value||'').trim();
-      if(!imei && !(document.getElementById('teqf-serial').value||'').trim()){ document.getElementById('teqf-err').textContent='Poné al menos IMEI o Serial.'; return; }
-      var body={ imei:imei||null, serial:g('teqf-serial'), modelo:g('teqf-modelo'), estado:document.getElementById('teqf-estado').value, sim_nuestra:document.getElementById('teqf-simn').checked, chip_linea:g('teqf-linea'), chip_iccid:g('teqf-iccid'), notas:g('teqf-notas') };
-      var btn=this; btn.disabled=true; var prom=ed?sbPatch('gps_dispositivos?id=eq.'+m.id,body):sbPost('gps_dispositivos',body);
-      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Equipo guardado ✓'); vTelemetria(); }).catch(function(){ btn.disabled=false; document.getElementById('teqf-err').textContent='No se pudo guardar.'; }); });
-    var del=document.getElementById('teqf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; } fetch(SB_URL+'/rest/v1/gps_dispositivos?id=eq.'+m.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Equipo eliminado'); vTelemetria(); }).catch(function(){ toast('No se pudo eliminar (¿está instalado / en una orden?).'); }); });
+    Promise.all([ sbGet('clientes_telemetria?activo=eq.true&select=id,nombre&order=nombre'), sbGet('planes_telemetria?activo=eq.true&select=id,nombre&order=orden') ]).then(function(r){
+      var clis=Array.isArray(r[0])?r[0]:[], planes=Array.isArray(r[1])?r[1]:[], simN=(m.sim_nuestra!==false);
+      var estSel=function(v){ var cur=m.estado||'EN_STOCK'; return cur===v?' selected':''; };
+      var cliOpts='<option value="">— sin asignar (stock) —</option>'+clis.map(function(c){return '<option value="'+c.id+'"'+(String(m.cliente_id||'')===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('');
+      var planOpts='<option value="">— sin plan —</option>'+planes.map(function(p){return '<option value="'+p.id+'"'+(String(m.plan_id||'')===String(p.id)?' selected':'')+'>'+esc(p.nombre)+'</option>';}).join('');
+      var h='<h2>'+(ed?'Editar':'Cargar')+' equipo GPS</h2><div class="fsgrid">'
+        +_svInput('teqf-imei','IMEI',m.imei,'identificador del equipo')
+        +_svInput('teqf-serial','Serial',m.serial,'',true)
+        +_svInput('teqf-modelo','Modelo',m.modelo,'ej: Coban / Teltonika',true)
+        +'<div><label class="l">Estado</label><select id="teqf-estado"><option value="EN_STOCK"'+estSel('EN_STOCK')+'>📦 En stock</option><option value="INSTALADO"'+estSel('INSTALADO')+'>✅ Instalado</option><option value="BAJA"'+estSel('BAJA')+'>Baja</option></select></div>'
+        +'<div><label class="l">Cliente <span class="muted">(si está instalado)</span></label><select id="teqf-cli">'+cliOpts+'</select></div>'
+        +'<div><label class="l">Plan <span class="muted">(abono mensual)</span></label><select id="teqf-plan">'+planOpts+'</select></div>'
+        +'<div style="grid-column:1/-1;border-top:1px solid var(--bord);padding-top:8px;margin-top:2px"><label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600"><input type="checkbox" id="teqf-simn" style="width:auto"'+(simN?' checked':'')+'> 📶 Lleva SIM nuestra</label><div class="muted" style="font-size:12px;margin-top:2px">Destildá si el chip lo pone el cliente. Igual podés guardar los datos del chip abajo.</div></div>'
+        +_svInput('teqf-linea','N° de línea (chip)',m.chip_linea,'',true)
+        +_svInput('teqf-iccid','ICCID (SIM)',m.chip_iccid,'',true)
+        +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="teqf-notas" style="min-height:44px">'+esc(m.notas||'')+'</textarea></div>'
+        +'</div><div class="muted" style="font-size:12px;margin-top:6px">💡 El <b>vehículo</b> y los <b>sensores</b> se cargan en la próxima parte (con la orden de instalación). Asignar cliente + plan + estado «Instalado» ya cuenta para el <b>abono mensual</b>.</div>'
+        +'<div id="teqf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:4px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-ok" id="teqf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="teqf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="teqf-close">Cerrar</button></div>';
+      modal(h,'wide'); document.getElementById('teqf-close').addEventListener('click',cerrarModal);
+      function g(id){ var e=document.getElementById(id); return (e&&e.value.trim())||null; }
+      document.getElementById('teqf-save').addEventListener('click',function(){
+        var imei=(document.getElementById('teqf-imei').value||'').trim();
+        if(!imei && !(document.getElementById('teqf-serial').value||'').trim()){ document.getElementById('teqf-err').textContent='Poné al menos IMEI o Serial.'; return; }
+        var estado=document.getElementById('teqf-estado').value, cliVal=document.getElementById('teqf-cli').value, planVal=document.getElementById('teqf-plan').value;
+        var body={ imei:imei||null, serial:g('teqf-serial'), modelo:g('teqf-modelo'), estado:estado, cliente_id:cliVal?Number(cliVal):null, plan_id:planVal?Number(planVal):null, sim_nuestra:document.getElementById('teqf-simn').checked, chip_linea:g('teqf-linea'), chip_iccid:g('teqf-iccid'), notas:g('teqf-notas') };
+        if(estado==='INSTALADO' && !m.instalado_at) body.instalado_at=new Date().toISOString();
+        var btn=this; btn.disabled=true; var prom=ed?sbPatch('gps_dispositivos?id=eq.'+m.id,body):sbPost('gps_dispositivos',body);
+        prom.then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; cerrarModal(); toast('Equipo guardado ✓'); vTelemetria(); }).catch(function(){ btn.disabled=false; document.getElementById('teqf-err').textContent='No se pudo guardar.'; }); });
+      var del=document.getElementById('teqf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; } fetch(SB_URL+'/rest/v1/gps_dispositivos?id=eq.'+m.id,{method:'DELETE',headers:H}).then(function(rr){ if(!rr.ok) throw 0; cerrarModal(); toast('Equipo eliminado'); vTelemetria(); }).catch(function(){ toast('No se pudo eliminar (¿está instalado / en una orden?).'); }); });
+    });
+  }
+  // ── Facturación de telemetría (SOLO gerencia): abono mensual = Σ GPS instalados × plan ──
+  function _telFactura(){
+    var b=document.getElementById('tel-body');
+    if(!(USER&&(USER.rol==='superadmin'||USER.rol==='gerencial'))){ b.innerHTML='<div class="center" style="padding:44px;color:#94a3b8">Solo gerencia.</div>'; return; }
+    b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('gps_dispositivos?estado=eq.INSTALADO&select=id,cliente_id,plan_id,clientes_telemetria(nombre),planes_telemetria(nombre,precio_mensual)&limit=5000').then(function(d){ d=Array.isArray(d)?d:[];
+      var porCli={}, sinPlan=0, totMonto=0, totGps=0;
+      d.forEach(function(gp){ var cid=gp.cliente_id; if(cid==null) return; totGps++; var nom=(gp.clientes_telemetria&&gp.clientes_telemetria.nombre)||('Cliente '+cid); var precio=(gp.planes_telemetria&&Number(gp.planes_telemetria.precio_mensual))||0; if(!gp.plan_id) sinPlan++;
+        var pc=porCli[cid]||(porCli[cid]={nombre:nom,gps:0,monto:0,planes:{}}); pc.gps++; pc.monto+=precio; totMonto+=precio; var pn=(gp.planes_telemetria&&gp.planes_telemetria.nombre)||'(sin plan)'; pc.planes[pn]=(pc.planes[pn]||0)+1; });
+      var lista=Object.keys(porCli).map(function(k){return porCli[k];}).sort(function(a,b){return b.monto-a.monto;});
+      var kpis='<div class="dkpis">'+dkpi(_repMoney(totMonto),'Abono mensual','recurrente total','green')+dkpi(lista.length,'Clientes con servicio','facturables','cyan')+dkpi(totGps,'GPS instalados','activos','blue')+dkpi(sinPlan,'GPS sin plan','no facturan',sinPlan?'red':'gray')+'</div>';
+      if(!lista.length){ b.innerHTML=kpis+'<div class="center" style="padding:34px;color:#94a3b8">No hay GPS instalados con cliente todavía. Cargá equipos en «Equipos GPS» y asignales cliente + plan + estado «Instalado».</div>'; return; }
+      var head='<tr style="text-align:left;color:#64748b;border-bottom:2px solid var(--bord)"><th style="padding:7px 8px">Cliente</th><th style="padding:7px 8px;text-align:right">GPS</th><th style="padding:7px 8px">Planes</th><th style="padding:7px 8px;text-align:right">Abono mensual</th></tr>';
+      var body=lista.map(function(p){ var planTxt=Object.keys(p.planes).map(function(k){return esc(k)+'×'+p.planes[k];}).join(', ');
+        return '<tr style="border-bottom:1px solid var(--bord)"><td style="padding:7px 8px;font-weight:700">'+esc(p.nombre)+'</td><td style="padding:7px 8px;text-align:right">'+p.gps+'</td><td style="padding:7px 8px;font-size:12.5px;color:#475569">'+planTxt+'</td><td style="padding:7px 8px;text-align:right;color:#15803d;font-weight:800">'+_repMoney(p.monto)+'</td></tr>'; }).join('');
+      var totRow='<tr style="border-top:2px solid #334155;font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">'+totGps+'</td><td></td><td style="padding:8px;text-align:right;color:#15803d">'+_repMoney(totMonto)+'</td></tr>';
+      var tabla='<div class="dkpi" style="border-left-color:#16a34a;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap"><div class="dkpi-lbl" style="color:#334155;font-size:13px">💵 Abono mensual por cliente</div><button class="btn btn-2" id="telfac-copy" style="font-size:12px">📋 Copiar a Excel</button></div><table style="width:100%;border-collapse:collapse;font-size:13px"><thead>'+head+'</thead><tbody>'+body+totRow+'</tbody></table></div>';
+      var nota='<div class="muted" style="font-size:12px;margin:8px 0 12px">💡 El <b>abono mensual</b> = Σ (GPS instalados × precio del plan de cada uno). La <b>instalación</b> (cobro único) se factura aparte en la orden. Los GPS sin plan no suman. Solo lo ve gerencia.</div>';
+      b.innerHTML=kpis+tabla+nota;
+      var cb=document.getElementById('telfac-copy');
+      if(cb){ var tsv='Cliente\tGPS\tAbonoMensual\n'+lista.map(function(p){ return p.nombre+'\t'+p.gps+'\t'+Math.round(p.monto); }).join('\n')+'\nTOTAL\t'+totGps+'\t'+Math.round(totMonto);
+        cb.addEventListener('click',function(){ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(tsv).then(function(){ var o=cb.textContent; cb.textContent='✓ copiado'; setTimeout(function(){ cb.textContent=o; },1500); },function(){ prompt('Copiá:',tsv); }); } else prompt('Copiá:',tsv); }); }
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar la facturación.</div>'; });
   }
   function _telOrdenes(){ _telStub('📋 Órdenes de instalación / mantenimiento — en la próxima fase.'); }
   // ── Configuración: ABM de Materiales, Planes y Tipos de sensor ──
