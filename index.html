@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.83';
+  var VER='v1.84';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -5232,7 +5232,55 @@
     if(t==='clientes') _telClientes(); else if(t==='equipos') _telEquipos(); else if(t==='ordenes') _telOrdenes(); else _telAbm();
   }
   function _telStub(msg){ var b=document.getElementById('tel-body'); if(b) b.innerHTML='<div class="center" style="padding:44px;color:#94a3b8">'+esc(msg)+'</div>'; }
-  function _telEquipos(){ _telStub('📡 Equipos GPS, vehículos y sensores — en la próxima fase.'); }
+  function _telEqEstado(e){ return e==='INSTALADO'?'<span style="color:#15803d;font-weight:700">✅ instalado</span>':(e==='BAJA'?'<span class="pill p-baja">baja</span>':'<span style="color:#64748b;font-weight:700">📦 en stock</span>'); }
+  function _telEquipos(){
+    var b=document.getElementById('tel-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('gps_dispositivos?select=*,clientes_telemetria(nombre),planes_telemetria(nombre)&order=id.desc&limit=3000').then(function(d){ d=Array.isArray(d)?d:[];
+      var enStock=d.filter(function(x){return x.estado==='EN_STOCK';}).length, inst=d.filter(function(x){return x.estado==='INSTALADO';}).length;
+      b.innerHTML='<div class="dkpis" style="margin-bottom:10px">'+dkpi(enStock,'En stock','equipos GPS libres','gray')+dkpi(inst,'Instalados','en clientes','green')+dkpi(d.length,'Total equipos','cargados','blue')+'</div>'
+        +'<div class="toolbar"><input id="tele-q" placeholder="🔎 Buscar IMEI, serial, modelo, cliente…" style="flex:1;min-width:220px"><select id="tele-est"><option value="">Todos</option><option value="EN_STOCK">📦 En stock</option><option value="INSTALADO">✅ Instalados</option><option value="BAJA">Baja</option></select><button class="btn btn-ok" id="tele-new">➕ Cargar equipo GPS</button></div><div id="tele-tabla"></div>';
+      var cols=[
+        {k:'imei',t:'IMEI',sort:function(o){return o.imei||'';},r:function(o){return '<b>'+esc(o.imei||'—')+'</b>';}},
+        {k:'serial',t:'Serial',sort:function(o){return o.serial||'';},r:function(o){return esc(o.serial||'—');}},
+        {k:'modelo',t:'Modelo',sort:function(o){return o.modelo||'';},r:function(o){return esc(o.modelo||'—');}},
+        {k:'chip',t:'Chip / SIM',sort:function(o){return o.sim_nuestra?0:1;},r:function(o){return o.sim_nuestra?('<span style="color:#15803d">📶 Nuestra</span>'+(o.chip_linea?(' <span class="muted">'+esc(o.chip_linea)+'</span>'):'')):'<span class="muted">del cliente</span>';}},
+        {k:'estado',t:'Estado',sort:function(o){return o.estado||'';},r:function(o){return _telEqEstado(o.estado);}},
+        {k:'cliente',t:'Cliente',sort:function(o){return (o.clientes_telemetria&&o.clientes_telemetria.nombre)||'';},r:function(o){return o.clientes_telemetria?esc(o.clientes_telemetria.nombre):'<span class="muted">—</span>';}},
+        {k:'plan',t:'Plan',sort:function(o){return (o.planes_telemetria&&o.planes_telemetria.nombre)||'';},r:function(o){return o.planes_telemetria?esc(o.planes_telemetria.nombre):'<span class="muted">—</span>';}}
+      ];
+      function pinta(){ var q=(document.getElementById('tele-q').value||'').toLowerCase().trim(), est=document.getElementById('tele-est').value;
+        var rs=d.filter(function(o){ if(est&&o.estado!==est) return false; if(!q) return true; return ((o.imei||'')+' '+(o.serial||'')+' '+(o.modelo||'')+' '+(o.chip_linea||'')+' '+((o.clientes_telemetria&&o.clientes_telemetria.nombre)||'')).toLowerCase().indexOf(q)>=0; });
+        gridRender(document.getElementById('tele-tabla'),cols,rs,{key:'tele',note:rs.length+' equipo(s)',onRow:function(o){ _telEquipoForm(o); }}); }
+      pinta();
+      document.getElementById('tele-q').addEventListener('input',pinta);
+      document.getElementById('tele-est').addEventListener('change',pinta);
+      document.getElementById('tele-new').addEventListener('click',function(){ _telEquipoForm({}); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL de telemetría?</div>'; });
+  }
+  function _telEquipoForm(m){ var ed=!!m.id;
+    var simN=(m.sim_nuestra!==false);
+    var h='<h2>'+(ed?'Editar':'Cargar')+' equipo GPS</h2><div class="fsgrid">'
+      +_svInput('teqf-imei','IMEI',m.imei,'identificador del equipo')
+      +_svInput('teqf-serial','Serial',m.serial,'',true)
+      +_svInput('teqf-modelo','Modelo',m.modelo,'ej: Coban / Teltonika',true)
+      +'<div><label class="l">Estado</label><select id="teqf-estado"><option value="EN_STOCK"'+(m.estado!=='BAJA'&&m.estado!=='INSTALADO'?' selected':'')+'>📦 En stock</option>'+(m.estado==='INSTALADO'?'<option value="INSTALADO" selected>✅ Instalado</option>':'')+'<option value="BAJA"'+(m.estado==='BAJA'?' selected':'')+'>Baja</option></select></div>'
+      +'<div style="grid-column:1/-1;border-top:1px solid var(--bord);padding-top:8px;margin-top:2px"><label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600"><input type="checkbox" id="teqf-simn" style="width:auto"'+(simN?' checked':'')+'> 📶 Lleva SIM nuestra</label><div class="muted" style="font-size:12px;margin-top:2px">Destildá si el chip lo pone el cliente. Igual podés guardar los datos del chip abajo.</div></div>'
+      +_svInput('teqf-linea','N° de línea (chip)',m.chip_linea,'',true)
+      +_svInput('teqf-iccid','ICCID (SIM)',m.chip_iccid,'',true)
+      +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="teqf-notas" style="min-height:44px">'+esc(m.notas||'')+'</textarea></div>'
+      +'</div><div class="muted" style="font-size:12px;margin-top:6px">💡 Para <b>instalar</b> este equipo en un cliente/vehículo (con plan y sensores) vamos a usar la orden de trabajo — próxima fase.</div>'
+      +'<div id="teqf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:4px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-ok" id="teqf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="teqf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="teqf-close">Cerrar</button></div>';
+    modal(h,'wide'); document.getElementById('teqf-close').addEventListener('click',cerrarModal);
+    function g(id){ var e=document.getElementById(id); return (e&&e.value.trim())||null; }
+    document.getElementById('teqf-save').addEventListener('click',function(){
+      var imei=(document.getElementById('teqf-imei').value||'').trim();
+      if(!imei && !(document.getElementById('teqf-serial').value||'').trim()){ document.getElementById('teqf-err').textContent='Poné al menos IMEI o Serial.'; return; }
+      var body={ imei:imei||null, serial:g('teqf-serial'), modelo:g('teqf-modelo'), estado:document.getElementById('teqf-estado').value, sim_nuestra:document.getElementById('teqf-simn').checked, chip_linea:g('teqf-linea'), chip_iccid:g('teqf-iccid'), notas:g('teqf-notas') };
+      var btn=this; btn.disabled=true; var prom=ed?sbPatch('gps_dispositivos?id=eq.'+m.id,body):sbPost('gps_dispositivos',body);
+      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Equipo guardado ✓'); vTelemetria(); }).catch(function(){ btn.disabled=false; document.getElementById('teqf-err').textContent='No se pudo guardar.'; }); });
+    var del=document.getElementById('teqf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; } fetch(SB_URL+'/rest/v1/gps_dispositivos?id=eq.'+m.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Equipo eliminado'); vTelemetria(); }).catch(function(){ toast('No se pudo eliminar (¿está instalado / en una orden?).'); }); });
+  }
   function _telOrdenes(){ _telStub('📋 Órdenes de instalación / mantenimiento — en la próxima fase.'); }
   // ── Configuración: ABM de Materiales, Planes y Tipos de sensor ──
   function _telAbm(){
