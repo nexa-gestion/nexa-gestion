@@ -206,6 +206,8 @@
       <a data-v="cobertura">📍 Cobertura / Red</a>
       <div class="sec">Servicios</div>
       <a data-v="servicios">🧰 Servicios (fuera de internet)</a>
+      <div class="sec">Telemetría</div>
+      <a data-v="telemetria">📡 Telemetría (GPS)</a>
       <div class="sec">Gestión</div>
       <a data-v="clientes">👥 Clientes</a>
       <a data-v="cuadrillas-adm">🔧 Cuadrillas</a>
@@ -238,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.81';
+  var VER='v1.82';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -457,7 +459,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -5218,6 +5220,69 @@
       });
     });
   }
+  // ════════════════ MÓDULO TELEMETRÍA (rastreo GPS) ════════════════
+  var _telState={ tab:'clientes' };
+  function vTelemetria(){
+    if(!(USER&&(USER.rol==='superadmin'||USER.rol==='gerencial'||USER.rol==='administrativo'))){ view.innerHTML='<h1>📡 Telemetría</h1><div class="center">Sin acceso.</div>'; return; }
+    var t=_telState.tab||'clientes';
+    var tabs=[['clientes','👥 Clientes'],['equipos','📡 Equipos GPS'],['ordenes','📋 Órdenes'],['abm','⚙️ Configuración']];
+    view.innerHTML='<h1>📡 Telemetría <span class="muted" style="font-size:14px;font-weight:400">· rastreo GPS</span></h1><p class="sub">Clientes, vehículos, equipos GPS y órdenes de instalación / mantenimiento.</p>'
+      +'<div class="toolbar" style="gap:6px;flex-wrap:wrap">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' tel-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="tel-body"></div>';
+    Array.prototype.forEach.call(view.querySelectorAll('.tel-tab'),function(b){ b.addEventListener('click',function(){ _telState.tab=b.getAttribute('data-t'); vTelemetria(); }); });
+    if(t==='clientes') _telClientes(); else if(t==='equipos') _telEquipos(); else if(t==='ordenes') _telOrdenes(); else _telAbm();
+  }
+  function _telStub(msg){ var b=document.getElementById('tel-body'); if(b) b.innerHTML='<div class="center" style="padding:44px;color:#94a3b8">'+esc(msg)+'</div>'; }
+  function _telEquipos(){ _telStub('📡 Equipos GPS, vehículos y sensores — en la próxima fase.'); }
+  function _telOrdenes(){ _telStub('📋 Órdenes de instalación / mantenimiento — en la próxima fase.'); }
+  function _telAbm(){ _telStub('⚙️ Configuración (planes y tipos de sensor) — en la próxima fase.'); }
+  // ── Clientes de telemetría (tabla propia clientes_telemetria) ──
+  function _telClientes(){
+    var b=document.getElementById('tel-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('clientes_telemetria?select=*&order=nombre').then(function(d){
+      d=Array.isArray(d)?d:[];
+      b.innerHTML='<div class="toolbar"><input id="telc-q" placeholder="🔎 Buscar nombre, contacto, teléfono, CUIT…" style="flex:1;min-width:220px"><button class="btn btn-ok" id="telc-new">➕ Nuevo cliente</button></div><div id="telc-tabla"></div>';
+      var cols=[
+        {k:'nombre',t:'Nombre',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}},
+        {k:'contacto',t:'Contacto',sort:function(o){return o.contacto||'';},r:function(o){return esc(o.contacto||'—');}},
+        {k:'telefono',t:'Teléfono',sort:function(o){return o.telefono||'';},r:function(o){return esc(o.telefono||'—');}},
+        {k:'cuit',t:'CUIT',sort:function(o){return o.cuit||'';},r:function(o){return esc(o.cuit||'—');}},
+        {k:'direccion',t:'Dirección',sort:function(o){return o.direccion||'';},r:function(o){return esc(o.direccion||'—');}}
+      ];
+      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q? d.filter(function(o){ return ((o.nombre||'')+' '+(o.contacto||'')+' '+(o.telefono||'')+' '+(o.cuit||'')+' '+(o.email||'')+' '+(o.direccion||'')).toLowerCase().indexOf(q)>=0; }):d;
+        gridRender(document.getElementById('telc-tabla'),cols,rs,{key:'telc',note:rs.length+' cliente(s)',onRow:function(o){ _telClienteForm(o); }}); }
+      pinta('');
+      document.getElementById('telc-q').addEventListener('input',function(){ pinta(this.value); });
+      document.getElementById('telc-new').addEventListener('click',function(){ _telClienteForm({}); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL de telemetría?</div>'; });
+  }
+  function _telClienteForm(c){
+    var ed=!!c.id;
+    var h='<h2>'+(ed?'Editar':'Nuevo')+' cliente de telemetría</h2><div class="fsgrid">'
+      +_svInput('telf-nombre','Nombre',c.nombre,'ej: Transporte X / Juan Pérez')
+      +_svInput('telf-contacto','Persona de contacto',c.contacto,'',true)
+      +_svInput('telf-telefono','Teléfono',c.telefono,'',true)
+      +_svInput('telf-email','Email',c.email,'',true)
+      +_svInput('telf-cuit','CUIT',c.cuit,'',true)
+      +'<div style="grid-column:1/-1">'+_svInput('telf-direccion','Dirección',c.direccion,'',true)+'</div>'
+      +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="telf-notas" style="min-height:48px">'+esc(c.notas||'')+'</textarea></div>'
+      +'</div><div id="telf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="telf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="telf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="telf-close">Cerrar</button></div>';
+    modal(h,'wide');
+    function g(id){ var e=document.getElementById(id); return (e&&e.value.trim())||null; }
+    document.getElementById('telf-close').addEventListener('click',cerrarModal);
+    document.getElementById('telf-save').addEventListener('click',function(){
+      var nombre=(document.getElementById('telf-nombre').value||'').trim();
+      if(!nombre){ document.getElementById('telf-err').textContent='El nombre es obligatorio.'; return; }
+      var body={ nombre:nombre, contacto:g('telf-contacto'), telefono:g('telf-telefono'), email:g('telf-email'), cuit:g('telf-cuit'), direccion:g('telf-direccion'), notas:g('telf-notas') };
+      var btn=this; btn.disabled=true; var prom=ed? sbPatch('clientes_telemetria?id=eq.'+c.id,body) : sbPost('clientes_telemetria',body);
+      prom.then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; cerrarModal(); toast('Cliente guardado ✓'); vTelemetria(); }).catch(function(){ btn.disabled=false; document.getElementById('telf-err').textContent='No se pudo guardar.'; });
+    });
+    var del=document.getElementById('telf-del'); if(del) del.addEventListener('click',function(){
+      if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; }
+      fetch(SB_URL+'/rest/v1/clientes_telemetria?id=eq.'+c.id,{method:'DELETE',headers:H}).then(function(r){ if(!r.ok) throw 0; cerrarModal(); toast('Cliente eliminado'); vTelemetria(); }).catch(function(){ toast('No se pudo eliminar (¿tiene equipos u órdenes?).'); });
+    });
+  }
+
   // ── Tipos de trabajo de servicios (tipos_trabajo area=SERVICIOS) ──
   function _svTipos(){
     var b=document.getElementById('sv-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
