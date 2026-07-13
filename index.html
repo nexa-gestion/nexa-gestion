@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.86';
+  var VER='v1.87';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -5359,7 +5359,63 @@
         cb.addEventListener('click',function(){ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(tsv).then(function(){ var o=cb.textContent; cb.textContent='✓ copiado'; setTimeout(function(){ cb.textContent=o; },1500); },function(){ prompt('Copiá:',tsv); }); } else prompt('Copiá:',tsv); }); }
     }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar la facturación.</div>'; });
   }
-  function _telOrdenes(){ _telStub('📋 Órdenes de instalación / mantenimiento — en la próxima fase.'); }
+  function _telOrdenes(){
+    var b=document.getElementById('tel-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('ordenes_trabajo?area=eq.TELEMETRIA&select=id,numero,titulo,tipo_trabajo_id,estado,prioridad,fecha_agendada,created_at,cuadrilla_id,cliente_telemetria_id,vehiculo_telemetria_id,gps_id,descripcion,clientes_telemetria(nombre),cuadrillas(nombre),vehiculos_telemetria(patente,identificador,tipo_activo,marca,modelo)&order=created_at.desc&limit=2000').then(function(d){ d=Array.isArray(d)?d:[];
+      b.innerHTML='<div class="toolbar"><input id="telo-q" placeholder="🔎 Buscar N°, cliente, técnico, estado…" style="flex:1;min-width:220px"><button class="btn btn-ok" id="telo-new">➕ Nueva orden</button></div><div id="telo-tabla"></div>';
+      var cols=[
+        {k:'numero',t:'N°',sort:function(o){return o.numero||0;},r:function(o){return '<b>'+esc(o.numero||'—')+'</b>';}},
+        {k:'tipo',t:'Tipo',sort:function(o){return o.titulo||'';},r:function(o){return esc(o.titulo||'—');}},
+        {k:'cliente',t:'Cliente',sort:function(o){return (o.clientes_telemetria&&o.clientes_telemetria.nombre)||'';},r:function(o){return esc((o.clientes_telemetria&&o.clientes_telemetria.nombre)||'—');}},
+        {k:'veh',t:'Vehículo',sort:function(o){return o.vehiculo_telemetria?_telVehLabel(o.vehiculo_telemetria):'';},r:function(o){return o.vehiculo_telemetria?esc(_telVehLabel(o.vehiculo_telemetria)):'<span class="muted">—</span>';}},
+        {k:'tecnico',t:'Técnico',sort:function(o){return (o.cuadrillas&&o.cuadrillas.nombre)||'';},r:function(o){return o.cuadrillas?esc(o.cuadrillas.nombre):'<span class="muted">sin asignar</span>';}},
+        {k:'fecha',t:'Fecha',sort:function(o){return o.fecha_agendada||'';},r:function(o){return o.fecha_agendada?esc(fmtFecha(o.fecha_agendada)):'<span class="muted">—</span>';}},
+        {k:'estado',t:'Estado',sort:function(o){return o.estado||'';},r:function(o){return pill(o.estado);}}
+      ];
+      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q?d.filter(function(o){ return ((''+(o.numero||''))+' '+((o.clientes_telemetria&&o.clientes_telemetria.nombre)||'')+' '+((o.cuadrillas&&o.cuadrillas.nombre)||'')+' '+(o.titulo||'')+' '+(o.estado||'')).toLowerCase().indexOf(q)>=0; }):d;
+        gridRender(document.getElementById('telo-tabla'),cols,rs,{key:'telo',note:rs.length+' orden(es)',onRow:function(o){ _telOtForm(o); }}); }
+      pinta('');
+      document.getElementById('telo-q').addEventListener('input',function(){ pinta(this.value); });
+      document.getElementById('telo-new').addEventListener('click',function(){ _telOtForm({}); });
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
+  }
+  function _telOtForm(o){ var ed=!!o.id;
+    Promise.all([
+      sbGet('clientes_telemetria?activo=eq.true&select=id,nombre&order=nombre'),
+      sbGet('tipos_trabajo?area=eq.TELEMETRIA&activo=eq.true&select=id,nombre&order=orden'),
+      (ed&&o.cliente_telemetria_id)?sbGet('vehiculos_telemetria?cliente_id=eq.'+o.cliente_telemetria_id+'&select=*&order=id'):Promise.resolve([])
+    ]).then(function(r){
+      var clis=Array.isArray(r[0])?r[0]:[], tipos=Array.isArray(r[1])?r[1]:[], vehs=Array.isArray(r[2])?r[2]:[], tecs=(REF.cuadrillas||[]);
+      if(!clis.length && !ed){ toast('Primero cargá un cliente de telemetría (pestaña 👥 Clientes).'); _telState.tab='clientes'; vTelemetria(); return; }
+      function sel(arr,cur,ph){ return '<option value="">'+(ph||'—')+'</option>'+arr.map(function(x){return '<option value="'+x.id+'"'+(String(cur)===String(x.id)?' selected':'')+'>'+esc(x.nombre)+'</option>';}).join(''); }
+      var prio=['NORMAL','ALTA','URGENTE'];
+      var h='<h2>'+(ed?('Orden N° '+esc(o.numero)+' · '+esc(pill(o.estado).replace(/<[^>]*>/g,''))):'Nueva orden de telemetría')+'</h2><div class="fsgrid">'
+        +'<div><label class="l">Cliente</label><select id="telof-cli">'+sel(clis,o.cliente_telemetria_id,'— elegí cliente —')+'</select></div>'
+        +'<div><label class="l">Tipo</label><select id="telof-tipo">'+sel(tipos,o.tipo_trabajo_id,'— elegí —')+'</select></div>'
+        +'<div><label class="l">Vehículo / activo <span class="muted">(opcional)</span></label><select id="telof-veh">'+_telVehOpts(vehs,o.vehiculo_telemetria_id)+'</select></div>'
+        +'<div><label class="l">Técnico <span class="muted">(opcional)</span></label><select id="telof-tec">'+sel(tecs,o.cuadrilla_id,'— sin asignar —')+'</select></div>'
+        +'<div><label class="l">Prioridad</label><select id="telof-prio">'+prio.map(function(x){return '<option'+((o.prioridad||'NORMAL')===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'
+        +'<div><label class="l">Fecha <span class="muted">(opcional)</span></label><input type="date" id="telof-fecha" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'"></div>'
+        +'<div style="grid-column:1/-1"><label class="l">Descripción de la tarea</label><textarea id="telof-desc" style="min-height:56px" placeholder="Qué hay que hacer…">'+esc(o.descripcion||'')+'</textarea></div>'
+        +'</div><div id="telof-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="telof-save">💾 '+(ed?'Guardar':'Crear orden')+'</button>'+(ed?'<button class="btn btn-x" id="telof-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="telof-close">Cerrar</button></div>';
+      modal(h,'wide'); document.getElementById('telof-close').addEventListener('click',cerrarModal);
+      document.getElementById('telof-cli').addEventListener('change',function(){ var cid=this.value, vsel=document.getElementById('telof-veh'); if(!cid){ vsel.innerHTML='<option value="">— sin vehículo —</option>'; return; } vsel.innerHTML='<option value="">cargando…</option>'; sbGet('vehiculos_telemetria?cliente_id=eq.'+cid+'&select=*&order=id').then(function(vv){ vsel.innerHTML=_telVehOpts(Array.isArray(vv)?vv:[],''); }); });
+      document.getElementById('telof-save').addEventListener('click',function(){
+        var cli=document.getElementById('telof-cli').value, desc=document.getElementById('telof-desc').value.trim(), tipo=document.getElementById('telof-tipo').value;
+        if(!cli){ document.getElementById('telof-err').textContent='Elegí un cliente.'; return; }
+        if(!tipo){ document.getElementById('telof-err').textContent='Elegí el tipo (Instalación / Mantenimiento).'; return; }
+        var tec=document.getElementById('telof-tec').value, veh=document.getElementById('telof-veh').value, fecha=document.getElementById('telof-fecha').value;
+        var tnom=(tipos.filter(function(x){return String(x.id)===String(tipo);})[0]||{}).nombre||null;
+        var body={ area:'TELEMETRIA', tipo:'SERVICIO', cliente_telemetria_id:Number(cli), vehiculo_telemetria_id:(veh?Number(veh):null), tipo_trabajo_id:Number(tipo), titulo:tnom, descripcion:desc||null, prioridad:document.getElementById('telof-prio').value, fecha_agendada:fecha||null, cuadrilla_id:(tec?Number(tec):null) };
+        if(!ed){ body.estado=(tec?'ASIGNADA':'PENDIENTE'); if(tec) body.asignada_at=new Date().toISOString(); body.created_by=USER.id; }
+        else if(tec && o.estado==='PENDIENTE'){ body.estado='ASIGNADA'; body.asignada_at=new Date().toISOString(); }
+        var btn=this; btn.disabled=true; var prom=ed?sbPatch('ordenes_trabajo?id=eq.'+o.id,body):sbPost('ordenes_trabajo',body);
+        prom.then(function(rr){ if(!Array.isArray(rr)||!rr.length) throw 0; cerrarModal(); toast(ed?'Orden guardada ✓':'Orden creada ✓'); vTelemetria(); }).catch(function(){ btn.disabled=false; document.getElementById('telof-err').textContent='No se pudo guardar.'; }); });
+      var del=document.getElementById('telof-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){ this.setAttribute('data-ok','1'); this.textContent='¿Eliminar? Tocá de nuevo'; return; } var b=this; b.disabled=true;
+        Promise.all(['ot_sesiones','ot_materiales','ot_mano_obra','ot_datos_servicio','ot_fotos','ot_historial'].map(function(t){ return fetch(SB_URL+'/rest/v1/'+t+'?ot_id=eq.'+o.id,{method:'DELETE',headers:H}).catch(function(){}); })).then(function(){ return fetch(SB_URL+'/rest/v1/ordenes_trabajo?id=eq.'+o.id,{method:'DELETE',headers:H}); }).then(function(rr){ if(!rr.ok) throw 0; cerrarModal(); toast('Orden eliminada'); vTelemetria(); }).catch(function(){ b.disabled=false; toast('No se pudo eliminar.'); }); });
+    });
+  }
   // ── Configuración: ABM de Materiales, Planes y Tipos de sensor ──
   function _telAbm(){
     var b=document.getElementById('tel-body'); var at=_telState.abmtab||'materiales';
