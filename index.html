@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.89';
+  var VER='v1.90';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -5226,13 +5226,13 @@
     if(!(USER&&(USER.rol==='superadmin'||USER.rol==='gerencial'||USER.rol==='administrativo'))){ view.innerHTML='<h1>📡 Telemetría</h1><div class="center">Sin acceso.</div>'; return; }
     var t=_telState.tab||'clientes';
     var _telGer=(USER.rol==='superadmin'||USER.rol==='gerencial');
-    var tabs=[['clientes','👥 Clientes'],['equipos','📡 Equipos GPS'],['ordenes','📋 Órdenes'],['abm','⚙️ Configuración']];
+    var tabs=[['clientes','👥 Clientes'],['equipos','📡 Equipos GPS'],['resumen','📊 Resumen'],['ordenes','📋 Órdenes'],['abm','⚙️ Configuración']];
     if(_telGer) tabs.push(['factura','💵 Facturación']);
     if(t==='factura' && !_telGer) t='clientes';   // solo gerencia ve facturación
     view.innerHTML='<h1>📡 Telemetría <span class="muted" style="font-size:14px;font-weight:400">· rastreo GPS</span></h1><p class="sub">Clientes, vehículos, equipos GPS y órdenes de instalación / mantenimiento.</p>'
       +'<div class="toolbar" style="gap:6px;flex-wrap:wrap">'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' tel-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="tel-body"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.tel-tab'),function(b){ b.addEventListener('click',function(){ _telState.tab=b.getAttribute('data-t'); vTelemetria(); }); });
-    if(t==='clientes') _telClientes(); else if(t==='equipos') _telEquipos(); else if(t==='ordenes') _telOrdenes(); else if(t==='factura') _telFactura(); else _telAbm();
+    if(t==='clientes') _telClientes(); else if(t==='equipos') _telEquipos(); else if(t==='resumen') _telResumen(); else if(t==='ordenes') _telOrdenes(); else if(t==='factura') _telFactura(); else _telAbm();
   }
   function _telStub(msg){ var b=document.getElementById('tel-body'); if(b) b.innerHTML='<div class="center" style="padding:44px;color:#94a3b8">'+esc(msg)+'</div>'; }
   function _telEqEstado(e){ return e==='INSTALADO'?'<span style="color:#15803d;font-weight:700">✅ instalado</span>':(e==='BAJA'?'<span class="pill p-baja">baja</span>':'<span style="color:#64748b;font-weight:700">📦 en stock</span>'); }
@@ -5240,8 +5240,10 @@
     var b=document.getElementById('tel-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
     sbGet('gps_dispositivos?select=*,clientes_telemetria(nombre),planes_telemetria(nombre)&order=id.desc&limit=3000').then(function(d){ d=Array.isArray(d)?d:[];
       var enStock=d.filter(function(x){return x.estado==='EN_STOCK';}).length, inst=d.filter(function(x){return x.estado==='INSTALADO';}).length;
+      var clis={}, plns={}, mods={}; d.forEach(function(o){ var c=o.clientes_telemetria&&o.clientes_telemetria.nombre; if(c)clis[c]=1; var p=o.planes_telemetria&&o.planes_telemetria.nombre; if(p)plns[p]=1; if(o.modelo)mods[o.modelo]=1; });
+      function _opts(obj){ return Object.keys(obj).sort().map(function(k){return '<option value="'+esc(k)+'">'+esc(k)+'</option>';}).join(''); }
       b.innerHTML='<div class="dkpis" style="margin-bottom:10px">'+dkpi(enStock,'En stock','equipos GPS libres','gray')+dkpi(inst,'Instalados','en clientes','green')+dkpi(d.length,'Total equipos','cargados','blue')+'</div>'
-        +'<div class="toolbar"><input id="tele-q" placeholder="🔎 Buscar IMEI, serial, modelo, cliente…" style="flex:1;min-width:220px"><select id="tele-est"><option value="">Todos</option><option value="EN_STOCK">📦 En stock</option><option value="INSTALADO">✅ Instalados</option><option value="BAJA">Baja</option></select><button class="btn btn-ok" id="tele-new">➕ Cargar equipo GPS</button></div><div id="tele-tabla"></div>';
+        +'<div class="toolbar" style="flex-wrap:wrap"><input id="tele-q" placeholder="🔎 Buscar IMEI, serial, modelo, cliente…" style="flex:1;min-width:200px"><select id="tele-cli"><option value="">Todos los clientes</option>'+_opts(clis)+'</select><select id="tele-plan"><option value="">Todos los planes</option>'+_opts(plns)+'</select><select id="tele-modelo"><option value="">Todos los modelos</option>'+_opts(mods)+'</select><select id="tele-est"><option value="">Todo estado</option><option value="EN_STOCK">📦 En stock</option><option value="INSTALADO">✅ Instalados</option><option value="BAJA">Baja</option></select><button class="btn btn-ok" id="tele-new">➕ Cargar equipo GPS</button></div><div id="tele-tabla"></div>';
       var cols=[
         {k:'imei',t:'IMEI',sort:function(o){return o.imei||'';},r:function(o){return '<b>'+esc(o.imei||'—')+'</b>';}},
         {k:'serial',t:'Serial',sort:function(o){return o.serial||'';},r:function(o){return esc(o.serial||'—');}},
@@ -5251,12 +5253,15 @@
         {k:'cliente',t:'Cliente',sort:function(o){return (o.clientes_telemetria&&o.clientes_telemetria.nombre)||'';},r:function(o){return o.clientes_telemetria?esc(o.clientes_telemetria.nombre):'<span class="muted">—</span>';}},
         {k:'plan',t:'Plan',sort:function(o){return (o.planes_telemetria&&o.planes_telemetria.nombre)||'';},r:function(o){return o.planes_telemetria?esc(o.planes_telemetria.nombre):'<span class="muted">—</span>';}}
       ];
-      function pinta(){ var q=(document.getElementById('tele-q').value||'').toLowerCase().trim(), est=document.getElementById('tele-est').value;
-        var rs=d.filter(function(o){ if(est&&o.estado!==est) return false; if(!q) return true; return ((o.imei||'')+' '+(o.serial||'')+' '+(o.modelo||'')+' '+(o.chip_linea||'')+' '+((o.clientes_telemetria&&o.clientes_telemetria.nombre)||'')).toLowerCase().indexOf(q)>=0; });
+      function pinta(){ var q=(document.getElementById('tele-q').value||'').toLowerCase().trim(), est=document.getElementById('tele-est').value, fcli=document.getElementById('tele-cli').value, fpl=document.getElementById('tele-plan').value, fmo=document.getElementById('tele-modelo').value;
+        var rs=d.filter(function(o){ if(est&&o.estado!==est) return false; if(fcli&&((o.clientes_telemetria&&o.clientes_telemetria.nombre)||'')!==fcli) return false; if(fpl&&((o.planes_telemetria&&o.planes_telemetria.nombre)||'')!==fpl) return false; if(fmo&&(o.modelo||'')!==fmo) return false; if(!q) return true; return ((o.imei||'')+' '+(o.serial||'')+' '+(o.modelo||'')+' '+(o.chip_linea||'')+' '+((o.clientes_telemetria&&o.clientes_telemetria.nombre)||'')).toLowerCase().indexOf(q)>=0; });
         gridRender(document.getElementById('tele-tabla'),cols,rs,{key:'tele',note:rs.length+' equipo(s)',onRow:function(o){ _telEquipoForm(o); }}); }
       pinta();
       document.getElementById('tele-q').addEventListener('input',pinta);
       document.getElementById('tele-est').addEventListener('change',pinta);
+      document.getElementById('tele-cli').addEventListener('change',pinta);
+      document.getElementById('tele-plan').addEventListener('change',pinta);
+      document.getElementById('tele-modelo').addEventListener('change',pinta);
       document.getElementById('tele-new').addEventListener('click',function(){ _telEquipoForm({}); });
     }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL de telemetría?</div>'; });
   }
@@ -5520,6 +5525,29 @@
       document.getElementById('telc-new').addEventListener('click',function(){ _telClienteForm({}); });
     }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL de telemetría?</div>'; });
   }
+  // Resumen por cliente (equipos + planes), ordenable/filtrable — NO es facturación (sin plata, no gerencial)
+  function _telResumen(){
+    var b=document.getElementById('tel-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
+    sbGet('gps_dispositivos?select=cliente_id,clientes_telemetria(nombre),planes_telemetria(nombre)&limit=5000').then(function(d){ d=Array.isArray(d)?d:[];
+      var byCli={};
+      d.forEach(function(g){ var cid=g.cliente_id; if(cid==null) return; var nom=(g.clientes_telemetria&&g.clientes_telemetria.nombre)||('Cliente '+cid); var pc=byCli[cid]||(byCli[cid]={id:cid,nombre:nom,equipos:0,planes:{}}); pc.equipos++; var pn=(g.planes_telemetria&&g.planes_telemetria.nombre)||'(sin plan)'; pc.planes[pn]=(pc.planes[pn]||0)+1; });
+      var lista=Object.keys(byCli).map(function(k){return byCli[k];}).sort(function(a,b){return b.equipos-a.equipos;});
+      var totEq=d.filter(function(g){return g.cliente_id!=null;}).length;
+      b.innerHTML='<div class="dkpis" style="margin-bottom:10px">'+dkpi(lista.length,'Clientes','con equipos','cyan')+dkpi(totEq,'Equipos GPS','instalados','green')+'</div>'
+        +'<div class="toolbar"><input id="telr-q" placeholder="🔎 Buscar cliente…" style="flex:1;min-width:220px"><button class="btn btn-2" id="telr-copy">📋 Copiar a Excel</button></div>'
+        +'<div class="muted" style="font-size:12px;margin:2px 0 8px">Tocá una columna para ordenar (ej. Equipos, para ver quién tiene más). Tocá un cliente para ver su flota.</div><div id="telr-tabla"></div>';
+      var cols=[
+        {k:'nombre',t:'Cliente',sort:function(o){return (o.nombre||'').toLowerCase();},r:function(o){return '<b>'+esc(o.nombre)+'</b>';}},
+        {k:'equipos',t:'Equipos',sort:function(o){return o.equipos;},r:function(o){return '<b style="color:#15803d">📡 '+o.equipos+'</b>';}},
+        {k:'planes',t:'Planes',sort:function(o){return o.equipos;},r:function(o){return Object.keys(o.planes).sort().map(function(k){return '<span class="pill p-asig" style="margin:1px 3px 1px 0;display:inline-block">'+esc(k)+' ×'+o.planes[k]+'</span>';}).join('');}}
+      ];
+      function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q?lista.filter(function(o){return (o.nombre||'').toLowerCase().indexOf(q)>=0;}):lista; gridRender(document.getElementById('telr-tabla'),cols,rs,{key:'telr',note:rs.length+' cliente(s)',onRow:function(o){ _telClienteForm({id:o.id,nombre:o.nombre}); }}); }
+      pinta('');
+      document.getElementById('telr-q').addEventListener('input',function(){ pinta(this.value); });
+      var cb=document.getElementById('telr-copy'); if(cb){ var tsv='Cliente\tEquipos\tPlanes\n'+lista.map(function(p){ return p.nombre+'\t'+p.equipos+'\t'+Object.keys(p.planes).sort().map(function(k){return k+'x'+p.planes[k];}).join(' '); }).join('\n');
+        cb.addEventListener('click',function(){ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(tsv).then(function(){ var o=cb.textContent; cb.textContent='✓ copiado'; setTimeout(function(){cb.textContent=o;},1500); },function(){prompt('Copiá:',tsv);}); } else prompt('Copiá:',tsv); }); }
+    }).catch(function(){ b.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
+  }
   function _telClienteForm(c){
     var ed=!!c.id;
     var h='<h2>'+(ed?'Editar':'Nuevo')+' cliente de telemetría</h2><div class="fsgrid">'
@@ -5530,10 +5558,17 @@
       +_svInput('telf-cuit','CUIT',c.cuit,'',true)
       +'<div style="grid-column:1/-1">'+_svInput('telf-direccion','Dirección',c.direccion,'',true)+'</div>'
       +'<div style="grid-column:1/-1"><label class="l">Notas <span class="muted">(opcional)</span></label><textarea id="telf-notas" style="min-height:48px">'+esc(c.notas||'')+'</textarea></div>'
-      +'</div><div id="telf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'</div>'+(ed?'<div id="telf-flota" style="margin-top:12px"><div class="muted" style="font-size:12px">Cargando flota…</div></div>':'')
+      +'<div id="telf-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ok" id="telf-save">💾 Guardar</button>'+(ed?'<button class="btn btn-x" id="telf-del">🗑️ Eliminar</button>':'')+'<button class="btn btn-2" id="telf-close">Cerrar</button></div>';
     modal(h,'wide');
     function g(id){ var e=document.getElementById(id); return (e&&e.value.trim())||null; }
+    if(ed){ sbGet('gps_dispositivos?cliente_id=eq.'+c.id+'&select=imei,modelo,estado,chip_linea,vehiculos_telemetria(patente,identificador,tipo_activo,marca),planes_telemetria(nombre),gps_sensores(tipos_sensor(nombre))&order=id&limit=1000').then(function(fl){ fl=Array.isArray(fl)?fl:[]; var box=document.getElementById('telf-flota'); if(!box) return;
+      if(!fl.length){ box.innerHTML='<div class="muted" style="font-size:12.5px;border-top:1px solid var(--bord);padding-top:8px">🚗 Sin equipos cargados.</div>'; return; }
+      var rows=fl.map(function(gp){ var v=gp.vehiculos_telemetria||{}; var veh=(v.tipo_activo==='OTRO')?(v.identificador||'—'):(v.patente||'—'); var mm=[v.marca].filter(Boolean).join(' '); var sens=(gp.gps_sensores||[]).map(function(s){return (s.tipos_sensor&&s.tipos_sensor.nombre)||'';}).filter(Boolean).join(', ');
+        return '<tr style="border-bottom:1px solid var(--bord)"><td style="padding:5px 8px;font-weight:700">'+esc(veh)+(mm?(' <span class="muted" style="font-weight:400">'+esc(mm)+'</span>'):'')+'</td><td style="padding:5px 8px;font-size:12px">'+esc(gp.imei||'—')+'</td><td style="padding:5px 8px;font-size:12px">'+esc(gp.modelo||'—')+'</td><td style="padding:5px 8px;font-size:12px">'+esc((gp.planes_telemetria&&gp.planes_telemetria.nombre)||'—')+'</td><td style="padding:5px 8px;font-size:12px;color:#5b21b6">'+esc(sens||'—')+'</td></tr>'; }).join('');
+      box.innerHTML='<div style="border-top:1px solid var(--bord);padding-top:10px"><div style="font-weight:800;color:#334155;font-size:13px;margin-bottom:6px">🚗 Flota ('+fl.length+' equipo'+(fl.length===1?'':'s')+')</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:#64748b;border-bottom:2px solid var(--bord)"><th style="padding:5px 8px">Vehículo</th><th style="padding:5px 8px">IMEI</th><th style="padding:5px 8px">Modelo</th><th style="padding:5px 8px">Plan</th><th style="padding:5px 8px">Sensores</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    }).catch(function(){ var box=document.getElementById('telf-flota'); if(box) box.innerHTML=''; }); }
     document.getElementById('telf-close').addEventListener('click',cerrarModal);
     document.getElementById('telf-save').addEventListener('click',function(){
       var nombre=(document.getElementById('telf-nombre').value||'').trim();
