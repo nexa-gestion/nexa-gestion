@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.88';
+  var VER='v1.89';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -5496,17 +5496,22 @@
     var del=document.getElementById('telsf-del'); if(del) del.addEventListener('click',function(){ if(this.getAttribute('data-ok')!=='1'){this.setAttribute('data-ok','1');this.textContent='¿Eliminar? Tocá de nuevo';return;} fetch(SB_URL+'/rest/v1/tipos_sensor?id=eq.'+s.id,{method:'DELETE',headers:H}).then(function(r){if(!r.ok)throw 0;cerrarModal();toast('Eliminado');_telAbm();}).catch(function(){toast('No se pudo eliminar (¿está en uso?).');}); });
   }
   // ── Clientes de telemetría (tabla propia clientes_telemetria) ──
+  function _telCnt(o,rel){ var a=o[rel]; return (a&&a[0]&&typeof a[0].count==='number')?a[0].count:0; }
   function _telClientes(){
     var b=document.getElementById('tel-body'); b.innerHTML='<div class="muted" style="font-size:13px">Cargando…</div>';
-    sbGet('clientes_telemetria?select=*&order=nombre').then(function(d){
+    sbGet('clientes_telemetria?select=id,nombre,contacto,telefono,cuit,direccion,email,activo,gps_dispositivos(count),vehiculos_telemetria(count)&order=nombre').then(function(d){
       d=Array.isArray(d)?d:[];
-      b.innerHTML='<div class="toolbar"><input id="telc-q" placeholder="🔎 Buscar nombre, contacto, teléfono, CUIT…" style="flex:1;min-width:220px"><button class="btn btn-ok" id="telc-new">➕ Nuevo cliente</button></div><div id="telc-tabla"></div>';
+      var totGps=0, totVeh=0; d.forEach(function(o){ totGps+=_telCnt(o,'gps_dispositivos'); totVeh+=_telCnt(o,'vehiculos_telemetria'); });
+      b.innerHTML='<div class="dkpis" style="margin-bottom:10px">'+dkpi(d.length,'Clientes','de telemetría','cyan')+dkpi(totGps,'Equipos GPS','instalados / cargados','green')+dkpi(totVeh,'Vehículos','activos','blue')+'</div>'
+        +'<div class="toolbar"><input id="telc-q" placeholder="🔎 Buscar nombre, contacto, teléfono, CUIT…" style="flex:1;min-width:220px"><button class="btn btn-ok" id="telc-new">➕ Nuevo cliente</button></div><div id="telc-tabla"></div>';
       var cols=[
-        {k:'nombre',t:'Nombre',sort:function(o){return o.nombre||'';},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}},
+        {k:'nombre',t:'Nombre',sort:function(o){return (o.nombre||'').toLowerCase();},r:function(o){return '<b>'+esc(o.nombre||'')+'</b>'+(o.activo===false?' <span class="pill p-baja">inactivo</span>':'');}},
+        {k:'equipos',t:'Equipos',sort:function(o){return _telCnt(o,'gps_dispositivos');},r:function(o){var n=_telCnt(o,'gps_dispositivos');return n?'<b style="color:#15803d">📡 '+n+'</b>':'<span class="muted">0</span>';}},
+        {k:'vehiculos',t:'Vehículos',sort:function(o){return _telCnt(o,'vehiculos_telemetria');},r:function(o){var n=_telCnt(o,'vehiculos_telemetria');return n?('🚗 '+n):'<span class="muted">0</span>';}},
         {k:'contacto',t:'Contacto',sort:function(o){return o.contacto||'';},r:function(o){return esc(o.contacto||'—');}},
         {k:'telefono',t:'Teléfono',sort:function(o){return o.telefono||'';},r:function(o){return esc(o.telefono||'—');}},
-        {k:'cuit',t:'CUIT',sort:function(o){return o.cuit||'';},r:function(o){return esc(o.cuit||'—');}},
-        {k:'direccion',t:'Dirección',sort:function(o){return o.direccion||'';},r:function(o){return esc(o.direccion||'—');}}
+        {k:'cuit',t:'CUIT',def:false,sort:function(o){return o.cuit||'';},r:function(o){return esc(o.cuit||'—');}},
+        {k:'direccion',t:'Dirección',def:false,sort:function(o){return o.direccion||'';},r:function(o){return esc(o.direccion||'—');}}
       ];
       function pinta(q){ q=(q||'').toLowerCase().trim(); var rs=q? d.filter(function(o){ return ((o.nombre||'')+' '+(o.contacto||'')+' '+(o.telefono||'')+' '+(o.cuit||'')+' '+(o.email||'')+' '+(o.direccion||'')).toLowerCase().indexOf(q)>=0; }):d;
         gridRender(document.getElementById('telc-tabla'),cols,rs,{key:'telc',note:rs.length+' cliente(s)',onRow:function(o){ _telClienteForm(o); }}); }
