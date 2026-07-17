@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.39';
+  var VER='v0.40';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -87,7 +87,7 @@
   function salir(){ sessionStorage.removeItem('nexa_tec'); CUAD=null; vLogin(); }
 
   // ── arranque ──
-  function iniciar(){ var s=getSesion(); if(s&&s.id){ CUAD=s; sbGet('cuadrillas?id=eq.'+s.id+'&select=puede_urgencias').then(function(d){ CUAD.urg=!!(d&&d[0]&&d[0].puede_urgencias); setSesion(CUAD); vLista(); }).catch(function(){ vLista(); }); } else vLogin(); }
+  function iniciar(){ var s=getSesion(); if(s&&s.id){ CUAD=s; sbGet('cuadrillas?id=eq.'+s.id+'&select=puede_urgencias,area').then(function(d){ CUAD.urg=!!(d&&d[0]&&d[0].puede_urgencias); CUAD.area=(d&&d[0]&&d[0].area)||'INTERNET'; setSesion(CUAD); vLista(); }).catch(function(){ vLista(); }); } else vLogin(); }
 
   // ── LOGIN ──
   function vLogin(){
@@ -97,7 +97,7 @@
       +'<div class="err" id="lg-err"></div>'
       +'<button class="btn btn-pri" id="lg-entrar" style="margin-top:6px">Entrar</button></div>'
       +'<div class="muted" style="text-align:center">Nexa · '+VER+'</div></div>';
-    sbGet('cuadrillas?select=id,nombre,pin_pwa,puede_urgencias&activa=eq.true&order=nombre').then(function(d){
+    sbGet('cuadrillas?select=id,nombre,pin_pwa,puede_urgencias,area&activa=eq.true&order=nombre').then(function(d){
       d=Array.isArray(d)?d:[]; var sel=document.getElementById('lg-cuad');
       if(!d.length){ sel.innerHTML='<option value="">No hay cuadrillas</option>'; return; }
       sel.innerHTML=d.map(function(c){return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>';}).join('');
@@ -109,7 +109,7 @@
       if(!c){ err.textContent='Elegí tu cuadrilla.'; return; }
       if(!c.pin_pwa){ err.textContent='Esta cuadrilla no tiene PIN configurado. Pedíselo al admin.'; return; }
       if(pin!==String(c.pin_pwa)){ err.textContent='PIN incorrecto.'; return; }
-      CUAD={ id:c.id, nombre:c.nombre, urg:!!c.puede_urgencias }; setSesion(CUAD); vLista();
+      CUAD={ id:c.id, nombre:c.nombre, urg:!!c.puede_urgencias, area:c.area||'INTERNET' }; setSesion(CUAD); vLista();
     });
     document.getElementById('lg-pin').addEventListener('keydown',function(e){ if(e.key==='Enter') document.getElementById('lg-entrar').click(); });
   }
@@ -790,15 +790,21 @@
       +'<div class="cli">'+esc(nom)+'</div>'+(c.domicilio_full?'<div class="dir">📍 '+esc(c.domicilio_full)+'</div>':'')+(c.barrio?'<div class="dir">'+esc(c.barrio)+'</div>':'')+'</div>';
   }
   function vBuscar(){
-    app.innerHTML=topBar('Buscar cliente','')+'<div class="wrap">'
-      +'<div class="card"><input id="bs-q" placeholder="Nombre, N° cliente o DNI" value="'+esc(buscState.q)+'"><button class="btn btn-pri" id="bs-go" style="margin-top:8px">Buscar</button></div>'
+    var area=CUAD.area||'INTERNET', esTodo=(area==='TODO');
+    buscState.tipo = esTodo ? (buscState.tipo||'int') : (area==='TELEMETRIA'?'tel':'int');
+    var tel=(buscState.tipo==='tel');
+    app.innerHTML=topBar('Buscar cliente', tel?'telemetría':'')+'<div class="wrap">'
+      +(esTodo?'<div class="card" style="display:flex;gap:6px"><button class="btn '+(tel?'btn-2':'btn-pri')+' btn-sm" id="bs-int" style="flex:1">🌐 Internet</button><button class="btn '+(tel?'btn-pri':'btn-2')+' btn-sm" id="bs-tel" style="flex:1">📡 Telemetría</button></div>':'')
+      +'<div class="card"><input id="bs-q" placeholder="'+(tel?'Nombre del cliente':'Nombre, N° cliente o DNI')+'" value="'+esc(buscState.q)+'"><button class="btn btn-pri" id="bs-go" style="margin-top:8px">Buscar</button></div>'
       +'<div id="bs-res"></div></div>';
     wireTop();
+    if(esTodo){ var bi=document.getElementById('bs-int'); if(bi) bi.addEventListener('click',function(){ buscState.tipo='int'; buscState.q=''; vBuscar(); }); var bt=document.getElementById('bs-tel'); if(bt) bt.addEventListener('click',function(){ buscState.tipo='tel'; buscState.q=''; vBuscar(); }); }
     document.getElementById('bs-go').addEventListener('click',doBuscar);
     document.getElementById('bs-q').addEventListener('keydown',function(e){ if(e.key==='Enter')doBuscar(); });
     if(buscState.q) doBuscar();
   }
   function doBuscar(){
+    if(buscState.tipo==='tel') return doBuscarTel();
     var q=document.getElementById('bs-q').value.trim(); buscState.q=q; var res=document.getElementById('bs-res');
     if(q.length<2){ res.innerHTML='<div class="center">Escribí al menos 2 letras o el N°.</div>'; return; }
     res.innerHTML='<div class="center"><div class="spin"></div></div>';
@@ -825,6 +831,34 @@
     wireTop();
     document.getElementById('cl-volver').addEventListener('click',volver||vBuscar);
     var ct=document.getElementById('cl-cortar'); if(ct) ct.addEventListener('click',function(){ vCortar(c); });
+  }
+
+  // ── Buscador de clientes de TELEMETRÍA (para técnicos de esa área) ──
+  function doBuscarTel(){
+    var q=document.getElementById('bs-q').value.trim(); buscState.q=q; var res=document.getElementById('bs-res');
+    if(q.length<2){ res.innerHTML='<div class="center">Escribí al menos 2 letras.</div>'; return; }
+    res.innerHTML='<div class="center"><div class="spin"></div></div>';
+    var qq=q.replace(/[(),]/g,' ');
+    sbGet('clientes_telemetria?or=(nombre.ilike.*'+qq+'*,contacto.ilike.*'+qq+'*,telefono.ilike.*'+qq+'*,cuit.ilike.*'+qq+'*)&select=id,nombre,contacto,telefono,direccion&order=nombre&limit=40').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(!d.length){ res.innerHTML='<div class="center">Sin resultados.</div>'; return; }
+      res.innerHTML='<div class="muted" style="margin:6px 0">'+d.length+' resultado(s)</div>'+d.map(function(c){ return '<div class="ot cli-cardt" data-id="'+c.id+'"><div class="cli">📡 '+esc(c.nombre||'')+'</div>'+(c.telefono?'<div class="dir">📞 '+esc(c.telefono)+'</div>':'')+(c.contacto?'<div class="dir">'+esc(c.contacto)+'</div>':'')+'</div>'; }).join('');
+      Array.prototype.forEach.call(res.querySelectorAll('.cli-cardt'),function(el){ el.addEventListener('click',function(){ fichaCliTel(d.filter(function(x){return x.id==el.getAttribute('data-id');})[0]); }); });
+    }).catch(function(){ res.innerHTML='<div class="center">Error al buscar.</div>'; });
+  }
+  function fichaCliTel(c){
+    app.innerHTML=topBar('Cliente','telemetría')+'<div class="wrap">'
+      +'<div class="card"><div style="font-weight:800;font-size:16px">📡 '+esc(c.nombre||'')+'</div>'+(c.contacto?fila('Contacto',c.contacto):'')+(c.telefono?fila('Teléfono',c.telefono):'')+(c.direccion?fila('Dirección',c.direccion):'')+'</div>'
+      +(c.telefono?'<div class="row2" style="margin-bottom:10px"><a class="btn btn-2" href="tel:'+esc(String(c.telefono).replace(/[^\d+]/g,''))+'">📞 Llamar</a><a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(c.telefono)+'">💬 WhatsApp</a></div>':'')
+      +'<div id="ftel-flota"><div class="center"><div class="spin"></div></div></div>'
+      +'<button class="btn btn-2" id="cl-volver" style="margin-top:6px">← Volver</button></div>';
+    wireTop();
+    document.getElementById('cl-volver').addEventListener('click',vBuscar);
+    sbGet('gps_dispositivos?cliente_id=eq.'+c.id+'&select=imei,modelo,estado,vehiculos_telemetria(patente,identificador,tipo_activo,marca),planes_telemetria(nombre),gps_sensores(tipos_sensor(nombre))&order=id&limit=1000').then(function(fl){ fl=Array.isArray(fl)?fl:[]; var box=document.getElementById('ftel-flota'); if(!box) return;
+      if(!fl.length){ box.innerHTML='<div class="card"><div class="muted">🚗 Sin equipos cargados.</div></div>'; return; }
+      box.innerHTML='<div class="card"><div class="label">🚗 Flota ('+fl.length+' equipo'+(fl.length===1?'':'s')+')</div>'+fl.map(function(gp){ var v=gp.vehiculos_telemetria||{}; var veh=(v.tipo_activo==='OTRO')?(v.identificador||'—'):(v.patente||'—'); var sens=(gp.gps_sensores||[]).map(function(s){return (s.tipos_sensor&&s.tipos_sensor.nombre)||'';}).filter(Boolean).join(', ');
+        return '<div style="border-bottom:1px solid var(--bord);padding:7px 0"><b>'+esc(veh)+'</b>'+(v.marca?' <span class="muted">'+esc(v.marca)+'</span>':'')+'<div style="font-size:12px;color:#475569;margin-top:2px">'+esc(gp.imei||'—')+' · '+esc(gp.modelo||'—')+' · '+esc((gp.planes_telemetria&&gp.planes_telemetria.nombre)||'—')+(sens?(' · 🔌 '+esc(sens)):'')+'</div></div>'; }).join('')+'</div>';
+    }).catch(function(){ var box=document.getElementById('ftel-flota'); if(box) box.innerHTML=''; });
   }
 
   // ════════ DESCONEXIONES (TODOS los cortes pendientes, por cercanía) ════════

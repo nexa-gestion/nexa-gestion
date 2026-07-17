@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.90';
+  var VER='v1.91';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4553,6 +4553,7 @@
       modal('<h2>'+(c.id?'Editar':'Nueva')+' cuadrilla</h2>'
         +'<label class="l">Nombre</label><input id="cu-nombre" value="'+esc(c.nombre||'')+'" placeholder="Ej: Raúl / Fer">'
         +'<div class="row"><div><label class="l">Color (mapa)</label><input id="cu-color" value="'+esc(c.color||'')+'" placeholder="#2563eb"></div><div><label class="l">Estado</label><select id="cu-activa"><option value="true"'+(c.activa!==false?' selected':'')+'>Activa</option><option value="false"'+(c.activa===false?' selected':'')+'>Inactiva</option></select></div></div>'
+        +'<label class="l">Área del técnico</label><select id="cu-area">'+[['INTERNET','🌐 Internet'],['SERVICIOS','🧰 Servicios'],['TELEMETRIA','📡 Telemetría'],['TODO','⭐ Todo']].map(function(x){return '<option value="'+x[0]+'"'+((c.area||'INTERNET')===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select><div class="muted" style="font-size:12px;margin-top:2px">Define qué clientes ve en la app del técnico (buscador). Las órdenes las ve por asignación, como siempre.</div>'
         +'<label class="l">PIN para la app del técnico (PWA)</label><div style="display:flex;gap:8px"><input id="cu-pin" value="'+esc(c.pin_pwa||'')+'" placeholder="ej 1234" maxlength="8" inputmode="numeric" style="flex:1"><button type="button" class="btn btn-2" id="cu-pin-gen" style="white-space:nowrap">🎲 Generar</button></div><div class="muted" style="font-size:12px;margin-top:2px">Con este PIN la cuadrilla entra a la app. Si queda vacío, no puede iniciar sesión.</div>'
         +'<label class="l" style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" id="cu-urg" style="width:auto"'+(c.puede_urgencias?' checked':'')+'> 🔴 Puede generar <b>trabajos no planificados</b> desde la app</label><div class="muted" style="font-size:12px;margin-top:-2px">Si está tildado, esta cuadrilla ve el botón para autogenerar OTs de servicio (igual pasan por Validación).</div>'
         +'<label class="l">Técnicos de esta cuadrilla</label><div style="max-height:200px;overflow:auto;border:1px solid var(--bord);border-radius:8px;padding:8px">'+(checks||'<span class="muted">No hay técnicos cargados. Creálos en la pestaña Técnicos.</span>')+'</div>'
@@ -4561,7 +4562,7 @@
       document.getElementById('cu-x').addEventListener('click',cerrarModal);
       var pinGen=document.getElementById('cu-pin-gen'); if(pinGen) pinGen.addEventListener('click',function(){ var p=''; for(var i=0;i<4;i++)p+=Math.floor(Math.random()*10); document.getElementById('cu-pin').value=p; });
       document.getElementById('cu-save').addEventListener('click',function(){
-        var body={ nombre:document.getElementById('cu-nombre').value.trim(), color:document.getElementById('cu-color').value.trim()||null, activa:document.getElementById('cu-activa').value==='true', pin_pwa:document.getElementById('cu-pin').value.trim()||null, puede_urgencias:document.getElementById('cu-urg').checked };
+        var body={ nombre:document.getElementById('cu-nombre').value.trim(), color:document.getElementById('cu-color').value.trim()||null, activa:document.getElementById('cu-activa').value==='true', area:document.getElementById('cu-area').value, pin_pwa:document.getElementById('cu-pin').value.trim()||null, puede_urgencias:document.getElementById('cu-urg').checked };
         if(!body.nombre){ document.getElementById('cu-err').textContent='Poné un nombre.'; return; }
         var sel=[]; Array.prototype.forEach.call(document.querySelectorAll('.cu-tec:checked'),function(ck){ sel.push(Number(ck.value)); });
         var btn=this; btn.disabled=true;
