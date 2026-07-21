@@ -168,6 +168,8 @@
     .perf-head>div:last-child,.perf-row>div:last-child{ display:none; }
     .ohero-ring svg{ width:120px; height:120px; }
   }
+  .leaflet-tooltip.chac-lbl{ background:transparent!important; border:0!important; box-shadow:none!important; color:#92400e; font-weight:800; font-size:11px; text-shadow:0 0 3px #fff,0 0 3px #fff; }
+  .leaflet-tooltip.chac-lbl:before{ display:none!important; }
 </style>
 </head>
 <body>
@@ -240,7 +242,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.92';
+  var VER='v1.93';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3393,12 +3395,15 @@
       var m=L.map(cont).setView([-27.40,-55.92],12); window._dxMap=m;
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
       var rn=L.canvas(), pts=[], sin=0;
-      _dxFiltrados().forEach(function(o){ var c=o.clientes||{}; if(c.lat==null||c.lng==null){ sin++; return; }
+      _dxFiltrados().forEach(function(o){ var c=o.clientes||{};
+        // Prioridad: GPS del corte del técnico (o.lat/o.lng) manda sobre la geo del cliente
+        var la=(o.lat!=null?o.lat:c.lat), lo=(o.lng!=null?o.lng:c.lng);
+        if(la==null||lo==null){ sin++; return; }
         var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', deu=Number(c.deuda||0);
-        L.circleMarker([c.lat,c.lng],{renderer:rn,radius:7,color:'#fff',weight:2,fillColor:_dxColor(o),fillOpacity:.95})
+        L.circleMarker([la,lo],{renderer:rn,radius:7,color:'#fff',weight:2,fillColor:_dxColor(o),fillOpacity:.95})
           .bindPopup('<b>N° '+esc(c.numero_cliente||'')+' · '+esc(nom)+'</b>'+(c.barrio?('<br>📍 '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(_dxOrigen(o.origen))+' · '+esc(o.estado)+(deu>0?(' · <span style="color:#991b1b;font-weight:700">$'+deu.toLocaleString('es-AR')+'</span>'):'')+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
           .bindTooltip(esc(nom)+(c.barrio?(' · '+esc(c.barrio)):'')).addTo(m);
-        pts.push([c.lat,c.lng]);
+        pts.push([la,lo]);
       });
       if(pts.length){ try{ m.fitBounds(pts,{padding:[30,30],maxZoom:15}); }catch(e){} }
       var info=document.getElementById('dx-mapinfo'); if(info) info.textContent='📍 '+pts.length+' corte(s) en el mapa'+(sin?(' · '+sin+' sin ubicación GPS'):'')+(window._dxState.fbarrio?(' · barrio: '+window._dxState.fbarrio):'');
@@ -3884,11 +3889,11 @@
   }
 
   // ── COBERTURA / RED ── (Leaflet: zonas + NAPs con ocupación + clientes desparramados + chequeo)
-  var _MAP=null,_GEOP=[],_GEON=[],_CLI=[],_napOcc={},_napCli={},_lZonas=null,_lNaps=null,_lCli=null,_cbMk=null,_cliMarkers=[],_lPend=null,_PEND=null;
+  var _MAP=null,_GEOP=[],_GEON=[],_CLI=[],_napOcc={},_napCli={},_lZonas=null,_lNaps=null,_lCli=null,_cbMk=null,_cliMarkers=[],_lPend=null,_PEND=null,_lChac=null,_CHAC=null;
   // estilo (color + etiqueta) de cada tipo de OT pendiente en el mapa
   var _PEND_STY={ INSTALACION:['#2563eb','🔧 Instalaciones'], REPARACION:['#dc2626','🛠️ Reparaciones'], RECONEXION:['#16a34a','🔌 Reconexiones'], DESCONEXION:['#64748b','✂️ Desconexiones'], CAMBIO_PLAN:['#7c3aed','📶 Cambios de plan'], CAMBIO_DOMICILIO:['#0891b2','🏠 Cambios de domicilio'], MANTENIMIENTO:['#d97706','🧰 Mantenimiento'], RETIRO_EQUIPOS:['#92400e','📦 Retiro de equipos'], OTRO:['#475569','• Otros'] };
   function _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
-  function radCli(){ var z=_MAP?_MAP.getZoom():13; return Math.max(2, Math.min(5, 2 + Math.max(0, z-15)*1.0)); } // chico a nivel ciudad/barrio, crece suave solo al acercar mucho
+  function radCli(){ var z=_MAP?_MAP.getZoom():13; return Math.max(3, Math.min(6, 3 + Math.max(0, z-15)*1.0)); } // chico a nivel ciudad/barrio, crece suave solo al acercar mucho
   function vCobertura(){ loading(); ensureLeaflet(_coberturaRender); }
   function _coberturaRender(){
     view.innerHTML='<h1>Cobertura / Red</h1><p class="sub">Zonas, cajas NAP (con ocupación) y clientes. Chequeá la cobertura de un domicilio.</p>'
@@ -3898,6 +3903,7 @@
       +'<span style="margin-left:14px;font-size:12px;font-weight:700;color:var(--gris)">CAPAS:</span>'
       +'<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="cb-zonas" checked> Zonas</label>'
       +'<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="cb-naps" checked> NAPs</label>'
+      +'<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="cb-chac"> Chacras</label>'
       +'<label style="display:flex;align-items:center;gap:5px">Clientes:<select id="cb-cli" style="width:auto"><option value="">Ninguno</option><option value="todos">Todos</option><option value="activo">Activos</option><option value="bloqueado">Bloqueados/Baja</option></select></label>'
       +'<label style="display:flex;align-items:center;gap:5px">Tecnología:<select id="cb-tec" style="width:auto"><option value="">Todas</option><option value="FTTH">FTTH</option><option value="WIRELESS">Wireless</option></select></label>'
       +'<label style="display:flex;align-items:center;gap:5px;font-weight:700;color:#b45309">📋 Pendientes:<select id="cb-pend" style="width:auto"><option value="">Ninguno</option><option value="todos">Todos los tipos</option>'+OT_TIPOS.map(function(t){ return '<option value="'+t+'">'+esc((_PEND_STY[t]||['',t])[1])+'</option>'; }).join('')+'</select></label>'
@@ -3905,7 +3911,7 @@
       +'</div><div id="map"></div><div id="cb-info" class="muted" style="margin-top:6px;font-size:12px"></div>';
     if(typeof L==='undefined'){ document.getElementById('map').innerHTML='<div class="center">No se pudo cargar el mapa (revisá tu conexión).</div>'; return; }
     if(_MAP){ try{ _MAP.remove(); }catch(e){} }
-    _MAP=null;_lZonas=null;_lNaps=null;_lCli=null;_cbMk=null;_lPend=null;_PEND=null;
+    _MAP=null;_lZonas=null;_lNaps=null;_lCli=null;_cbMk=null;_lPend=null;_PEND=null;_lChac=null;
     _MAP=L.map('map').setView([-27.46,-55.89],12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_MAP);
     _MAP.on('zoomend',function(){ var r=radCli(); for(var i=0;i<_cliMarkers.length;i++){ try{ _cliMarkers[i].setRadius(r); }catch(e){} } });
@@ -3914,12 +3920,31 @@
     document.getElementById('cb-q').addEventListener('keydown',function(e){ if(e.key==='Enter') cbCheck(); });
     document.getElementById('cb-zonas').addEventListener('change',function(e){ toggleLayer(_lZonas,e.target.checked); });
     document.getElementById('cb-naps').addEventListener('change',function(e){ toggleLayer(_lNaps,e.target.checked); });
+    document.getElementById('cb-chac').addEventListener('change',function(e){ drawChacras(e.target.checked); });
     document.getElementById('cb-cli').addEventListener('change',drawClientes);
     document.getElementById('cb-tec').addEventListener('change',drawClientes);
     document.getElementById('cb-pend').addEventListener('change',drawPend);
     cargarGeo();
   }
   function toggleLayer(lyr,on){ if(!lyr||!_MAP) return; if(on) lyr.addTo(_MAP); else _MAP.removeLayer(lyr); }
+  function _pintaChacras(){
+    _lChac=L.layerGroup();
+    (_CHAC||[]).forEach(function(ch){
+      try{
+        var gj=L.geoJSON(ch.geom,{style:{color:'#b45309',weight:1.2,dashArray:'4 3',fill:true,fillColor:'#f59e0b',fillOpacity:.05,interactive:true}});
+        gj.bindTooltip('CH '+String(parseInt(ch.cha,10)),{permanent:true,direction:'center',className:'chac-lbl'});
+        gj.addTo(_lChac);
+      }catch(e){}
+    });
+    if(_MAP && document.getElementById('cb-chac') && document.getElementById('cb-chac').checked) _lChac.addTo(_MAP);
+  }
+  function drawChacras(on){
+    if(!on){ if(_lChac){ try{_MAP.removeLayer(_lChac);}catch(e){} } return; }
+    if(_lChac){ _lChac.addTo(_MAP); return; }
+    if(_CHAC){ _pintaChacras(); return; }
+    var info=document.getElementById('cb-info'); if(info) info.textContent='Cargando chacras…';
+    sbGet('geo_chacras?select=cha,geom').then(function(d){ _CHAC=Array.isArray(d)?d:[]; _pintaChacras(); if(info) info.textContent=_CHAC.length+' chacras catastrales de Posadas.'; });
+  }
   function cargarGeo(){
     var info=document.getElementById('cb-info'); if(info) info.textContent='Cargando red y clientes…';
     Promise.all([ sbGet('geo_poligonos?select=nombre,coords&activo=eq.true'), sbGet('geo_naps?select=codigo,lat,lng&activo=eq.true&limit=2000') ]).then(function(r){
@@ -3958,7 +3983,7 @@
     var fe=document.getElementById('cb-cli').value, ft=document.getElementById('cb-tec').value;
     if(!fe) return;
     _lCli=L.layerGroup().addTo(_MAP); _cliMarkers=[];
-    var rn=L.canvas(), col={activo:'#16a34a',bloqueado:'#dc2626',baja:'#94a3b8',suspendido:'#d97706',moroso:'#d97706'}, R=radCli();
+    var rn=L.canvas({tolerance:8}), col={activo:'#16a34a',bloqueado:'#dc2626',baja:'#94a3b8',suspendido:'#d97706',moroso:'#d97706'}, R=radCli();
     _CLI.forEach(function(c){
       if(c.lat==null||c.lng==null) return;
       if(fe==='activo' && c.estado!=='activo') return;

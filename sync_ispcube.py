@@ -351,6 +351,77 @@ def push_gps(token, isp):
           + (f", {sinmap} sin código ISP (omitidos)" if sinmap else "")
           + (" [DRY]" if DRY else ""))
 
+def geolocalizar_chacras():
+    # Ubica a los clientes cuya dirección dice "CH NNN" (chacra) DENTRO del polígono real de su chacra,
+    # usando la capa oficial geo_chacras. REGLA (definida por Gastón): el GPS del técnico SIEMPRE manda;
+    # solo se ubica al que no tiene GPS real y está mal (sin lat, o fuera de su chacra). Idempotente:
+    # una vez adentro no se vuelve a mover. Todo LOCAL (point-in-polygon), no hay geocoder externo.
+    import re, math, random
+    GPS_REAL = {"TECNICO", "gps_renabap", "gps_ispcube", "GPS", "gps"}
+    try:
+        chs = sb_get("geo_chacras?select=cha,geom,minx,miny,maxx,maxy") or []
+    except Exception as e:
+        print("WARN geolocalizar_chacras: no pude leer geo_chacras:", e); return 0
+    if not chs:
+        return 0
+    RINGS, BBOX = {}, {}
+    for ch in chs:
+        g = ch.get("geom") or {}
+        plist = g.get("coordinates") or []
+        if g.get("type") != "MultiPolygon":
+            plist = [plist]
+        RINGS[ch["cha"]] = [poly[0] for poly in plist if poly]
+        BBOX[ch["cha"]] = (ch["minx"], ch["miny"], ch["maxx"], ch["maxy"])
+    def pip(pt, ring):
+        x, y = pt; ins = False; n = len(ring); j = n - 1
+        for i in range(n):
+            xi, yi = ring[i]; xj, yj = ring[j]
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi):
+                ins = not ins
+            j = i
+        return ins
+    def in_cha(pt, cha):
+        return any(pip(pt, r) for r in RINGS.get(cha, []))
+    def rand_in_cha(cha, seed):
+        rnd = random.Random(seed); x0, y0, x1, y1 = BBOX[cha]
+        for _ in range(300):
+            p = (rnd.uniform(x0, x1), rnd.uniform(y0, y1))
+            if in_cha(p, cha):
+                return p
+        return ((x0 + x1) / 2, (y0 + y1) / 2)
+    def parse_cha(*ss):
+        for s in ss:
+            m = re.search(r"\b(?:CH|CHACRA)\s*0*(\d{1,3})\b", s or "", re.I)
+            if m:
+                return m.group(1).zfill(4)
+        return None
+    cli = []
+    for off in range(0, 8000, 1000):
+        d = sb_get("clientes?select=id,barrio,domicilio_full,lat,lng,geo_origen&order=id.asc&limit=1000&offset=%d" % off) or []
+        cli += d
+        if len(d) < 1000:
+            break
+    movidos = 0
+    for c in cli:
+        cha = parse_cha(c.get("barrio"), c.get("domicilio_full"))
+        if not cha or cha not in RINGS:
+            continue
+        if (c.get("geo_origen") or "") in GPS_REAL:
+            continue
+        lat, lng = c.get("lat"), c.get("lng")
+        if lat is not None and lng is not None and in_cha((lng, lat), cha):
+            continue  # ya está bien ubicado dentro de su chacra
+        nx, ny = rand_in_cha(cha, c["id"])
+        if DRY:
+            movidos += 1; continue
+        try:
+            sb_patch("clientes?id=eq." + str(c["id"]), {"lat": ny, "lng": nx, "geo_origen": "chacra"})
+            movidos += 1
+        except Exception as e:
+            print(f"  WARN geo chacra cliente {c['id']}: {e}")
+    print(f"📌 Geo por chacra: {movidos} cliente(s) ubicado(s) en su chacra" + (" [DRY]" if DRY else ""))
+    return movidos
+
 def generar_desconexiones_pendientes():
     # Genera órdenes PENDIENTE para clientes a dar de baja (baja ISPcube + bloqueado +30d) que no tengan ya una.
     # "Ya tiene" = desconexión ABIERTA (PEND/ASIG/PEND_ADMIN) + en revisión + finalizada.
@@ -656,8 +727,9 @@ def main():
     cerradas_retiro = cerrar_desconexiones_por_retiro()
     generadas = generar_desconexiones_pendientes()
     anuladas = anular_desconexiones_rehabilitados()
+    geoch = geolocalizar_chacras()
 
-    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados, {generadas} desconexiones generadas, {anuladas} anuladas, {limpiadas} cerradas por eliminado, {cerradas_retiro} cerradas por retiro. {round(time.time()-t0)}s")
+    print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados, {generadas} desconexiones generadas, {anuladas} anuladas, {limpiadas} cerradas por eliminado, {cerradas_retiro} cerradas por retiro, {geoch} ubicados por chacra. {round(time.time()-t0)}s")
     if log_id:
         try: sb_patch("sync_log?id=eq." + str(log_id),
                       {"estado": "ok", "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
