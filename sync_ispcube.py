@@ -608,24 +608,18 @@ def main():
         except Exception as e: print("WARN sync_log insert:", e)
     token = isp_login()
     isp = isp_list_all(token)
-    # --- SONDA TEMPORAL facturas: guarda el objeto crudo de ISPcube de unos clientes de
-    #     referencia (bloqueados con deuda) en _isp_probe, para descubrir si trae contador
-    #     de facturas. NO toca clientes, NO pega requests extra (usa la lista ya traída).
-    #     Se corre 1 vez y después se saca este bloque + se dropea la tabla.
-    if not DRY:
+    # --- SONDA TEMPORAL facturas: guarda el objeto crudo de ISPcube de un cliente de
+    #     referencia bloqueado en sync_log.detalle (RLS ya off, sin tabla nueva), para
+    #     descubrir si ISPcube trae contador de facturas. Se saca este bloque después.
+    if not DRY and log_id:
         try:
-            refs = [x for x in isp if str(x.get("code") or "").strip().lstrip("0") in ("32", "1111", "6325")]
-            blk = [x for x in isp if x.get("status") == "blocked"][:3]
-            seen, dump = set(), []
-            for x in refs + blk:
-                cc = str(x.get("code") or "")
-                if cc in seen: continue
-                seen.add(cc); dump.append({"code": cc, "raw": x})
-            if dump:
-                sb_post("_isp_probe", dump)
-                print(f"🔎 sonda _isp_probe: {len(dump)} objetos crudos guardados")
+            ref = next((x for x in isp if str(x.get("code") or "").strip().lstrip("0") == "32"), None)
+            blk = [x for x in isp if x.get("status") == "blocked"][:2]
+            probe = {"ref32": ref, "blocked": blk}
+            sb_patch("sync_log?id=eq." + str(log_id), {"detalle": json.dumps(probe, default=str)})
+            print("🔎 sonda: objeto ISPcube guardado en sync_log.detalle")
         except Exception as e:
-            print("WARN sonda _isp_probe (ignoro):", e)
+            print("WARN sonda (ignoro):", e)
     portmap = isp_ftthboxes(token)
     nexa = fetch_nexa()
     prospectos = fetch_prospectos()   # por DNI, para graduar en vez de duplicar
