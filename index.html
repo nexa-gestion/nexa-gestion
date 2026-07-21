@@ -240,7 +240,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.91';
+  var VER='v1.92';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3300,25 +3300,33 @@
       var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':(st.ver==='compromiso'?'estado=eq.COMPROMISO_PAGO':'estado=eq.'+st.ver);
       sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=created_at.desc&limit=2000').then(function(d){
         _dxData=Array.isArray(d)?d:[];
+        var _bars={}; _dxData.forEach(function(o){ var bz=(o.clientes&&o.clientes.barrio)||'(sin barrio)'; _bars[bz]=(_bars[bz]||0)+1; });
+        var _barOpts=Object.keys(_bars).sort(function(a,b){return _bars[b]-_bars[a];}).map(function(k){return '<option value="'+esc(k)+'"'+(st.fbarrio===k?' selected':'')+'>'+esc(k)+' ('+_bars[k]+')</option>';}).join('');
         var h='<h1>🔌 Desconexiones / Bajas</h1><p class="sub">El técnico hace el corte/recupero. Después <b>soporte</b> elimina la conexión en ISPcube y <b>comercial</b> hace la nota de crédito (si hay deuda) + borra el cliente. Con las dos firmas, la baja queda finalizada.</p><div id="dx-wrap">'+_dxTabs()
           +'<div class="toolbar"><input id="dx-q" placeholder="🔎 Buscar N°, ISP, cliente, barrio, precinto, caja, teléfono…" value="'+esc(st.q||'')+'" style="min-width:240px;flex:1">'
           +'<select id="dx-forigen"><option value="">Todos los orígenes</option>'+[['manual','✋ Manual'],['baja_isp','⬇️ Baja ISPcube'],['bloqueado_30d','⛔ Bloqueado +30d']].map(function(o){return '<option value="'+o[0]+'"'+(st.origen===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'
+          +'<select id="dx-fbarrio"><option value="">Todos los barrios</option>'+_barOpts+'</select>'
           +'<select id="dx-fcuad"><option value="">Todas las cuadrillas</option>'+(REF.cuadrillas||[]).map(function(c){return '<option value="'+c.id+'"'+(String(st.fcuad||'')===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('')+'</select>'
           +(st.ver==='cerradas'?('<select id="dx-festado"><option value="">Todos los cierres</option>'+[['FINALIZADO','✅ Finalizada'],['ANULADA_PAGO','🟢 Pagó'],['CANCELADA','⛔ Cancelada / ISP']].map(function(e){return '<option value="'+e[0]+'"'+(st.festado===e[0]?' selected':'')+'>'+e[1]+'</option>';}).join('')+'</select>'):'')
           +'<input type="date" id="dx-fdesde" value="'+esc(st.fdesde||'')+'" title="Fecha de trabajo — desde" style="width:140px">'
           +'<input type="date" id="dx-fhasta" value="'+esc(st.fhasta||'')+'" title="Fecha de trabajo — hasta" style="width:140px">'
           +'<button class="btn btn-2" id="dx-fclear" title="Limpiar filtros">✖</button>'
+          +'<button class="btn '+(st.mapa?'btn-pri':'btn-2')+'" id="dx-mapbtn" title="Ver los cortes en el mapa">🗺️ Mapa</button>'
           +'<button class="btn btn-2" id="dx-refrescar" title="Re-procesa altas/bajas automáticas (esto es lo que tarda)">🔄 Actualizar</button>'
           +'<button class="btn btn-2" id="dx-csv">⬇️ Exportar CSV</button></div>'
-          +'<div id="dx-tabla"></div></div>';
+          +'<div id="dx-mapinfo" class="muted" style="font-size:12px;margin:2px 0 6px;display:'+(st.mapa?'block':'none')+'"></div>'
+          +'<div id="dx-mapa" style="display:'+(st.mapa?'block':'none')+';height:520px;border:1px solid var(--bord);border-radius:12px;overflow:hidden;margin-bottom:8px"></div>'
+          +'<div id="dx-tabla"'+(st.mapa?' style="display:none"':'')+'></div></div>';
         view.innerHTML=h; _dxBadge();
         document.getElementById('dx-q').addEventListener('input',function(){ st.q=this.value; _dxPinta(); });
         document.getElementById('dx-forigen').addEventListener('change',function(){ st.origen=this.value; _dxPinta(); });
+        document.getElementById('dx-fbarrio').addEventListener('change',function(){ st.fbarrio=this.value; _dxPinta(); });
+        document.getElementById('dx-mapbtn').addEventListener('click',function(){ st.mapa=!st.mapa; document.getElementById('dx-mapa').style.display=st.mapa?'block':'none'; document.getElementById('dx-mapinfo').style.display=st.mapa?'block':'none'; document.getElementById('dx-tabla').style.display=st.mapa?'none':''; this.className='btn '+(st.mapa?'btn-pri':'btn-2'); if(st.mapa) _dxRenderMapa(); });
         var _fc=document.getElementById('dx-fcuad'); if(_fc) _fc.addEventListener('change',function(){ st.fcuad=this.value; _dxPinta(); });
         var _fe=document.getElementById('dx-festado'); if(_fe) _fe.addEventListener('change',function(){ st.festado=this.value; _dxPinta(); });
         var _fd=document.getElementById('dx-fdesde'); if(_fd) _fd.addEventListener('change',function(){ st.fdesde=this.value; _dxPinta(); });
         var _fh=document.getElementById('dx-fhasta'); if(_fh) _fh.addEventListener('change',function(){ st.fhasta=this.value; _dxPinta(); });
-        var _fcl=document.getElementById('dx-fclear'); if(_fcl) _fcl.addEventListener('click',function(){ st.fcuad='';st.festado='';st.fdesde='';st.fhasta='';st.origen='';st.q=''; _render(); });
+        var _fcl=document.getElementById('dx-fclear'); if(_fcl) _fcl.addEventListener('click',function(){ st.fcuad='';st.festado='';st.fdesde='';st.fhasta='';st.origen='';st.q='';st.fbarrio=''; _render(); });
         document.getElementById('dx-csv').addEventListener('click',_dxCSV);
         var rb=document.getElementById('dx-refrescar'); if(rb) rb.addEventListener('click',function(){ window._dxMaintDone=false; vDesconexiones(); });
         _dxWire();
@@ -3341,6 +3349,7 @@
     var st=window._dxState, q=(st.q||'').toLowerCase().trim(), org=st.origen||'';
     return _dxData.filter(function(o){
       if(org && o.origen!==org) return false;
+      if(st.fbarrio && ((o.clientes&&o.clientes.barrio)||'(sin barrio)')!==st.fbarrio) return false;
       if(st.fcuad && String((o.cuadrilla_id||o.compromiso_por)||'')!==String(st.fcuad)) return false;
       if(st.ver==='cerradas' && st.festado && o.estado!==st.festado) return false;
       if(st.fdesde || st.fhasta){ var f=_dxFechaAR(o.corte_at||o.finalizado_at||o.resuelto_at||o.created_at); if(st.fdesde && (!f || f<st.fdesde)) return false; if(st.fhasta && (!f || f>st.fhasta)) return false; }
@@ -3376,7 +3385,28 @@
     if(o.estado==='COMPROMISO_PAGO') return _bx('btn btn-2 dx-comp-pool',o.id,'↩️ Al pool')+_bx('btn btn-ok dx-comp-pago',o.id,'✅ Pagó')+_bx('btn btn-2 dx-comp-otro',o.id,'🤝 Otro')+_bx('btn btn-2 dx-ver',o.id,'👁️');
     return _bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
   }
+  function _dxColor(o){ return {PENDIENTE:'#d97706',ASIGNADA:'#2563eb',PENDIENTE_ADMIN:'#7c3aed',COMPROMISO_PAGO:'#16a34a',EN_REVISION:'#0891b2'}[o.estado]||'#64748b'; }
+  function _dxRenderMapa(){
+    var cont=document.getElementById('dx-mapa'); if(!cont) return;
+    ensureLeaflet(function(){
+      if(window._dxMap){ try{ window._dxMap.remove(); }catch(e){} window._dxMap=null; }
+      var m=L.map(cont).setView([-27.40,-55.92],12); window._dxMap=m;
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+      var rn=L.canvas(), pts=[], sin=0;
+      _dxFiltrados().forEach(function(o){ var c=o.clientes||{}; if(c.lat==null||c.lng==null){ sin++; return; }
+        var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', deu=Number(c.deuda||0);
+        L.circleMarker([c.lat,c.lng],{renderer:rn,radius:7,color:'#fff',weight:2,fillColor:_dxColor(o),fillOpacity:.95})
+          .bindPopup('<b>N° '+esc(c.numero_cliente||'')+' · '+esc(nom)+'</b>'+(c.barrio?('<br>📍 '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(_dxOrigen(o.origen))+' · '+esc(o.estado)+(deu>0?(' · <span style="color:#991b1b;font-weight:700">$'+deu.toLocaleString('es-AR')+'</span>'):'')+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
+          .bindTooltip(esc(nom)+(c.barrio?(' · '+esc(c.barrio)):'')).addTo(m);
+        pts.push([c.lat,c.lng]);
+      });
+      if(pts.length){ try{ m.fitBounds(pts,{padding:[30,30],maxZoom:15}); }catch(e){} }
+      var info=document.getElementById('dx-mapinfo'); if(info) info.textContent='📍 '+pts.length+' corte(s) en el mapa'+(sin?(' · '+sin+' sin ubicación GPS'):'')+(window._dxState.fbarrio?(' · barrio: '+window._dxState.fbarrio):'');
+      setTimeout(function(){ try{ m.invalidateSize(); }catch(e){} },200);
+    });
+  }
   function _dxPinta(){
+    if(window._dxState&&window._dxState.mapa) _dxRenderMapa();
     var cont=document.getElementById('dx-tabla'); if(!cont) return;
     var rows=_dxFiltrados();
     var cols=[
@@ -3948,6 +3978,19 @@
     var val=sel.value, info=document.getElementById('cb-info');
     if(_lPend){ try{_MAP.removeLayer(_lPend);}catch(e){} _lPend=null; }
     if(!val) return;
+    if(val==='DESCONEXION'){   // las desconexiones NO son OTs → salen de la tabla desconexiones
+      if(info) info.textContent='Cargando desconexiones pendientes…';
+      sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&select=estado,origen,clientes(numero_cliente,nombre,apellido,lat,lng,domicilio_full,barrio,telefono)&limit=5000').then(function(d){
+        d=Array.isArray(d)?d:[]; if(_lPend){ try{_MAP.removeLayer(_lPend);}catch(e){} } _lPend=L.layerGroup().addTo(_MAP); var rn=L.canvas(); var n=0,sin=0;
+        d.forEach(function(o){ var c=o.clientes||{}; if(c.lat==null||c.lng==null){ sin++; return; } var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)';
+          L.circleMarker([c.lat,c.lng],{renderer:rn,radius:7,color:'#fff',weight:2,fillColor:'#64748b',fillOpacity:.95})
+            .bindPopup('<b>✂️ Corte · N° '+esc(c.numero_cliente||'')+'</b><br>'+esc(nom)+(c.barrio?(' · '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(o.estado)+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
+            .bindTooltip('✂️ '+esc(nom)).addTo(_lPend); n++;
+        });
+        if(info) info.textContent='✂️ '+n+' desconexiones pendientes en el mapa'+(sin?(' · '+sin+' sin ubicación GPS'):'');
+      }).catch(function(){ if(info) info.textContent='No se pudieron cargar las desconexiones.'; });
+      return;
+    }
     function render(){
       if(_lPend){ try{_MAP.removeLayer(_lPend);}catch(e){} }
       _lPend=L.layerGroup().addTo(_MAP); var rn=L.canvas(); var n=0,sinUbic=0;
