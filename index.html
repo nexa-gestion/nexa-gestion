@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.94';
+  var VER='v1.95';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3153,6 +3153,9 @@
   function _dxDiasRest(iso){ if(!iso) return null; return Math.ceil((Date.parse(iso)-Date.now())/86400000); }
   function _dxTabs(){ var v=window._dxState.ver; return '<div class="toolbar">'+DX_TABS.map(function(t){return '<button class="btn '+(v===t[0]?'btn-pri':'btn-2')+' dx-tab" data-ver="'+t[0]+'">'+t[1]+'</button>';}).join('')+'</div>'; }
   function _dxOrigen(o){ return {manual:'✋ manual',baja_isp:'⬇️ baja ISPcube',bloqueado_30d:'⛔ bloqueado +30d'}[o]||o||''; }
+  // Días reales bloqueado (hoy − bloqueado_desde). null si no hay dato.
+  function _diasBloq(iso){ if(!iso) return null; var ms=Date.now()-new Date(iso).getTime(); var d=Math.floor(ms/86400000); return d>=0?d:0; }
+  function _diasBloqTxt(c){ if(!c) return ''; var d=_diasBloq(c.bloqueado_desde); if(d==null) return ''; return '⛔ bloqueado hace <b>'+d+'</b> día'+(d===1?'':'s'); }
   function _dxEstadoTxt(e){ return {ANULADA_PAGO:'🟢 Anulada (pagó / sigue)',CANCELADA:'⛔ Cancelada',EN_REVISION:'⏸️ En revisión',FINALIZADO:'✅ Finalizada'}[e]||e; }
   // Auto-genera órdenes PENDIENTE para los clientes a dar de baja (baja ISPcube + bloqueado +30d) que no tengan ya una
   // ¿qué clientes (de una lista) YA tienen una desconexión que bloquea regenerar otra?
@@ -3302,7 +3305,7 @@
     var _render=function(){
       if(st.ver==='cand'){ _dxCandidatos(); return; }
       var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':(st.ver==='compromiso'?'estado=eq.COMPROMISO_PAGO':'estado=eq.'+st.ver);
-      sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=created_at.desc&limit=2000').then(function(d){
+      sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado,bloqueado_desde)&order=created_at.desc&limit=2000').then(function(d){
         _dxData=Array.isArray(d)?d:[];
         var _bars={}; _dxData.forEach(function(o){ var bz=(o.clientes&&o.clientes.barrio)||'(sin barrio)'; _bars[bz]=(_bars[bz]||0)+1; });
         var _barOpts=Object.keys(_bars).sort(function(a,b){return _bars[b]-_bars[a];}).map(function(k){return '<option value="'+esc(k)+'"'+(st.fbarrio===k?' selected':'')+'>'+esc(k)+' ('+_bars[k]+')</option>';}).join('');
@@ -3403,7 +3406,7 @@
         if(la==null||lo==null){ sin++; return; }
         var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', deu=Number(c.deuda||0);
         L.circleMarker([la,lo],{renderer:rn,radius:7,color:'#fff',weight:2,fillColor:_dxColor(o),fillOpacity:.95})
-          .bindPopup('<b>N° '+esc(c.numero_cliente||'')+' · '+esc(nom)+'</b>'+(c.barrio?('<br>📍 '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(_dxOrigen(o.origen))+' · '+esc(o.estado)+(deu>0?(' · <span style="color:#991b1b;font-weight:700">$'+deu.toLocaleString('es-AR')+'</span>'):'')+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
+          .bindPopup('<b>N° '+esc(c.numero_cliente||'')+' · '+esc(nom)+'</b>'+(c.barrio?('<br>📍 '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(_dxOrigen(o.origen))+' · '+esc(o.estado)+(deu>0?(' · <span style="color:#991b1b;font-weight:700">$'+deu.toLocaleString('es-AR')+'</span>'):'')+(c.bloqueado_desde?('<br>'+_diasBloqTxt(c)):'')+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
           .bindTooltip(esc(nom)+(c.barrio?(' · '+esc(c.barrio)):'')).addTo(m);
         pts.push([la,lo]);
       });
@@ -3423,6 +3426,7 @@
       {k:'barrio',t:'Barrio',sort:function(o){return ((o.clientes&&o.clientes.barrio)||'').toLowerCase();},r:function(o){return esc((o.clientes&&o.clientes.barrio)||'—');}},
       {k:'dir',t:'Dirección',sort:function(o){return ((o.clientes&&o.clientes.domicilio_full)||'').toLowerCase();},r:function(o){var dm=(o.clientes&&o.clientes.domicilio_full)||'';return dm?('<span style="font-size:12px">'+esc((typeof _domLimpio==='function')?(_domLimpio(dm)||dm):dm)+'</span>'):'<span class="muted">—</span>';}},
       {k:'deuda',t:'Deuda',sort:function(o){return Number((o.clientes&&o.clientes.deuda)||0);},r:function(o){var d=Number((o.clientes&&o.clientes.deuda)||0);return d>0?('<span style="color:#991b1b;font-weight:700">$'+d.toLocaleString('es-AR')+'</span>'):'<span class="muted">—</span>';}},
+      {k:'diasbloq',t:'Días bloq.',sort:function(o){var d=_diasBloq((o.clientes||{}).bloqueado_desde);return d==null?-1:d;},r:function(o){var d=_diasBloq((o.clientes||{}).bloqueado_desde);return d==null?'<span class="muted">—</span>':('<b>'+d+'</b> <span style="font-size:11px;color:#64748b">días</span>');}},
       {k:'origen',t:'Origen',sort:function(o){return o.origen||'';},r:function(o){return '<span style="font-size:12px">'+esc(_dxOrigen(o.origen))+'</span>';}},
       {k:'cuad',t:'Cuadrilla',sort:function(o){var ci=o.cuadrilla_id||o.compromiso_por;return (_cuadNombre(ci)||'').toLowerCase();},r:function(o){var ci=o.cuadrilla_id||o.compromiso_por;return ci?('<span style="font-size:12px;white-space:nowrap">🔧 '+esc(_cuadNombre(ci)||('Cuad '+ci))+'</span>'):'<span class="muted">—</span>';}},
       {k:'fwork',t:'Fecha trabajo',sort:function(o){return o.corte_at||'';},r:function(o){return o.corte_at?('<span style="font-size:12px;white-space:nowrap">'+esc(fmtFecha(o.corte_at))+'</span>'):'<span class="muted">—</span>';}}
