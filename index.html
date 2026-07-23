@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.96';
+  var VER='v1.97';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -471,9 +471,8 @@
   function goKpi(act){
     var p=String(act).split('|'); var v=p[0];
     if(v==='cl'){
-      clState={ q:'', estado:'', empresa:'', barrio:'', pend:false, page:0, size:50, total:0, orderBy:'numero_cliente', orderDir:'desc', sel:{}, cols:null };
-      if(p[1]==='pend') clState.pend=true;
-      else if(p[1]){ var kv=p[1].split('='); clState[kv[0]]=kv[1]; }
+      clState={ q:'', estado:'', empresa:'', barrio:'', tec:'', tv:'', pend:false, page:0, size:50, total:0, orderBy:'numero_cliente', orderDir:'desc', sel:{}, cols:null };
+      for(var i=1;i<p.length;i++){ if(p[i]==='pend'){ clState.pend=true; } else if(p[i]){ var kv=p[i].split('='); clState[kv[0]]=kv[1]; } }
       navTo('clientes');
     } else if(v==='sol'){ navTo('solicitudes'); }
     else if(v==='ot'){ otState.estado=p[1]||''; otState.tipo=p[2]||''; otState.antig=p[3]||''; otState.page=0; navTo('ordenes'); }
@@ -1112,10 +1111,17 @@
   var _clStats=null;
   function cargarStatsCl(){
     var cont=document.getElementById('cl-stats'); if(!cont) return;
-    function render(c){ cont.innerHTML=dkpi(c[0],'Clientes','total','blue','')+dkpi(c[1],'Activos','','green','cl|estado=activo')+dkpi(c[2],'Bloqueados','','red','cl|estado=bloqueado')+dkpi(c[3],'Baja','','gray','cl|estado=baja')+dkpi(c[4],'Desconectados','','amber','cl|estado=desconectado');
+    function render(c){ cont.innerHTML=dkpi(c[0],'Clientes','total','blue','')+dkpi(c[1],'Activos','','green','cl|estado=activo')+dkpi(c[2],'Bloqueados','','red','cl|estado=bloqueado')+dkpi(c[3],'Baja','','gray','cl|estado=baja')+dkpi(c[4],'Desconectados','','amber','cl|estado=desconectado')
+      +dkpi(c[5],'Fibra activos','FTTH','green','cl|estado=activo|tec=FTTH')+dkpi(c[6],'Fibra bloqueados','FTTH','red','cl|estado=bloqueado|tec=FTTH')
+      +dkpi(c[7],'Wireless activos','inalámbrico','cyan','cl|estado=activo|tec=INALAMBRICO')+dkpi(c[8],'Wireless bloqueados','inalámbrico','cyan','cl|estado=bloqueado|tec=INALAMBRICO')
+      +dkpi(c[9],'TV activas','cliente activo + TV','green','cl|estado=activo|tv=1')+dkpi(c[10],'TV bloqueadas','cliente bloq. + TV','red','cl|estado=bloqueado|tv=1')+dkpi(c[11],'TV total','planes de TV','amber','cl|tv=1');
       Array.prototype.forEach.call(cont.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); }); }
     if(_clStats){ render(_clStats); return; }
-    Promise.all([ sbCount('clientes?estado=neq.eliminado&select=id'), sbCount('clientes?estado=eq.activo&select=id'), sbCount('clientes?estado=eq.bloqueado&select=id'), sbCount('clientes?estado=eq.baja&select=id'), sbCount('clientes?estado=eq.desconectado&select=id') ]).then(function(c){ _clStats=c; render(c); });
+    Promise.all([ sbCount('clientes?estado=neq.eliminado&select=id'), sbCount('clientes?estado=eq.activo&select=id'), sbCount('clientes?estado=eq.bloqueado&select=id'), sbCount('clientes?estado=eq.baja&select=id'), sbCount('clientes?estado=eq.desconectado&select=id'),
+      sbCount('clientes?estado=eq.activo&tecnologia=eq.FTTH&select=id'), sbCount('clientes?estado=eq.bloqueado&tecnologia=eq.FTTH&select=id'),
+      sbCount('clientes?estado=eq.activo&tecnologia=eq.INALAMBRICO&select=id'), sbCount('clientes?estado=eq.bloqueado&tecnologia=eq.INALAMBRICO&select=id'),
+      sbCount('clientes?estado=eq.activo&tv_online=is.true&select=id'), sbCount('clientes?estado=eq.bloqueado&tv_online=is.true&select=id'), sbCount('clientes?estado=neq.eliminado&tv_online=is.true&select=id')
+    ]).then(function(c){ _clStats=c; render(c); });
   }
   function vClientes(){
     view.innerHTML =
@@ -1154,6 +1160,7 @@
     if(clState.empresa) p.push('empresa=eq.'+encodeURIComponent(clState.empresa));
     if(clState.barrio) p.push('barrio=eq.'+encodeURIComponent(clState.barrio));
     if(clState.tec) p.push('tecnologia=eq.'+clState.tec);
+    if(clState.tv) p.push('tv_online=is.true');
     if(clState.pend) p.push('codigo_ispcube=is.null');
     if(clState.q){
       var raw=clState.q.replace(/[(),]/g,' ').trim();
