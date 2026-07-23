@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.95';
+  var VER='v1.96';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1126,6 +1126,7 @@
       +'<select id="cl-estado"><option value="">Todos los estados</option>'+opt(['activo','bloqueado','baja','suspendido','moroso','prospecto','eliminado'],clState.estado)+'</select>'
       +'<select id="cl-empresa"><option value="">Todas las empresas</option>'+opt(REF.empresas.map(function(e){return e.nombre;}),clState.empresa)+'</select>'
       +'<select id="cl-barrio"><option value="">Todos los barrios</option>'+opt(REF.barrios.map(function(b){return b.nombre;}),clState.barrio)+'</select>'
+      +'<select id="cl-tec"><option value="">Toda tecnología</option><option value="FTTH"'+(clState.tec==='FTTH'?' selected':'')+'>Fibra (FTTH)</option><option value="INALAMBRICO"'+(clState.tec==='INALAMBRICO'?' selected':'')+'>Wireless</option></select>'
       +'<button class="btn btn-pri" id="cl-buscar">Buscar</button>'
       +'<button class="btn '+(clState.pend?'btn-x':'btn-2')+'" id="cl-pend" title="Solo clientes que faltan cargar en ISPcube">⚠️ Falta en ISPcube'+(clState.pend?' ✓':'')+'</button>'
       +'<button class="btn btn-2" id="cl-sync" title="Traer estado/deuda/caja/puerto/precinto de ISPcube ahora">🔄 Actualizar de ISPcube</button>'
@@ -1144,13 +1145,15 @@
     clState.estado=document.getElementById('cl-estado').value;
     clState.empresa=document.getElementById('cl-empresa').value;
     clState.barrio=document.getElementById('cl-barrio').value;
+    clState.tec=document.getElementById('cl-tec').value;
   }
   function clQuery(){
-    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,domicilio_full,codigo_ispcube,caja_nap,puerto,precinto,planes(nombre)','order='+(clState.orderBy||'numero_cliente')+'.'+(clState.orderDir||'desc')];
+    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,domicilio_full,codigo_ispcube,caja_nap,puerto,precinto,tecnologia,planes(nombre)','order='+(clState.orderBy||'numero_cliente')+'.'+(clState.orderDir||'desc')];
     if(clState.estado) p.push('estado=eq.'+clState.estado);
     else p.push('estado=neq.eliminado');   // por defecto, ocultar los eliminados de ISPcube (salvo que se filtre por ese estado)
     if(clState.empresa) p.push('empresa=eq.'+encodeURIComponent(clState.empresa));
     if(clState.barrio) p.push('barrio=eq.'+encodeURIComponent(clState.barrio));
+    if(clState.tec) p.push('tecnologia=eq.'+clState.tec);
     if(clState.pend) p.push('codigo_ispcube=is.null');
     if(clState.q){
       var raw=clState.q.replace(/[(),]/g,' ').trim();
@@ -1167,9 +1170,9 @@
     if(btn){ btn.disabled=true; btn.textContent='Generando…'; }
     sbGetAll('clientes?'+clQuery()).then(function(d){
       d=Array.isArray(d)?d:[];
-      var head=['N°','Cód ISP','Nombre','Apellido','DNI','Teléfono','Estado','Empresa','Barrio','Domicilio','Plan','Caja','Puerto','Precinto'];
+      var head=['N°','Cód ISP','Nombre','Apellido','DNI','Teléfono','Estado','Empresa','Barrio','Domicilio','Tecnología','Plan','Caja','Puerto','Precinto'];
       var rows=[head];
-      d.forEach(function(c){ rows.push([c.numero_cliente,c.codigo_ispcube,c.nombre,c.apellido,c.doc_numero,c.telefono,c.estado,c.empresa,c.barrio,c.domicilio_full,(c.planes&&c.planes.nombre)||'',c.caja_nap,c.puerto,c.precinto]); });
+      d.forEach(function(c){ rows.push([c.numero_cliente,c.codigo_ispcube,c.nombre,c.apellido,c.doc_numero,c.telefono,c.estado,c.empresa,c.barrio,c.domicilio_full,(c.tecnologia==='INALAMBRICO'?'Wireless':c.tecnologia||''),(c.planes&&c.planes.nombre)||'',c.caja_nap,c.puerto,c.precinto]); });
       _csvDownload('clientes_'+_hoyISO(), rows);
       toast('Excel exportado ('+d.length+' clientes)');
     }).catch(function(){ toast('No se pudo exportar.'); })
