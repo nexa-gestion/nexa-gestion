@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.38</title>
+<title>Nexa · Técnico — v0.41</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.40';
+  var VER='v0.41';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -446,6 +446,7 @@
   // ── NUEVA URGENCIA (autogenerada por el técnico habilitado) ──
   function vUrgencia(){
     if(!CUAD.urg){ vLista(); return; }   // guarda extra: sin permiso no entra
+    if(CUAD.area==='TELEMETRIA'){ return vUrgenciaTel(); }   // técnico de telemetría: clientes + OT de telemetría
     app.innerHTML=topBar('Trabajo no planificado', CUAD.nombre)+'<div class="wrap">'
       +'<div class="card" style="border-left:4px solid var(--rojo)"><div style="font-weight:800;color:var(--rojo)">🔴 Trabajo no planificado</div><div class="muted" style="font-size:12.5px;margin-top:3px">Generás vos la OT, registra el inicio ahora y la cerrás como cualquier servicio. El admin la valida después.</div></div>'
       +'<div class="card"><div class="label">Cliente</div><select id="urg-cli"><option value="">Cargando…</option></select>'
@@ -481,6 +482,43 @@
           sbPost('ot_historial',{ ot_id:ot.id, evento:'CREADA', estado_nuevo:'EN_CURSO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:'Trabajo no planificado autogenerado por el técnico'+(libre?(' · cliente: '+libre):'') }).catch(function(){});
           toast('Trabajo iniciado ▶');
           sbGet('ordenes_trabajo?id=eq.'+ot.id+'&select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,clientes_servicios(nombre,direccion,telefono,contacto)&limit=1').then(function(d){ vDetalleServ((d&&d[0])||ot); }).catch(function(){ vDetalleServ(ot); });
+        }).catch(function(){ btn.disabled=false; btn.textContent='▶ Iniciar trabajo'; err.textContent='No se pudo iniciar el trabajo. Reintentá.'; });
+      });
+    });
+  }
+  // ── Trabajo no planificado para TÉCNICO DE TELEMETRÍA (clientes_telemetria + OT area TELEMETRIA) ──
+  function vUrgenciaTel(){
+    var urgTipo='Instalación';
+    app.innerHTML=topBar('Trabajo no planificado', CUAD.nombre)+'<div class="wrap">'
+      +'<div class="card" style="border-left:4px solid var(--rojo)"><div style="font-weight:800;color:var(--rojo)">🔴 Trabajo de telemetría no planificado</div><div class="muted" style="font-size:12.5px;margin-top:3px">Generás vos la OT, registra el inicio ahora y la cerrás como una OT de telemetría. El admin la valida después.</div></div>'
+      +'<div class="card"><div class="label">Cliente de telemetría</div><select id="urg-cli"><option value="">Cargando…</option></select></div>'
+      +'<div class="card"><div class="label">¿Qué vas a hacer?</div><div class="row2"><button type="button" class="btn btn-ok" id="urg-t-inst">🔧 Instalación</button><button type="button" class="btn btn-2" id="urg-t-mant">🛠️ Mantenimiento</button></div>'
+      +'<div class="label" style="margin-top:10px">Detalle (opcional)</div><textarea id="urg-desc" rows="2" placeholder="Detalle del trabajo…"></textarea></div>'
+      +'<div class="err" id="urg-err"></div>'
+      +'<button class="btn btn-ok" id="urg-go">▶ Iniciar trabajo</button>'
+      +'<button class="btn btn-2" id="urg-volver" style="margin-top:10px">← Cancelar</button></div>';
+    wireTop();
+    document.getElementById('urg-volver').addEventListener('click',vLista);
+    var bi=document.getElementById('urg-t-inst'), bm=document.getElementById('urg-t-mant');
+    bi.addEventListener('click',function(){ urgTipo='Instalación'; bi.className='btn btn-ok'; bm.className='btn btn-2'; });
+    bm.addEventListener('click',function(){ urgTipo='Mantenimiento'; bm.className='btn btn-ok'; bi.className='btn btn-2'; });
+    sbGet('clientes_telemetria?activo=eq.true&select=id,nombre&order=nombre').then(function(cs){
+      cs=cs||[]; var sel=document.getElementById('urg-cli'); if(!sel) return;
+      sel.innerHTML='<option value="">— elegí de la lista —</option>'+cs.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nombre)+'</option>'; }).join('');
+    });
+    document.getElementById('urg-go').addEventListener('click',function(){
+      var err=document.getElementById('urg-err'); err.textContent='';
+      var cliVal=document.getElementById('urg-cli').value, desc=document.getElementById('urg-desc').value.trim();
+      if(!cliVal){ err.textContent='Elegí un cliente de telemetría.'; return; }
+      var btn=this; btn.disabled=true; btn.textContent='Iniciando…';
+      getGPS().then(function(g){
+        var body={ tipo:'SERVICIO', area:'TELEMETRIA', estado:'EN_CURSO', prioridad:'NORMAL', autogenerada:true, cuadrilla_id:CUAD.id, cliente_telemetria_id:Number(cliVal), titulo:urgTipo, descripcion:desc||null, inicio_tec_at:new Date().toISOString() };
+        if(g){ body.lat_inicio=g.lat; body.lng_inicio=g.lng; }
+        sbPost('ordenes_trabajo',body).then(function(r){
+          var ot=Array.isArray(r)&&r[0]; if(!ot) throw 0;
+          sbPost('ot_historial',{ ot_id:ot.id, evento:'CREADA', estado_nuevo:'EN_CURSO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:'Trabajo de telemetría no planificado autogenerado por el técnico ('+urgTipo+')' }).catch(function(){});
+          toast('Trabajo iniciado ▶');
+          sbGet('ordenes_trabajo?id=eq.'+ot.id+'&select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_telemetria_id,observaciones_tec,clientes_telemetria(nombre,direccion,telefono,contacto)&limit=1').then(function(d){ vDetalleTel((d&&d[0])||ot); }).catch(function(){ vDetalleTel(ot); });
         }).catch(function(){ btn.disabled=false; btn.textContent='▶ Iniciar trabajo'; err.textContent='No se pudo iniciar el trabajo. Reintentá.'; });
       });
     });
@@ -569,7 +607,7 @@
     h+='<div style="margin-top:8px"><input id="sv-mo-nom" list="sv-molist" placeholder="Mano de obra (escribí o elegí)" style="width:100%;margin-bottom:6px"><datalist id="sv-molist">'+SV.catO.map(function(x){return '<option value="'+esc(x.nombre)+'">';}).join('')+'</datalist><div style="display:flex;gap:6px"><input id="sv-mo-qty" type="number" inputmode="numeric" min="0" placeholder="Cant." style="width:80px;text-align:center"><button class="btn btn-2" id="sv-mo-add" style="flex:1">+ Agregar mano de obra</button></div></div>'
       +'</div><div class="card"><div class="label">📝 Observaciones</div><textarea id="sv-obs" rows="3" style="width:100%" placeholder="Qué se hizo, detalles…">'+esc(SV._obs||'')+'</textarea></div>'
       +(SV.fotosPrev.length?'<div class="card"><div class="label">📷 Fotos de visitas anteriores</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+SV.fotosPrev.map(function(f){return '<img src="'+esc(f.url)+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)">';}).join('')+'</div></div>':'')
-      +'<div class="card"><div class="label">📷 Fotos '+(fin?'<span style="color:var(--rojo)">(obligatorio: al menos 1)</span>':'<span class="muted">(opcional)</span>')+'</div>'+_renderFotosServ()+'<label class="btn btn-2" style="margin-top:8px;display:block;text-align:center">📷 Agregar foto<input id="sv-foto-in" type="file" accept="image/*" capture="environment" multiple style="display:none"></label></div>'
+      +'<div class="card"><div class="label">📷 Fotos '+(fin?'<span style="color:var(--rojo)">(obligatorio: al menos 1)</span>':'<span class="muted">(opcional)</span>')+'</div>'+_renderFotosServ()+'<label class="btn btn-2" style="margin-top:8px;display:block;text-align:center">📷 Agregar foto<input id="sv-foto-in" type="file" accept="image/*" multiple style="display:none"></label></div>'
       +(fin?'<div class="card"><div class="label">✍️ Firma del técnico <span class="muted">(opcional)</span></div>'+_firmaPad('tec')+'</div>'
         +'<div class="card"><div class="label">✍️ Firma del cliente <span class="muted">(opcional)</span></div>'+_firmaPad('cli')+'</div>':'')
       +'<div class="err" id="sv-err"></div><button class="btn '+(fin?'btn-ok':'btn-pri')+'" id="sv-confirmar">'+(fin?'✔️ Confirmar cierre final':'⏸️ Guardar cierre parcial')+'</button><button class="btn btn-2" id="sv-volver" style="margin-top:10px">← Cancelar</button></div>';
@@ -716,7 +754,7 @@
         +'<div class="card"><div class="label">🔌 Sensores instalados <span class="muted">(opcional)</span></div><div id="tl-sens-chips" style="margin:6px 0">'+_telSensChips()+'</div><div style="display:flex;gap:6px"><select id="tl-sens-sel" style="flex:1"><option value="">— elegí sensor —</option>'+TL.tsens.map(function(t){return '<option value="'+t.id+'">'+esc(t.nombre)+'</option>';}).join('')+'</select><button type="button" class="btn btn-2" id="tl-sens-add">+ Agregar</button></div></div>';
     }
     h+='<div class="card"><div class="label">📝 Observaciones</div><textarea id="tl-obs" rows="3" style="width:100%" placeholder="Detalle de lo que se hizo…">'+esc(TL._obs||'')+'</textarea></div>'
-      +'<div class="card"><div class="label">📷 Fotos <span class="muted">(opcional)</span></div>'+_telFotosHtml()+'<label class="btn btn-2" style="margin-top:8px;display:block;text-align:center">📷 Agregar foto<input id="tl-foto-in" type="file" accept="image/*" capture="environment" multiple style="display:none"></label></div>'
+      +'<div class="card"><div class="label">📷 Fotos <span class="muted">(opcional)</span></div>'+_telFotosHtml()+'<label class="btn btn-2" style="margin-top:8px;display:block;text-align:center">📷 Agregar foto<input id="tl-foto-in" type="file" accept="image/*" multiple style="display:none"></label></div>'
       +'<div class="card"><div class="label">✍️ Firma del cliente <span class="muted">(opcional)</span></div>'+_firmaPad('cli')+'</div>'
       +'<div class="err" id="tl-err"></div><button class="btn btn-ok" id="tl-confirmar">✔️ Confirmar cierre</button><button class="btn btn-2" id="tl-volver" style="margin-top:10px">← Cancelar</button></div>';
     app.innerHTML=h; wireCierreTel();
