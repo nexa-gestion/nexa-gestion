@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.97';
+  var VER='v1.98';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2595,22 +2595,38 @@
     cont.innerHTML=h;
     document.getElementById('md-mapa').addEventListener('click',function(){ ensureLeaflet(function(){ mdVerMapa(cuads); }); });
   }
+  function _mdTipoLbl(t){ return _PEND_STY[t]?_PEND_STY[t][1]:t; }
+  function _mdTiposV(v){ return Object.keys(v.tipos).map(function(t){ return _mdTipoLbl(t)+(v.tipos[t]>1?(' ×'+v.tipos[t]):''); }).join(', '); }
   function mdVerMapa(cuads){
     var depot=agDepot();
+    // tipos presentes ese día (con su conteo) para el filtro
+    var tipoCnt={}; cuads.forEach(function(c){ c.stops.forEach(function(v){ Object.keys(v.tipos).forEach(function(t){ tipoCnt[t]=(tipoCnt[t]||0)+v.tipos[t]; }); }); });
+    var tiposPres=OT_TIPOS.filter(function(t){ return tipoCnt[t]; });
+    var optsTipo='<option value="">Todos los tipos</option>'+tiposPres.map(function(t){ return '<option value="'+t+'">'+esc(_mdTipoLbl(t))+' ('+tipoCnt[t]+')</option>'; }).join('');
     var ov=document.createElement('div'); ov.id='ag-mapov'; ov.style.cssText='position:fixed;inset:0;z-index:4000;background:#fff';
-    ov.innerHTML='<div style="position:absolute;top:10px;right:10px;z-index:4100"><button class="btn btn-x" id="ag-mapx">✕ Cerrar</button></div><div id="md-leg" style="position:absolute;top:10px;left:10px;z-index:4100;background:#fff;border:1px solid var(--bord);border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:10px 12px;font-size:13px;max-height:80vh;overflow:auto"></div><div id="ag-map" style="width:100%;height:100%"></div>';
+    ov.innerHTML='<div style="position:absolute;top:10px;right:10px;z-index:4100;display:flex;gap:8px;align-items:center"><select id="md-ftipo" style="padding:8px;border-radius:8px;border:1px solid var(--bord);font-size:13px;background:#fff">'+optsTipo+'</select><button class="btn btn-x" id="ag-mapx">✕ Cerrar</button></div><div id="md-leg" style="position:absolute;top:10px;left:10px;z-index:4100;background:#fff;border:1px solid var(--bord);border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:10px 12px;font-size:13px;max-height:80vh;overflow:auto"></div><div id="ag-map" style="width:100%;height:100%"></div>';
     document.body.appendChild(ov); document.getElementById('ag-mapx').addEventListener('click',function(){ ov.remove(); });
     var m=L.map('ag-map').setView([depot.lat,depot.lng],12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
-    var all=[[depot.lat,depot.lng]]; L.marker([depot.lat,depot.lng]).addTo(m).bindPopup('🚚 Depósito');
-    var leg='<div style="font-weight:700;margin-bottom:6px">🚦 Cumplimiento del día</div>';
-    cuads.forEach(function(c){ var col=c.color; leg+='<div style="display:flex;align-items:center;gap:6px;margin:3px 0"><span style="width:12px;height:12px;border-radius:50%;background:'+col+';display:inline-block"></span> '+esc(c.nombre)+' <b>'+c.done+'/'+c.total+'</b></div>';
-      c.stops.forEach(function(v){ if(v.lat==null)return; all.push([v.lat,v.lng]);
-        L.circleMarker([v.lat,v.lng],{radius:11,color:'#fff',weight:2,fillColor:(v._done?'#16a34a':col),fillOpacity:1}).addTo(m).bindTooltip(v._done?'✓':'',{permanent:true,direction:'center',className:'ag-numlbl'}).bindPopup('<b>N°'+v.num+' '+esc(v.nombre)+'</b><br>'+esc(v.dir)+'<br><b>'+esc(c.nombre)+'</b> · '+(v._done?'✅ cumplida':'⏳ pendiente'));
+    L.marker([depot.lat,depot.lng]).addTo(m).bindPopup('🚚 Depósito');
+    var capa=L.layerGroup().addTo(m);
+    function draw(ftipo){
+      capa.clearLayers();
+      var all=[[depot.lat,depot.lng]];
+      var leg='<div style="font-weight:700;margin-bottom:6px">🚦 Cumplimiento del día</div>'+(ftipo?'<div style="font-size:11px;color:var(--gris);margin-bottom:6px">Filtrado: '+esc(_mdTipoLbl(ftipo))+'</div>':'');
+      cuads.forEach(function(c){ var col=c.color;
+        var stops=c.stops.filter(function(v){ return v.lat!=null && (!ftipo || v.tipos[ftipo]); });
+        var fdone=stops.filter(function(s){return s._done;}).length;
+        leg+='<div style="display:flex;align-items:center;gap:6px;margin:3px 0"><span style="width:12px;height:12px;border-radius:50%;background:'+col+';display:inline-block"></span> '+esc(c.nombre)+' <b>'+fdone+'/'+stops.length+'</b></div>';
+        stops.forEach(function(v){ all.push([v.lat,v.lng]);
+          L.circleMarker([v.lat,v.lng],{radius:11,color:'#fff',weight:2,fillColor:(v._done?'#16a34a':col),fillOpacity:1}).addTo(capa).bindTooltip(v._done?'✓':'',{permanent:true,direction:'center',className:'ag-numlbl'}).bindPopup('<b>N°'+v.num+' '+esc(v.nombre)+'</b><br>'+esc(v.dir)+'<br>Tarea: <b>'+esc(_mdTiposV(v))+'</b><br>'+esc(c.nombre)+' · '+(v._done?'✅ cumplida':'⏳ pendiente'));
+        });
       });
-    });
-    document.getElementById('md-leg').innerHTML=leg;
-    if(all.length>1) m.fitBounds(all,{padding:[50,260]});
+      document.getElementById('md-leg').innerHTML=leg;
+      if(all.length>1) m.fitBounds(all,{padding:[50,260]});
+    }
+    var selF=document.getElementById('md-ftipo'); if(selF) selF.addEventListener('change',function(){ draw(this.value); });
+    draw('');
   }
 
   // ===== ASIGNAR OTs (pendientes sin cuadrilla → asignar cuadrilla + fecha agendada) =====
