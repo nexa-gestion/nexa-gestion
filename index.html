@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.98';
+  var VER='v1.99';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1562,9 +1562,11 @@
     var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,doc_numero,nombre,apellido,telefono,domicilio_full,barrio,tv_online,pack_futbol),cuadrillas(nombre)&area=eq.INTERNET';
     if(otState.estado) base+='&estado=eq.'+otState.estado;
     if(otState.tipo) base+='&tipo=eq.'+otState.tipo;
-    // Traemos todas las que matchean el filtro (tope 3000) y ordenamos/paginamos del lado del cliente → se puede ordenar por CUALQUIER columna (barrio incluido)
-    fetch(SB_URL+'/rest/v1/ordenes_trabajo?'+base,{headers:Object.assign({},H,{'Range':'0-2999'})})
-     .then(function(r){return r.json();}).then(function(d){
+    base+='&order=id.asc';   // orden estable para paginar (el cliente re-ordena según la columna elegida)
+    // Traemos TODAS las que matchean (paginando: Supabase corta en 1000 por request; sbGetAll junta todas las páginas)
+    // y ordenamos/filtramos del lado del cliente → antes se perdían las OTs más nuevas (más allá de la fila 1000).
+    sbGetAll('ordenes_trabajo?'+base)
+     .then(function(d){
       otState.rows=Array.isArray(d)?d:[]; otState.page=0; renderOT();
     }).catch(function(e){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudieron cargar las órdenes. Probá de nuevo.</div>'; });
   }
