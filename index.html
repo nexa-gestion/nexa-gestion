@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v1.99';
+  var VER='v2.0';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -509,7 +509,7 @@
     loading();
     var HOY=_hoyISO();
     Promise.all([
-      sbGet('ordenes_trabajo?estado=eq.PENDIENTE&area=eq.INTERNET&select=tipo,created_at&limit=2000'),
+      sbGetAll('ordenes_trabajo?estado=in.(PENDIENTE,ASIGNADA,EN_CURSO)&area=eq.INTERNET&select=tipo,created_at&order=id.asc'),
       sbCount('solicitudes_alta?estado=eq.pendiente&select=id'),
       sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id'),
       sbCount('ordenes_trabajo?estado=eq.EN_CURSO&area=eq.INTERNET&select=id'),
@@ -518,12 +518,13 @@
       // OTs abiertas asignadas (para detectar huérfanas de cuadrilla desactivada y las sin fecha coordinada)
       sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&area=eq.INTERNET&cuadrilla_id=not.is.null&select=id,numero,estado,fecha_agendada,cuadrilla_id&limit=3000'),
       sbCount('ordenes_trabajo?estado=eq.FINALIZADA&isp_datos_cargado_at=is.null&tipo=in.(INSTALACION,REPARACION,RECONEXION)&select=id').catch(function(){return 0;}),
-      sbCount('isp_tickets?estado_nexa=eq.nuevo&select=id').catch(function(){return 0;})
+      sbCount('isp_tickets?estado_nexa=eq.nuevo&select=id').catch(function(){return 0;}),
+      sbCount('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&select=id').catch(function(){return 0;})
     ]).then(function(c){
       var pend=Array.isArray(c[0])?c[0]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0;
+      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0;
       var openA=c[6]||[]; var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var huer=openA.filter(function(o){ return !_act[o.cuadrilla_id]; });
       var sinCoord=openA.filter(function(o){ return _act[o.cuadrilla_id] && !o.fecha_agendada; });
@@ -534,7 +535,6 @@
         ['🔧','Cuadrillas','nav|cuadrillas-adm','#eef2f7'],['📺','Cuentas TV','nav|cuentastv','#fce7f3'],['💲','Precios','nav|precios','#fef3c7'],
         ['📍','Cobertura','nav|cobertura','#ccfbf1'],['📤','Cargar ISP','nav|ispcargar','#e0f2fe',ispCargar],['⚠️','Falta ISP','isp','#fee2e2',faltaIsp]
       ];
-      var tipos=[['INSTALACION','🔧 Instalaciones'],['REPARACION','🛠️ Reparac./Servis'],['DESCONEXION','🔌 Desconexiones'],['RETIRO_EQUIPOS','📦 Retiros'],['RECONEXION','🔁 Reconexiones'],['OTRO','⚙️ Otros']];
       function pct(x){ return Math.round(x/(totalPend||1)*100)+'% del total'; }
       view.innerHTML=
         '<div class="dhead"><div class="dhead-logo">NX</div><div style="flex:1"><div class="dhead-eyebrow">Nexa SAS · Inicio</div><div class="dhead-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dhead-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Posadas, Misiones</div></div><div class="dhead-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
@@ -554,12 +554,13 @@
         // ===== GESTIÓN / BACKLOG =====
         +'<div class="dash-sec">📋 Gestión / Backlog</div>'
         +'<div class="dkpis">'
-          +dkpi(totalPend,'Pendientes','OTs sin asignar','amber','ot|PENDIENTE')
+          +dkpi(totalPend,'Pendientes','OTs sin terminar (asignadas o no)','amber','ot|PENDIENTE')
           +dkpi(solic,'Solicitudes','pendientes de convertir','cyan','sol')
           +dkpi(faltaIsp,'Falta ISPcube','clientes sin código','red','isp')
         +'</div>'
-        +'<div class="dash-sec">OT pendientes por tipo</div><div class="dkpis">'
-          +tipos.map(function(t){ return dkpi(porTipo[t[0]]||0,t[1],'','gray','ot|PENDIENTE|'+t[0]); }).join('')
+        +'<div class="dash-sec">📋 Pendientes por tipo <span class="dash-sec-r">backlog real — todo lo sin terminar, esté asignado o no</span></div><div class="dkpis">'
+          +Object.keys(porTipo).sort(function(a,b){return porTipo[b]-porTipo[a];}).map(function(t){ return dkpi(porTipo[t], (_PEND_STY[t]?_PEND_STY[t][1]:t), '', 'gray', 'ot|PENDIENTE|'+t); }).join('')
+          +dkpi(descoN,'✂️ Desconexiones','bajas a cortar','red','nav|desconexiones')
         +'</div>'
         +'<div class="dash-sec">Antigüedad de pendientes</div><div class="dkpis">'
           +dkpi(ag.a,'&lt; 24 hs',pct(ag.a),'green','ot|PENDIENTE||a')+dkpi(ag.b,'24 a 72 hs',pct(ag.b),'amber','ot|PENDIENTE||b')+dkpi(ag.d,'&gt; 72 hs ⚠️',pct(ag.d),'red','ot|PENDIENTE||d')
