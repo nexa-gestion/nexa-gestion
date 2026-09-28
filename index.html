@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v2.0';
+  var VER='v2.1';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4728,13 +4728,15 @@
       +'<div class="toolbar" style="margin-top:14px"><input id="tv-q" placeholder="🔎 Buscar nombre, N° cliente, N° ISP, usuario, mail, abonado…" style="min-width:280px;flex:1" value="'+esc(tvState.q)+'">'
       +'<select id="tv-estado"><option value="">Todos</option>'+opt(['DISPONIBLE','EN_USO','BAJA_PENDIENTE'],tvState.estado)+'<option value="__BLOQ__"'+(tvState.estado==='__BLOQ__'?' selected':'')+'>⚠️ Cliente bloqueado</option></select>'
       +'<button class="btn btn-pri" id="tv-buscar">Buscar</button>'
-      +'<button class="btn btn-ok" id="tv-nueva" style="margin-left:auto">+ Nueva cuenta</button></div>'
+      +'<button class="btn btn-2" id="tv-export" style="margin-left:auto" title="Exportar TODAS las cuentas a Excel para cruzar con ISPcube">⬇️ Excel</button>'
+      +'<button class="btn btn-ok" id="tv-nueva">+ Nueva cuenta</button></div>'
       +'<div id="tv-tabla"></div>';
     function leer(){ tvState.q=document.getElementById('tv-q').value.trim(); tvState.estado=document.getElementById('tv-estado').value; }
     document.getElementById('tv-buscar').addEventListener('click',function(){ leer(); cargarTV(); });
     document.getElementById('tv-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ clearTimeout(window._tvTmr); leer(); cargarTV(); } });
     document.getElementById('tv-q').addEventListener('input',function(){ clearTimeout(window._tvTmr); window._tvTmr=setTimeout(function(){ leer(); cargarTV(); },350); });
     document.getElementById('tv-nueva').addEventListener('click',function(){ fichaTV(null); });
+    document.getElementById('tv-export').addEventListener('click',function(){ _tvExport(this); });
     Promise.all([ sbCount('cuentas_tv?estado=eq.DISPONIBLE&select=id'), sbCount('cuentas_tv?estado=eq.EN_USO&select=id'), sbCount('cuentas_tv?estado=eq.BAJA_PENDIENTE&select=id'), sbCount('cuentas_tv?select=id'), sbCount('cuentas_tv?estado=eq.EN_USO&select=id,clientes!inner(estado)&clientes.estado=eq.bloqueado').catch(function(){return 0;}) ]).then(function(c){
       var k=document.getElementById('tv-kpis'); if(k) k.innerHTML=kpi(c[0],'Disponibles','g')+kpi(c[1],'En uso','b')+kpi(c[2],'A cambiar clave','w')+kpi(c[3],'Total','')+(c[4]?kpi(c[4],'⚠️ Cliente bloqueado','r'):'');
     });
@@ -4762,6 +4764,30 @@
       ];
       gridRender(cont,cols,d,{key:'tv',note:d.length+' cuentas',onRow:function(t){ fichaTV(t); }});
     });
+  }
+  function _tvExport(btn){
+    if(btn){ btn.disabled=true; btn.textContent='Generando…'; }
+    // TODAS las cuentas (sbGetAll pagina más allá del tope de 1000) + el cliente vinculado con su tv_online (viene del sync de ISPcube)
+    sbGetAll('cuentas_tv?select=usuario,mail,contrasena,estado,pack_futbol,abonado_numero,cic,nro_isp,cargado_isp,fecha_alta,clientes(numero_cliente,codigo_ispcube,nombre,apellido,estado,tv_online)&order=usuario').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var head=['Usuario','Mail','Contraseña','Estado cuenta','Pack Fútbol','Abonado Gigared','CIC','N° ISP (nuestro)','Cliente Nexa N°','Código ISPcube','Nombre','Estado cliente','TV en ISPcube (tv_online)','Cargada en ISP','Fecha alta','⚠️ Revisar'];
+      var rows=[head];
+      d.forEach(function(t){ var c=t.clientes||{}, tieneCli=!!t.clientes;
+        var tvIsp = tieneCli ? (c.tv_online?'SÍ':'NO') : '';
+        // pista de ajuste: cuenta en uso pero el cliente NO tiene TV en ISP (o al revés)
+        var flag='';
+        if(t.estado==='EN_USO' && tieneCli && !c.tv_online) flag='EN USO pero SIN TV en ISPcube';
+        else if(t.estado==='EN_USO' && !tieneCli) flag='EN USO sin cliente vinculado';
+        else if(tieneCli && c.estado==='bloqueado' && t.estado==='EN_USO') flag='Cliente bloqueado en ISP';
+        rows.push([
+          t.usuario||'', t.mail||'', t.contrasena||'', t.estado||'', t.pack_futbol?'SÍ':'', t.abonado_numero||'', t.cic||'', t.nro_isp||'',
+          c.numero_cliente||'', c.codigo_ispcube||'', ((c.nombre||'')+' '+(c.apellido||'')).trim(), c.estado||'', tvIsp, t.cargado_isp?'SÍ':'', (t.fecha_alta||'').slice(0,10), flag
+        ]);
+      });
+      _csvDownload('cuentas_tv_'+_hoyISO(), rows);
+      toast('Excel exportado ('+d.length+' cuentas)');
+    }).catch(function(){ toast('No se pudo exportar.'); })
+      .then(function(){ if(btn){ btn.disabled=false; btn.textContent='⬇️ Excel'; } });
   }
   function genPin6(){ var s=''; for(var i=0;i<6;i++) s+=Math.floor(Math.random()*10); return s; }
   // Clave TV (formato Gigared): 8 caracteres = 7 dígitos + 1 letra minúscula, al principio o al final (ej "u3357850")
