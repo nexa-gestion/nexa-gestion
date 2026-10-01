@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v2.3';
+  var VER='v2.4';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1738,7 +1738,7 @@
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
         +(o.clientes?fr('Plan contratado',(o.clientes.planes?(o.clientes.planes.nombre+(o.clientes.planes.tecnologia?(' · '+o.clientes.planes.tecnologia):'')):'— sin plan')):'')
         +(o.clientes&&o.clientes.portal_password?fr('🔑 Clave del portal',o.clientes.portal_password):'')
-        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.clientes&&o.clientes.empresa?fr('Empresa',o.clientes.empresa):'')+(o.clientes&&o.clientes.localidad?fr('Localidad',o.clientes.localidad):'')+(o.clientes&&o.clientes.razon_social?fr('Razón social',o.clientes.razon_social):'')+(o.clientes&&o.clientes.condicion_fiscal?fr('Cond. fiscal',o.clientes.condicion_fiscal):'')+(o.clientes&&o.clientes.estado?fr('Estado cliente',o.clientes.estado):'')+(o.clientes&&o.clientes.deuda!=null?fr('Deuda',('$'+o.clientes.deuda)):'')+(o.clientes&&o.clientes.observaciones?fr('🗒️ Obs. del cliente',o.clientes.observaciones):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+fr('Descripción',o.descripcion)+'</div>'+obsTecHtml
+        +(o.clientes?frHtml('Servicios',servHtml):'')+(o.clientes&&o.clientes.empresa?fr('Empresa',o.clientes.empresa):'')+(o.clientes&&o.clientes.localidad?fr('Localidad',o.clientes.localidad):'')+(o.clientes&&o.clientes.razon_social?fr('Razón social',o.clientes.razon_social):'')+(o.clientes&&o.clientes.condicion_fiscal?fr('Cond. fiscal',o.clientes.condicion_fiscal):'')+(o.clientes&&o.clientes.estado?fr('Estado cliente',o.clientes.estado):'')+(o.clientes&&o.clientes.deuda!=null?fr('Deuda',('$'+o.clientes.deuda)):'')+(o.clientes&&o.clientes.observaciones?fr('🗒️ Obs. del cliente',o.clientes.observaciones):'')+(o.motivos_ot?fr('Motivo',o.motivos_ot.nombre):'')+frHtml('Descripción','<span id="otdesc-view" style="white-space:pre-wrap">'+esc(o.descripcion||'—')+'</span> <button class="btn btn-2" id="otdesc-edit" style="padding:1px 7px;font-size:12px;vertical-align:middle" title="Editar la descripción (lo que ve el técnico en el PWA y en la OT)">✏️</button><div id="otdesc-box" style="display:none;margin-top:5px"><textarea id="otdesc-ta" style="width:100%;min-height:64px">'+esc(o.descripcion||'')+'</textarea><div style="display:flex;gap:6px;margin-top:5px"><button class="btn btn-ok" id="otdesc-save" style="padding:4px 11px;font-size:12.5px">Guardar</button><button class="btn btn-2" id="otdesc-cancel" style="padding:4px 11px;font-size:12.5px">Cancelar</button></div></div>')+'</div>'+obsTecHtml
         +(_tv?'<div id="ot-tv-box" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-top:10px"><div style="font-weight:700;color:#6b21a8;margin-bottom:4px">📺 Cuenta de TV</div><div id="ot-tv-cont" style="margin-top:6px"></div></div>':'')
         +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;margin-top:4px">'
           +'<div><label class="l">Tipo de trabajo</label><select id="ot-trab-edit">'+trabOpts(o.tipo_trabajo_id)+'</select></div>'
@@ -1754,6 +1754,23 @@
         +'<div id="ot-hist" style="margin-top:14px"></div>', 'wide');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
       document.getElementById('ot-print').addEventListener('click',function(){ imprimirOT(id); });
+      // ✏️ editar la Descripción inline (lo que ve el técnico en el PWA y en la OT)
+      (function(){
+        var dE=document.getElementById('otdesc-edit'), dB=document.getElementById('otdesc-box'), dV=document.getElementById('otdesc-view');
+        if(!dE||!dB) return;
+        dE.addEventListener('click',function(){ dB.style.display=''; dE.style.display='none'; var ta=document.getElementById('otdesc-ta'); if(ta) ta.focus(); });
+        var dC=document.getElementById('otdesc-cancel'); if(dC) dC.addEventListener('click',function(){ dB.style.display='none'; dE.style.display=''; var ta=document.getElementById('otdesc-ta'); if(ta) ta.value=o.descripcion||''; });
+        var dS=document.getElementById('otdesc-save'); if(dS) dS.addEventListener('click',function(){
+          var ta=document.getElementById('otdesc-ta'), nv=ta.value;
+          if(nv===(o.descripcion||'')){ dB.style.display='none'; dE.style.display=''; return; }
+          dS.disabled=true; dS.textContent='Guardando…';
+          sbPatch('ordenes_trabajo?id=eq.'+o.id,{descripcion:nv||null}).then(function(){
+            o.descripcion=nv; dV.textContent=nv||'—'; dB.style.display='none'; dE.style.display=''; dS.disabled=false; dS.textContent='Guardar';
+            toast('Descripción actualizada ✓'); logOT(o.id,'EDITADA',{detalle:'Cambió la descripción de la OT'});
+            if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')) cargarOT();
+          }).catch(function(){ dS.disabled=false; dS.textContent='Guardar'; toast('No se pudo guardar la descripción.'); });
+        });
+      })();
       if(_tv) cargarTvOT(o);
       if(o.estado==='CERRADA_TECNICO'||o.estado==='FINALIZADA'||o.estado==='NO_REALIZADA') cargarCierreOT(o);
       cargarHistorialOT(id, o);
