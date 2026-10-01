@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v2.2';
+  var VER='v2.3';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -677,17 +677,17 @@
     function _esPend(o){ return !_esFin(o) && o.fecha_agendada===dia && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'||o.estado==='EN_CURSO'); }
     function _esRech(o){ if(o.estado!=='NO_REALIZADA'&&o.estado!=='CANCELADA') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
     Promise.all([
-      sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500'),
+      sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,fecha_agendada,hora_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500'),
       sbGet('desconexiones?cuadrilla_id=eq.'+cuadId+'&corte_at=gte.'+dia+'T03:00:00Z&corte_at=lt.'+nextDia+'T03:00:00Z&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=corte_at.desc&limit=500')
     ]).then(function(_rr){
       var arr=(Array.isArray(_rr[0])?_rr[0]:[]).filter(function(o){ return _esFin(o)||_esPend(o)||_esRech(o); });
       var cortes=Array.isArray(_rr[1])?_rr[1]:[];
       var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3,PENDIENTE:4};
-      arr.sort(function(a,b){ return (ord[a.estado]==null?9:ord[a.estado])-(ord[b.estado]==null?9:ord[b.estado]); });
+      arr.sort(function(a,b){ var da=(ord[a.estado]==null?9:ord[a.estado]), db=(ord[b.estado]==null?9:ord[b.estado]); if(da!==db) return da-db; var ha=a.hora_agendada||'99:99', hb=b.hora_agendada||'99:99'; return ha<hb?-1:(ha>hb?1:0); });
       if(!arr.length && !cortes.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin OTs ni cortes.</div>'; return; }
       var pend=arr.filter(_esPend);
       var btnHtml=pend.length?'<div style="margin-bottom:8px"><button class="btn btn-2" style="padding:7px 12px;font-size:12.5px" id="rp-pend-'+cuadId+'">📅 Pasar '+pend.length+' pendiente'+(pend.length===1?'':'s')+' al '+esc(fmtFecha(nextDia))+'</button></div>':'';
-      var otHtml=arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; var fhoy=_esFin(o)&&o.fecha_agendada!==dia?' <span class="muted">· cerrada hoy (era de '+esc(fmtFecha(o.fecha_agendada))+')</span>':''; return '<div class="pd-row pd-ot" data-ot="'+o.id+'" style="cursor:pointer" title="Ver la OT"><span><b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+fhoy+'</span>'+pill(o.estado)+'</div>'; }).join('');
+      var otHtml=arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; var fhoy=_esFin(o)&&o.fecha_agendada!==dia?' <span class="muted">· cerrada hoy (era de '+esc(fmtFecha(o.fecha_agendada))+')</span>':''; return '<div class="pd-row pd-ot" data-ot="'+o.id+'" style="cursor:pointer" title="Ver la OT"><span><b>OT '+esc(o.numero)+'</b>'+(o.hora_agendada?' <span style="color:#2563eb;font-weight:700">🕐 '+esc(String(o.hora_agendada).substring(0,5))+'</span>':'')+' · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+fhoy+(_otAtrasoMin(o)?' <span style="background:#fef2f2;color:#b91c1c;font-weight:800;font-size:10px;padding:1px 6px;border-radius:99px;white-space:nowrap">🔴 '+esc(_atrasoTxtAdm(_otAtrasoMin(o)))+'</span>':'')+'</span>'+pill(o.estado)+'</div>'; }).join('');
       var _ecz={PENDIENTE_ADMIN:'pend. admin',FINALIZADO:'finalizada',ANULADA_PAGO:'pagó',CANCELADA:'cancelada',EN_REVISION:'en revisión',PENDIENTE:'pendiente',ASIGNADA:'asignada'};
       var corteHtml=cortes.length?('<div style="font-size:11px;font-weight:700;margin:8px 0 4px;color:#0891b2">🔌 Cortes de desconexión ('+cortes.length+')</div>'+cortes.map(function(o,i){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':''); return '<div class="pd-row pd-corte" data-corte="'+i+'" style="cursor:pointer" title="Ver el corte"><span>🔌 <b>'+esc(c.numero_cliente||'')+'</b> · '+esc(nom)+(c.barrio?(' <span class="muted">('+esc(c.barrio)+')</span>'):'')+(rec?(' <span class="muted">· '+rec+'</span>'):'')+'</span><span style="font-size:10px;padding:1px 7px;border-radius:99px;background:#e0f2fe;color:#075985;white-space:nowrap">'+esc(_ecz[o.estado]||o.estado)+'</span></div>'; }).join('')):'';
       det.innerHTML=btnHtml+otHtml+corteHtml;
@@ -784,7 +784,7 @@
     sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&area=eq.SERVICIOS&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,descripcion,clientes_servicios(nombre)&limit=500').then(function(arr){
       arr=(Array.isArray(arr)?arr:[]).filter(function(o){ return _esFin(o)||_esPend(o)||_esRech(o); });
       var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3,PENDIENTE:4};
-      arr.sort(function(a,b){ return (ord[a.estado]==null?9:ord[a.estado])-(ord[b.estado]==null?9:ord[b.estado]); });
+      arr.sort(function(a,b){ var da=(ord[a.estado]==null?9:ord[a.estado]), db=(ord[b.estado]==null?9:ord[b.estado]); if(da!==db) return da-db; var ha=a.hora_agendada||'99:99', hb=b.hora_agendada||'99:99'; return ha<hb?-1:(ha>hb?1:0); });
       if(!arr.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin servicios.</div>'; return; }
       var pend=arr.filter(_esPend);
       var btnHtml=pend.length?'<div style="margin-bottom:8px"><button class="btn btn-2" style="padding:7px 12px;font-size:12.5px" id="rp-pend-s-'+cuadId+'">📅 Pasar '+pend.length+' pendiente'+(pend.length===1?'':'s')+' al '+esc(fmtFecha(nextDia))+'</button></div>':'';
@@ -1677,10 +1677,12 @@
     document.getElementById('ot-go').addEventListener('click',function(){
       var trab=document.getElementById('ot-trab').value;
       if(!selId && !trab){ document.getElementById('ot-err').textContent='Elegí un cliente o un tipo de trabajo.'; return; }
+      var _nf=document.getElementById('ot-fecha').value, _nh=document.getElementById('ot-hora').value;
+      if(_nf && _nh && _nf===_hoyISO() && _nh < _ahoraHHMM() && !confirm('⚠️ La hora '+_nh+' ya pasó (ahora son las '+_ahoraHHMM()+'). ¿Coordinarla igual?')) return;
       var btn=document.getElementById('ot-go'); btn.disabled=true; btn.textContent='Creando…';
       var mtv=document.getElementById('ot-motivo').value;
       sbPost('ordenes_trabajo',{ cliente_id:(selId?Number(selId):null), tipo_trabajo_id:(trab?Number(trab):null), tipo:document.getElementById('ot-tipo').value, prioridad:document.getElementById('ot-prio').value,
-        motivo_id:(mtv?Number(mtv):null), estado:'PENDIENTE', fecha_agendada:document.getElementById('ot-fecha').value||null, hora_agendada:document.getElementById('ot-hora').value||null, descripcion:document.getElementById('ot-desc').value||null, created_by:USER.id })
+        motivo_id:(mtv?Number(mtv):null), estado:'PENDIENTE', fecha_agendada:_nf||null, hora_agendada:_nh||null, descripcion:document.getElementById('ot-desc').value||null, created_by:USER.id })
         .then(function(r){ if(!r[0])throw 0; cerrarModal(); toast('OT N° '+r[0].numero+' creada ✓'); if(typeof cargarOT==='function'&&document.getElementById('ot-tabla'))cargarOT(); })
         .catch(function(){ document.getElementById('ot-err').textContent='No se pudo crear.'; btn.disabled=false; btn.textContent='Crear OT'; });
     });
@@ -1766,7 +1768,9 @@
         if(o.clientes && _ispEl){ var _ispVal=padISP(_ispEl.value), _ispPrev=(o.clientes.codigo_ispcube||null); if(_ispVal!==_ispPrev){ o.clientes.codigo_ispcube=_ispVal; sbPatchOk('clientes?id=eq.'+o.clientes.id,{codigo_ispcube:_ispVal}).then(function(){ toast(_ispVal?'Código ISPcube guardado ✓':'Código ISPcube borrado'); }).catch(function(){ o.clientes.codigo_ispcube=_ispPrev; toast('⚠️ No se guardó el código ISPcube: ese código ya está usado por otro cliente. Revisalo.'); }); } }
         // Bloqueo: no se puede asignar cuadrilla si el cliente todavía no está en ISPcube
         if(cuad && !_otAsignable(o)){ toast('⚠️ No se puede asignar: el cliente todavía no está cargado en ISPcube.'); return; }
-        var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null), fecha_agendada:document.getElementById('ot-fecha-edit').value||null, hora_agendada:document.getElementById('ot-hora-edit').value||null };
+        var _fe=document.getElementById('ot-fecha-edit').value, _he=document.getElementById('ot-hora-edit').value;
+        if(_fe && _he && _fe===_hoyISO() && _he < _ahoraHHMM() && !confirm('⚠️ La hora '+_he+' ya pasó (ahora son las '+_ahoraHHMM()+'). ¿Coordinarla igual?')) return;
+        var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:document.getElementById('ot-tipo-edit').value, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null), fecha_agendada:_fe||null, hora_agendada:_he||null };
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
         // Plan contratado: si cambió, actualizo el cliente (plan_id + tecnología derivada del plan)
         var _planEl=document.getElementById('ot-plan-edit');
@@ -2683,6 +2687,17 @@
     var a=document.createElement('a'); a.href=url; a.download=name+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){URL.revokeObjectURL(url);},1500);
   }
   function _hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function _ahoraHHMM(){ var d=new Date(); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+  // minutos de atraso de una OT (de HOY, pendiente/asignada, cuya hora coordinada ya pasó); 0 = no aplica
+  function _otAtrasoMin(o){
+    if(!o.hora_agendada || !o.fecha_agendada) return 0;
+    if(o.estado!=='PENDIENTE' && o.estado!=='ASIGNADA') return 0;
+    if(String(o.fecha_agendada).substring(0,10)!==_hoyISO()) return 0;
+    var hm=String(o.hora_agendada).substring(0,5).split(':');
+    var c=new Date(); c.setHours(parseInt(hm[0],10)||0, parseInt(hm[1],10)||0, 0, 0);
+    var m=Math.floor((Date.now()-c.getTime())/60000); return m>0?m:0;
+  }
+  function _atrasoTxtAdm(min){ var h=Math.floor(min/60), m=min%60; return 'atrasado '+(h?(h+'h '):'')+m+'min'; }
   function _mesInicioISO(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-01'; }
   function _infKpi(n,l,col){ return '<div style="flex:1;min-width:120px;background:#fff;border:1px solid var(--bord);border-left:4px solid '+col+';border-radius:12px;padding:12px 14px"><div style="font-size:24px;font-weight:800">'+n+'</div><div class="muted" style="font-size:12px">'+l+'</div></div>'; }
   // ══════════ GERENCIAL ══════════ (solo gerencia/superadmin: altas/bajas por período)
