@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.41</title>
+<title>Nexa · Técnico — v0.42</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.41';
+  var VER='v0.42';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -152,7 +152,7 @@
     else estadoQ='estado=in.(PENDIENTE,ASIGNADA,EN_CURSO,PARCIAL)';
     var agrupa=(listState.filtro==='activas');
     var orden=agrupa?'order=fecha_agendada.asc.nullslast,created_at.asc':'order=created_at.asc';
-    var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,cliente_telemetria_id,vehiculo_telemetria_id,gps_id,observaciones_tec,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),clientes_telemetria(nombre,direccion,telefono,contacto),vehiculos_telemetria(tipo_activo,patente,identificador),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
+    var p='ordenes_trabajo?select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,hora_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,cliente_telemetria_id,vehiculo_telemetria_id,gps_id,observaciones_tec,clientes(numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,telefono,lat,lng,geo_origen,caja_nap,puerto,precinto,portal_password),clientes_servicios(nombre,direccion,telefono,contacto),clientes_telemetria(nombre,direccion,telefono,contacto),vehiculos_telemetria(tipo_activo,patente,identificador),tipos_trabajo(nombre),motivos_ot(nombre)&cuadrilla_id=eq.'+CUAD.id+'&'+estadoQ+'&'+orden;
     sbGet(p).then(function(d){ d=Array.isArray(d)?d:[];
       if(!d.length){ cont.innerHTML='<div class="center">No hay órdenes acá. 👍</div>'; return; }
       function cardOT(o){
@@ -162,6 +162,7 @@
         var dir=cli&&cli.domicilio_full?esc(cli.domicilio_full):'';
         var irBtn = (cli&&(cli.lat!=null||cli.domicilio_full)) ? '<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(cli)+'">🚗 Ir</a>' : '';
         return '<div class="ot"><div class="h"><div><span class="num">N° '+esc(o.numero)+'</span> · '+esc(o.tipo)+'</div>'+pillEstado(o.estado)+'</div>'
+          +(o.fecha_agendada?'<div class="dir" style="font-weight:800;color:#2563eb;margin:2px 0">📅 '+esc(fmtFecha(o.fecha_agendada))+(o.hora_agendada?(' · 🕐 '+esc(String(o.hora_agendada).substring(0,5))+' hs'):'')+'</div>':'')
           +'<div class="cli">'+esc(nom)+'</div>'+(dir?'<div class="dir">📍 '+dir+'</div>':'')
           +(cli&&cli.telefono?'<div class="dir">📞 '+esc(cli.telefono)+'</div>':'')
           +(o.tipos_trabajo?'<span class="badge-tt">'+esc(o.tipos_trabajo.nombre)+'</span>':'')
@@ -211,7 +212,7 @@
       +(o.tipos_trabajo?fila('Tipo de trabajo',o.tipos_trabajo.nombre):'')
       +(o.motivos_ot?fila('Motivo',o.motivos_ot.nombre):'')
       +(o.descripcion?fila('Descripción',o.descripcion):'')
-      +(o.fecha_agendada?fila('Agendada',fmtFecha(o.fecha_agendada)):'')
+      +(o.fecha_agendada?fila('Coordinada',fmtFecha(o.fecha_agendada)+(o.hora_agendada?(' · '+String(o.hora_agendada).substring(0,5)+' hs'):'')):'')
       +'</div>'
       +(function(){ var gps=(cli.lat!=null&&cli.lng!=null), medida=(cli.geo_origen==='TECNICO'), h='';
           if(gps) h+='<a class="btn btn-pri" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+cli.lat+','+cli.lng+'" style="margin-bottom:8px">🛰️ '+(medida?'Ir al GPS de la última visita':'Ir a la ubicación (aprox.)')+'</a>';
@@ -481,7 +482,7 @@
           var ot=Array.isArray(r)&&r[0]; if(!ot) throw 0;
           sbPost('ot_historial',{ ot_id:ot.id, evento:'CREADA', estado_nuevo:'EN_CURSO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:'Trabajo no planificado autogenerado por el técnico'+(libre?(' · cliente: '+libre):'') }).catch(function(){});
           toast('Trabajo iniciado ▶');
-          sbGet('ordenes_trabajo?id=eq.'+ot.id+'&select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,clientes_servicios(nombre,direccion,telefono,contacto)&limit=1').then(function(d){ vDetalleServ((d&&d[0])||ot); }).catch(function(){ vDetalleServ(ot); });
+          sbGet('ordenes_trabajo?id=eq.'+ot.id+'&select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,hora_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_libre,clientes_servicios(nombre,direccion,telefono,contacto)&limit=1').then(function(d){ vDetalleServ((d&&d[0])||ot); }).catch(function(){ vDetalleServ(ot); });
         }).catch(function(){ btn.disabled=false; btn.textContent='▶ Iniciar trabajo'; err.textContent='No se pudo iniciar el trabajo. Reintentá.'; });
       });
     });
@@ -518,7 +519,7 @@
           var ot=Array.isArray(r)&&r[0]; if(!ot) throw 0;
           sbPost('ot_historial',{ ot_id:ot.id, evento:'CREADA', estado_nuevo:'EN_CURSO', cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre, detalle:'Trabajo de telemetría no planificado autogenerado por el técnico ('+urgTipo+')' }).catch(function(){});
           toast('Trabajo iniciado ▶');
-          sbGet('ordenes_trabajo?id=eq.'+ot.id+'&select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_telemetria_id,observaciones_tec,clientes_telemetria(nombre,direccion,telefono,contacto)&limit=1').then(function(d){ vDetalleTel((d&&d[0])||ot); }).catch(function(){ vDetalleTel(ot); });
+          sbGet('ordenes_trabajo?id=eq.'+ot.id+'&select=id,numero,tipo,area,titulo,parcial,estado,prioridad,descripcion,fecha_agendada,hora_agendada,inicio_tec_at,fin_tec_at,autogenerada,cliente_telemetria_id,observaciones_tec,clientes_telemetria(nombre,direccion,telefono,contacto)&limit=1').then(function(d){ vDetalleTel((d&&d[0])||ot); }).catch(function(){ vDetalleTel(ot); });
         }).catch(function(){ btn.disabled=false; btn.textContent='▶ Iniciar trabajo'; err.textContent='No se pudo iniciar el trabajo. Reintentá.'; });
       });
     });
@@ -557,7 +558,7 @@
       +(o.titulo?fila('Trabajo',o.titulo):'')
       +(o.descripcion?fila('Descripción',o.descripcion):'')
       +(o.acompanante?fila('Acompañante',o.acompanante):'')
-      +(o.fecha_agendada?fila('Agendada',fmtFecha(o.fecha_agendada)):'')
+      +(o.fecha_agendada?fila('Coordinada',fmtFecha(o.fecha_agendada)+(o.hora_agendada?(' · '+String(o.hora_agendada).substring(0,5)+' hs'):'')):'')
       +'</div>'+sesCard
       +(cli.direccion?'<a class="btn btn-2" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(cli.direccion)+'" style="margin-bottom:10px">🏠 Ir por la dirección</a>':'')
       +(cli.telefono?'<div class="row2" style="margin-bottom:10px"><a class="btn btn-2" href="tel:'+esc(String(cli.telefono).replace(/[^\d+]/g,''))+'">📞 Llamar</a><a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(cli.telefono)+'">💬 WhatsApp</a></div>':'')
@@ -714,7 +715,7 @@
       +(cli.direccion?fila('Dirección',cli.direccion):'')
       +(cli.telefono?fila('Teléfono',cli.telefono):'')
       +(o.descripcion?fila('Descripción',o.descripcion):'')
-      +(o.fecha_agendada?fila('Agendada',fmtFecha(o.fecha_agendada)):'')
+      +(o.fecha_agendada?fila('Coordinada',fmtFecha(o.fecha_agendada)+(o.hora_agendada?(' · '+String(o.hora_agendada).substring(0,5)+' hs'):'')):'')
       +'</div>'
       +(cli.direccion?'<a class="btn btn-2" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(cli.direccion)+'" style="margin-bottom:10px">🏠 Ir por la dirección</a>':'')
       +(cli.telefono?'<div class="row2" style="margin-bottom:10px"><a class="btn btn-2" href="tel:'+esc(String(cli.telefono).replace(/[^\d+]/g,''))+'">📞 Llamar</a><a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(cli.telefono)+'">💬 WhatsApp</a></div>':'')
