@@ -138,7 +138,7 @@ def fetch_nexa():
     out, page = {}, 0
     while True:
         r = urllib.request.Request(
-            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde&codigo_ispcube=not.is.null&order=id.asc",
+            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde,plan_id&codigo_ispcube=not.is.null&order=id.asc",
             headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
         chunk = json.load(urllib.request.urlopen(r, timeout=60))
         for c in chunk: out[_ncode(c["codigo_ispcube"])] = c
@@ -658,6 +658,14 @@ def main():
                 if cx[f] and cx[f] != (cur.get(f) or None): upd[f] = cx[f]
             pp = c.get("portal_password")
             if pp and pp != (cur.get("portal_password") or None): upd["portal_password"] = pp
+            # PLAN: espejar el plan de ISPcube (es la fuente de verdad). Solo si el nombre del plan de ISPcube
+            # matchea un plan de Nexa; si no matchea, NO se toca (para no borrar un plan por un nombre nuevo sin mapear).
+            isp_plan = planes.get(c.get("plan_name"))
+            if isp_plan is not None and isp_plan != cur.get("plan_id"):
+                upd["plan_id"] = isp_plan
+                pn = (c.get("plan_name") or "").upper()
+                if "FTTH" in pn: upd["tecnologia"] = "FTTH"
+                elif ("WIFI" in pn) or ("WIRELESS" in pn) or ("INALAMB" in pn): upd["tecnologia"] = "INALAMBRICO"
             if upd: updates.append((cur["id"], upd))
         else:
             # ¿hay un prospecto en Nexa con el mismo DNI? → graduarlo (vincular), no duplicar
