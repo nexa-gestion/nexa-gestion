@@ -658,8 +658,15 @@ def main():
                 if cx[f] and cx[f] != (cur.get(f) or None): upd[f] = cx[f]
             pp = c.get("portal_password")
             if pp and pp != (cur.get("portal_password") or None): upd["portal_password"] = pp
-            # PLAN: NO se espeja desde ISPcube. Nexa maneja el plan (editable desde el panel) y la oficina mantiene
-            # ISPcube a la par. (Se intentó espejar, pero impedía corregir el plan de clientes nuevos de solicitud.)
+            # PLAN: espejar el plan de ISPcube (fuente de verdad para clientes YA cargados en ISPcube). Solo si el
+            # nombre del plan de ISPcube matchea un plan de Nexa; si no matchea, no se toca. (El plan de un cliente
+            # NUEVO se corrige en el módulo Solicitudes, antes de convertir — ahí todavía no está en ISPcube.)
+            isp_plan = planes.get(c.get("plan_name"))
+            if isp_plan is not None and isp_plan != cur.get("plan_id"):
+                upd["plan_id"] = isp_plan
+                pn = (c.get("plan_name") or "").upper()
+                if "FTTH" in pn: upd["tecnologia"] = "FTTH"
+                elif ("WIFI" in pn) or ("WIRELESS" in pn) or ("INALAMB" in pn): upd["tecnologia"] = "INALAMBRICO"
             if upd: updates.append((cur["id"], upd))
         else:
             # ¿hay un prospecto en Nexa con el mismo DNI? → graduarlo (vincular), no duplicar
