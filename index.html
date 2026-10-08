@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v2.5';
+  var VER='v2.6';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1720,6 +1720,26 @@
       }).catch(function(){ btn.disabled=false; btn.textContent='Reprogramar'; toast('No se pudo reprogramar.'); });
     });
   }
+  // Editar los datos del cliente desde la OT (nombre, DNI, email, tel, domicilio, barrio). El plan va en el modal de la OT.
+  function editarClienteOT(o){
+    var c=o.clientes||{};
+    modal('<h2>✏️ Editar datos del cliente</h2><p class="muted">N° '+esc(c.numero_cliente||'')+(c.codigo_ispcube?(' · ISPcube '+esc(c.codigo_ispcube)):'')+'</p>'
+      +'<div class="row"><div><label class="l">Nombre</label><input id="ec-nom" value="'+esc(c.nombre||'')+'"></div><div><label class="l">Apellido</label><input id="ec-ape" value="'+esc(c.apellido||'')+'"></div></div>'
+      +'<div class="row"><div><label class="l">Tipo doc.</label><select id="ec-tdoc">'+['DNI','CUIT','CUIL','LC','LE','PAS'].map(function(t){return '<option'+((c.tipo_doc||'DNI')===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div><div><label class="l">N° documento</label><input id="ec-doc" value="'+esc(c.doc_numero||'')+'"></div></div>'
+      +'<label class="l">Email</label><input id="ec-mail" value="'+esc(c.email||'')+'">'
+      +'<div class="row"><div><label class="l">Teléfono</label><input id="ec-tel" value="'+esc(c.telefono||'')+'"></div><div><label class="l">Tel. alternativo</label><input id="ec-tel2" value="'+esc(c.telefono_alt||'')+'"></div></div>'
+      +'<label class="l">Domicilio</label><input id="ec-dom" value="'+esc(c.domicilio_full||'')+'">'
+      +'<label class="l">Barrio</label><input id="ec-barr" value="'+esc(c.barrio||'')+'">'
+      +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12.5px">ℹ️ Estos datos se guardan en Nexa. La facturación se maneja en ISPcube.</div>'
+      +'<div id="ec-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="ec-save">💾 Guardar</button><button class="btn btn-2" id="ec-cancel">Cancelar</button></div>','wide');
+    document.getElementById('ec-cancel').addEventListener('click',function(){ detalleOT(o.id); });
+    document.getElementById('ec-save').addEventListener('click',function(){
+      var b={ nombre:document.getElementById('ec-nom').value.trim()||null, apellido:document.getElementById('ec-ape').value.trim()||null, tipo_doc:document.getElementById('ec-tdoc').value, doc_numero:document.getElementById('ec-doc').value.trim()||null, email:document.getElementById('ec-mail').value.trim()||null, telefono:document.getElementById('ec-tel').value.trim()||null, telefono_alt:document.getElementById('ec-tel2').value.trim()||null, domicilio_full:document.getElementById('ec-dom').value.trim()||null, barrio:document.getElementById('ec-barr').value.trim()||null };
+      var btn=this; btn.disabled=true; btn.textContent='Guardando…';
+      sbPatch('clientes?id=eq.'+c.id,b).then(function(){ logOT(o.id,'EDITADA',{detalle:'Editó datos del cliente'}); toast('Datos del cliente guardados ✓'); detalleOT(o.id); }).catch(function(){ btn.disabled=false; btn.textContent='💾 Guardar'; document.getElementById('ec-err').textContent='No se pudo guardar (¿DNI duplicado?).'; });
+    });
+  }
   function detalleOT(id){
     sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,telefono_alt,email,empresa,observaciones,condicion_fiscal,razon_social,localidad,deuda,estado,domicilio_full,barrio,lat,lng,caja_nap,puerto,precinto,portal_password,tv_online,pack_futbol,plan_id,tecnologia,planes(nombre,tecnologia)),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
       var o=d[0]; if(!o)return;
@@ -1752,13 +1772,14 @@
           +'<div><label class="l">📅 Fecha y hora coordinada</label><div style="display:flex;gap:6px"><input type="date" id="ot-fecha-edit" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'" style="flex:1"><input type="time" id="ot-hora-edit" value="'+(o.hora_agendada?esc(String(o.hora_agendada).substring(0,5)):'')+'" style="width:92px" title="Hora coordinada con el cliente"></div></div>'
           +'<div><label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select></div>'
           +(o.clientes?'<div style="grid-column:1/-1"><label class="l">🔢 Código ISPcube del cliente <span class="muted">(cargalo y desaparece «falta ISP»; recién ahí se puede asignar)</span></label><input id="ot-isp-edit" value="'+esc(o.clientes.codigo_ispcube||'')+'" placeholder="ej: 006408"'+(o.clientes.codigo_ispcube?'':' style="border-color:#f59e0b;background:#fffbeb"')+'></div>':'')
-          +(o.clientes?'<div style="grid-column:1/-1"><label class="l">📡 Plan actual del cliente <span class="muted">(lo maneja ISPcube — acá es solo lectura)</span></label><div style="padding:9px;border:1px solid var(--bord);border-radius:8px;background:#f8fafc">'+esc(o.clientes.planes?(o.clientes.planes.nombre+(o.clientes.planes.tecnologia?(' · '+o.clientes.planes.tecnologia):'')):'— sin plan —')+'</div></div>':'')
+          +(o.clientes?'<div style="grid-column:1/-1"><label class="l">📡 Plan contratado del cliente <span class="muted">(editable · ajusta la tecnología)</span></label><select id="ot-plan-edit"><option value="">— sin plan —</option>'+REF.planes.map(function(p){return '<option value="'+p.id+'"'+(String(o.clientes.plan_id||'')===String(p.id)?' selected':'')+'>'+esc(p.nombre)+(p.tecnologia?(' · '+esc(p.tecnologia)):'')+'</option>';}).join('')+'</select></div>':'')
           +(o.clientes?'<div id="ot-plandest-box" style="grid-column:1/-1;display:'+(o.tipo==='CAMBIO_PLAN'?'block':'none')+'"><label class="l">🔀 Plan destino <span class="muted">(al que se cambia · dato para el técnico; el plan real lo cambia el admin en ISPcube)</span></label><select id="ot-plandest-edit"><option value="">— elegí el plan nuevo —</option>'+REF.planes.map(function(p){return '<option value="'+p.id+'"'+(String(o.plan_id||'')===String(p.id)?' selected':'')+'>'+esc(p.nombre)+(p.tecnologia?(' · '+esc(p.tecnologia)):'')+'</option>';}).join('')+'</select></div>':'')
         +'</div>'
-        +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button>'+accBtns+'<button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>'
+        +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="ot-cierre-after"><button class="btn btn-pri" id="ot-save">Guardar</button>'+accBtns+(o.clientes?'<button class="btn btn-2" id="ot-editcli">✏️ Editar cliente</button>':'')+'<button class="btn btn-ok" id="ot-print">🖨️ Imprimir OT</button><button class="btn btn-2" id="ot-x">Cerrar</button><button class="btn btn-x" id="ot-del" style="margin-left:auto">🗑️ Eliminar</button></div>'
         +'<div id="ot-hist" style="margin-top:14px"></div>', 'wide');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
       document.getElementById('ot-print').addEventListener('click',function(){ imprimirOT(id); });
+      var _ec=document.getElementById('ot-editcli'); if(_ec) _ec.addEventListener('click',function(){ editarClienteOT(o); });
       // ✏️ editar la Descripción inline (lo que ve el técnico en el PWA y en la OT)
       (function(){
         var dE=document.getElementById('otdesc-edit'), dB=document.getElementById('otdesc-box'), dV=document.getElementById('otdesc-view');
@@ -1796,8 +1817,11 @@
         var _tipoNew=document.getElementById('ot-tipo-edit').value;
         var upd={ estado:est, cuadrilla_id:cuad?Number(cuad):null, tipo:_tipoNew, prioridad:document.getElementById('ot-prio-edit').value, tipo_trabajo_id:(trab?Number(trab):null), fecha_agendada:_fe||null, hora_agendada:_he||null };
         if(est==='ASIGNADA'&&cuad&&!o.asignada_at) upd.asignada_at=new Date().toISOString();
-        // Plan destino (solo CAMBIO_PLAN): se guarda en la OT como dato/referencia para el técnico. NO cambia el plan del cliente (eso lo maneja ISPcube y lo espeja el sync).
+        // Plan destino (solo CAMBIO_PLAN): se guarda en la OT como dato/referencia para el técnico.
         if(_tipoNew==='CAMBIO_PLAN'){ var _pd=document.getElementById('ot-plandest-edit'); upd.plan_id=(_pd&&_pd.value)?Number(_pd.value):null; }
+        // Plan contratado del cliente (editable): si cambió, actualiza el cliente + la tecnología derivada
+        var _planEl=document.getElementById('ot-plan-edit');
+        if(o.clientes && _planEl){ var np=_planEl.value?Number(_planEl.value):null; if(np!==(o.clientes.plan_id||null)){ var pl=REF.planes.filter(function(p){return p.id===np;})[0]; var _t=pl?((pl.tecnologia||'')+' '+(pl.nombre||'')):''; var tec=/ftth/i.test(_t)?'FTTH':(/(wifi|wireless|inalamb)/i.test(_t)?'INALAMBRICO':null); var cu={plan_id:np}; if(tec)cu.tecnologia=tec; o.clientes.plan_id=np; if(tec)o.clientes.tecnologia=tec; sbPatch('clientes?id=eq.'+o.clientes.id,cu).then(function(){ toast('Plan del cliente actualizado ✓'); }).catch(function(){}); } }
         // Rechazo: si sale de CERRADA_TECNICO sin finalizar, los seriales comprometidos vuelven a la cuadrilla y se descarta el cierre (evita duplicar al re-cerrar)
         if(o.estado==='CERRADA_TECNICO' && est!=='FINALIZADA' && est!=='CERRADA_TECNICO'){
           sbPatch('stock_seriales?ot_id=eq.'+id+'&estado=eq.COMPROMETIDO',{ estado:'EN_CUADRILLA', ot_id:null });
