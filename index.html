@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.5';
+  var VER='v3.6';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4052,16 +4052,25 @@
   function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
   function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
   function _ocColor(ratio){ return ratio<=0.001?'#94a3b8':(ratio<0.5?'#22c55e':(ratio<0.85?'#f59e0b':(ratio<=1.0?'#ef4444':'#7f1d1d'))); }
-  function vOcupacion(){ loading(); ensureLeaflet(_ocCargar); }
+  function vOcupacion(){ loading(); ensureLeaflet(function(){ ensureChartJs(_ocCargar); }); }
+  function _chaRings(geom){ // MultiPolygon/Polygon → arrays de anillos [[lat,lng],...]
+    if(!geom||!geom.coordinates) return [];
+    var out=[], cs=geom.coordinates;
+    function ring(r){ return r.map(function(p){ return [p[1],p[0]]; }); }   // GeoJSON [lng,lat] → [lat,lng]
+    if(geom.type==='MultiPolygon'){ cs.forEach(function(poly){ if(poly[0]) out.push(ring(poly[0])); }); }
+    else if(geom.type==='Polygon'){ if(cs[0]) out.push(ring(cs[0])); }
+    return out;
+  }
   function _ocCargar(){
     view.innerHTML='<h1>Ocupación de red <span class="muted" style="font-size:14px;font-weight:400">· aproximado</span></h1>'
       +'<p class="sub">Penetración por barrio y por nodo: clientes activos vs capacidad de la red (NAPs × salidas). Cliente ubicado por GPS a la NAP más cercana (≤150 m).</p>'
       +'<div class="center"><div class="spin"></div><div class="muted" style="margin-top:8px">Cargando red y clientes…</div></div>';
     Promise.all([
-      sbGetAll('clientes?estado=eq.activo&select=id,barrio,tecnologia,lat,lng&order=id.asc'),
+      sbGetAll('clientes?estado=eq.activo&select=id,nombre,apellido,barrio,tecnologia,lat,lng&order=id.asc'),
       sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng&order=id.asc'),
       sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo'),
-      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst')
+      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst'),
+      sbGet('geo_chacras?select=cha,geom')
     ]).then(function(r){
       // ── CONGLOMERADO: por cliente, el GPS real del técnico (instalación/reparación) pisa al geocodificado ──
       var otGps={}; (r[3]||[]).forEach(function(o){ if(o.cliente_id!=null&&o.lat_fin!=null&&o.lng_fin!=null) otGps[o.cliente_id]={lat:o.lat_fin,lng:o.lng_fin}; });
@@ -4071,32 +4080,36 @@
       var cli=cliAll.filter(function(c){ if(_esWifi(c.tecnologia)){ exclW++; return false; } if(_OC_EXCL.test(c.barrio||'')){ exclZ++; return false; } return true; });
       var naps=(r[1]||[]).filter(function(n){return n.lat!=null&&n.lng!=null;});
       var polys=(r[2]||[]).filter(function(p){return Array.isArray(p.coords)&&p.coords.length>2;});
-      _OCDATA={cli:cli,naps:naps,polys:polys,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
+      // chacras catastrales: para asignar las CH que no tienen polígono propio (fix "sin zona")
+      var chacras=(r[4]||[]).map(function(c){ return {cha:parseInt(c.cha,10)||c.cha, rings:_chaRings(c.geom)}; }).filter(function(c){return c.rings.length;});
+      _OCDATA={cli:cli,naps:naps,polys:polys,chacras:chacras,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
       _ocRender();
     }).catch(function(){ view.innerHTML='<h1>Ocupación de red</h1><div class="center">No se pudieron cargar los datos.</div>'; });
   }
   function _ocCompute(){
     var d=_OCDATA, PORTS=_OC_PORTS;
-    // 1) nodo + barrio (point-in-polygon) por NAP
-    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._barrio='(sin zona)'; n._poly=-1;
-      for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._poly=i; break; } } });
-    // 2) grilla para NAP más cercana
+    // 1) ZONA por NAP: primero polígono (geo_poligonos); si no cae en ninguno, chacra catastral (fix "sin zona")
+    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin zona)'; n._zid=null; n._geom=null;
+      for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._zid='P'+i; n._geom=d.polys[i].coords; break; } }
+      if(!n._zid){ for(var c=0;c<d.chacras.length;c++){ var rs=d.chacras[c].rings; for(var r=0;r<rs.length;r++){ if(pointInPoly(n.lat,n.lng,rs[r])){ n._barrio='CH '+d.chacras[c].cha; n._zid='C'+d.chacras[c].cha; n._geom=rs[r]; break; } } if(n._zid)break; } }
+    });
+    // 2) grilla para NAP más cercana + lista de clientes por NAP
     var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
     d.naps.forEach(function(n){ var k=GK(n.lat,n.lng); (grid[k]=grid[k]||[]).push(n); });
     var sinNap=0;
     d.cli.forEach(function(c){ var best=null,bd=1e9, kla=Math.round(c.lat*400), kln=Math.round(c.lng*400);
       for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){ var arr=grid[(kla+dx)+'_'+(kln+dy)]; if(arr)for(var i=0;i<arr.length;i++){ var dd=_ocHav(c.lat,c.lng,arr[i].lat,arr[i].lng); if(dd<bd){bd=dd;best=arr[i];} } }
-      if(best && bd<=150){ best._cli++; } else sinNap++; });
+      if(best && bd<=150){ best._cli++; best._cliList.push(((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)'); } else sinNap++; });
     // 3) agregar
     function agg(key){ var m={}; d.naps.forEach(function(n){ var k=key(n); var o=m[k]||(m[k]={zona:k,naps:0,cli:0}); o.naps++; o.cli+=n._cli; });
       return Object.keys(m).map(function(k){ var o=m[k]; o.cap=o.naps*PORTS; o.libres=Math.max(0,o.cap-o.cli); o.ocup=o.cap?o.cli/o.cap:0; return o; }); }
     var byBarrio=agg(function(n){return n._barrio;}).sort(function(a,b){return b.ocup-a.ocup;});
     var byNodo=agg(function(n){return 'Nodo '+n._nodo;}).sort(function(a,b){return (parseInt(a.zona.replace(/\D/g,''))||999)-(parseInt(b.zona.replace(/\D/g,''))||999);});
-    // por polígono (para pintar el mapa): cada polígono con sus NAPs/clientes/ocupación
-    var byPoly={}; d.naps.forEach(function(n){ if(n._poly<0)return; var o=byPoly[n._poly]||(byPoly[n._poly]={naps:0,cli:0}); o.naps++; o.cli+=n._cli; });
-    Object.keys(byPoly).forEach(function(k){ var o=byPoly[k]; o.cap=o.naps*PORTS; o.ocup=o.cap?o.cli/o.cap:0; o.libres=Math.max(0,o.cap-o.cli); });
+    // por ZONA (para pintar el mapa): cada polígono/chacra con sus NAPs/clientes/ocupación + geometría
+    var byZona={}; d.naps.forEach(function(n){ if(!n._zid)return; var o=byZona[n._zid]||(byZona[n._zid]={name:n._barrio,geom:n._geom,naps:0,cli:0}); o.naps++; o.cli+=n._cli; });
+    Object.keys(byZona).forEach(function(k){ var o=byZona[k]; o.cap=o.naps*PORTS; o.ocup=o.cap?o.cli/o.cap:0; o.libres=Math.max(0,o.cap-o.cli); });
     var totNaps=d.naps.length, cap=totNaps*PORTS, totCli=d.naps.reduce(function(a,n){return a+n._cli;},0);
-    _OCDATA._res={byBarrio:byBarrio,byNodo:byNodo,byPoly:byPoly,sinNap:sinNap,totNaps:totNaps,cap:cap,totCli:totCli,libres:Math.max(0,cap-totCli),occ:cap?totCli/cap:0};
+    _OCDATA._res={byBarrio:byBarrio,byNodo:byNodo,byZona:byZona,sinNap:sinNap,totNaps:totNaps,cap:cap,totCli:totCli,libres:Math.max(0,cap-totCli),occ:cap?totCli/cap:0};
     return _OCDATA._res;
   }
   function _ocRender(){
@@ -4111,6 +4124,11 @@
         +_ocCard('Sin NAP cercana', res.sinNap.toLocaleString('es-AR'), 'FTTH propio sin ubicar (GPS aprox.)')
       +'</div>'
       +'<div class="muted" style="font-size:12px;margin:-2px 0 6px">📍 <b>'+((_OCDATA.mejorados||0)).toLocaleString('es-AR')+'</b> clientes ubicados con el GPS real del técnico (instalación/reparación). · Excluidos del cálculo: <b>'+((_OCDATA.exclW||0)).toLocaleString('es-AR')+'</b> wireless + <b>'+((_OCDATA.exclZ||0)).toLocaleString('es-AR')+'</b> de 508/Hipódromo/597/Itaembé (no son red FTTH propia).</div>'
+      +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
+        +'<div style="flex:1;min-width:220px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Ocupación global</div><canvas id="oc-ch-donut" style="max-height:170px"></canvas></div>'
+        +'<div style="flex:1.4;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Más capacidad ociosa ('+(_ocVista==='barrio'?'barrios':'nodos')+') — dónde hay bocas para vender</div><canvas id="oc-ch-bar" style="max-height:230px"></canvas></div>'
+        +'<div style="flex:1;min-width:230px;background:linear-gradient(180deg,#f0fdf4,#fff);border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-weight:800;color:#15803d;margin-bottom:6px">🎯 Dónde atacar comercialmente</div><div id="oc-rank" style="font-size:13px"></div></div>'
+      +'</div>'
       +'<div class="toolbar" style="align-items:center;gap:10px">'
         +'<div style="display:inline-flex;border:1px solid var(--bord);border-radius:10px;overflow:hidden">'
           +'<button class="btn '+(_ocVista==='barrio'?'btn-pri':'btn-2')+'" id="oc-vb" style="border-radius:0;margin:0">Por barrio</button>'
@@ -4133,6 +4151,26 @@
     document.getElementById('oc-cn').addEventListener('change',function(){ _ocCapaNaps=this.checked; _ocToggleCapa(); });
     _ocTabla(res);
     _ocMapa();
+    _ocDashboard(res);
+  }
+  var _ocCharts={};
+  function _ocDashboard(res){
+    var _sinz=function(o){ return /sin zona/i.test(o.zona); };   // "(sin zona)" = fuera del catastro, no accionable
+    // Ranking "dónde atacar": zonas con red tendida (NAPs≥2) y más bocas libres, ocupación baja/media
+    var rows=(_ocVista==='barrio'?res.byBarrio:res.byNodo).filter(function(o){return o.naps>=2 && o.libres>0 && !_sinz(o);})
+      .sort(function(a,b){ return b.libres-a.libres; }).slice(0,6);
+    var rk=document.getElementById('oc-rank');
+    if(rk){ rk.innerHTML = rows.length? rows.map(function(o,i){ return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:'+(i?'1px solid #dcfce7':'none')+'"><span><b>'+(i+1)+'.</b> '+esc(o.zona)+' <span class="muted" style="font-size:11px">'+o.naps+' NAPs · '+Math.round(o.ocup*100)+'%</span></span><b style="color:#15803d">'+o.libres+' libres</b></div>'; }).join('')
+      : '<span class="muted">—</span>'; }
+    // Donut ocupación global
+    try{ if(_ocCharts.donut){_ocCharts.donut.destroy();} var cd=document.getElementById('oc-ch-donut');
+      if(cd&&window.Chart){ _ocCharts.donut=new Chart(cd,{type:'doughnut',data:{labels:['Ocupadas','Libres'],datasets:[{data:[res.totCli,res.libres],backgroundColor:['#2563eb','#d1fae5'],borderWidth:0}]},options:{plugins:{legend:{position:'bottom'}},cutout:'62%'}}); }
+    }catch(e){}
+    // Barras: top zonas por bocas libres
+    try{ if(_ocCharts.bar){_ocCharts.bar.destroy();} var cb=document.getElementById('oc-ch-bar');
+      var top=(_ocVista==='barrio'?res.byBarrio:res.byNodo).filter(function(o){return o.libres>0 && !_sinz(o);}).sort(function(a,b){return b.libres-a.libres;}).slice(0,12);
+      if(cb&&window.Chart){ _ocCharts.bar=new Chart(cb,{type:'bar',data:{labels:top.map(function(o){return o.zona;}),datasets:[{label:'Bocas libres',data:top.map(function(o){return o.libres;}),backgroundColor:top.map(function(o){return _ocColor(o.ocup);})}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}}); }
+    }catch(e){}
   }
   function _ocCard(t,big,sub){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">'+esc(t)+'</div><div style="font-size:24px;font-weight:800;margin:2px 0">'+esc(big)+'</div><div class="muted" style="font-size:12px">'+esc(sub)+'</div></div>'; }
   function _ocTabla(res){
@@ -4158,24 +4196,24 @@
     _OCMAP=L.map('oc-map').setView([-27.43,-55.95],12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_OCMAP);
     var res=_OCDATA._res, allP=[];
-    // ── Capa POLÍGONOS (coropleta por ocupación): cada barrio pintado, click = ficha ──
+    // ── Capa ZONAS (coropleta por ocupación): cada barrio/chacra con NAPs pintado, click = ficha ──
     _ocLPoly=L.layerGroup();
-    _OCDATA.polys.forEach(function(p,i){
-      var o=res.byPoly[i]; var ll=p.coords.map(function(c){return [c[0],c[1]];});
-      var col=o?_ocColor(o.ocup):'#cbd5e1', nom=_ocBarrio(p.nombre);
-      var pg=L.polygon(ll,{color:col,weight:2.5,fillColor:col,fillOpacity:o?.55:.08});
-      var pop='<b>'+esc(nom)+'</b><br>';
-      if(o){ pop+='🗃️ <b>'+o.naps+'</b> cajas NAP<br>👥 <b>'+o.cli+'</b> clientes<br>📦 Capacidad: <b>'+o.cap+'</b> ('+o.libres+' libres)<br>📊 Ocupación: <b>'+Math.round(o.ocup*100)+'%</b>'; }
-      else pop+='<span class="muted">sin NAPs en esta zona</span>';
-      pg.bindPopup(pop); pg.bindTooltip(nom+(o?(' · '+Math.round(o.ocup*100)+'%'):''),{sticky:true});
-      pg.addTo(_ocLPoly); if(o) ll.forEach(function(c){ allP.push(c); });
+    Object.keys(res.byZona).forEach(function(zid){
+      var o=res.byZona[zid]; if(!o.geom) return; var ll=o.geom.map(function(c){return [c[0],c[1]];});
+      var col=_ocColor(o.ocup);
+      var pg=L.polygon(ll,{color:col,weight:2.5,fillColor:col,fillOpacity:.55});
+      pg.bindPopup('<b>'+esc(o.name)+'</b><br>🗃️ <b>'+o.naps+'</b> cajas NAP<br>👥 <b>'+o.cli+'</b> clientes<br>📦 Capacidad: <b>'+o.cap+'</b> ('+o.libres+' libres)<br>📊 Ocupación: <b>'+Math.round(o.ocup*100)+'%</b>');
+      pg.bindTooltip(o.name+' · '+Math.round(o.ocup*100)+'%',{sticky:true});
+      pg.addTo(_ocLPoly); ll.forEach(function(c){ allP.push(c); });
     });
-    // ── Capa NAPs (puntos) ──
+    // ── Capa NAPs (puntos) con lista de clientes ──
     var canvas=L.canvas({tolerance:6});
     _ocLNaps=L.layerGroup();
     _OCDATA.naps.forEach(function(n){ var ratio=n._cli/_OC_PORTS;
+      var lista=n._cliList.slice(0,12).map(function(x){return '• '+esc(x);}).join('<br>');
+      var mas=n._cliList.length>12?('<br><span class="muted">… y '+(n._cliList.length-12)+' más</span>'):'';
       L.circleMarker([n.lat,n.lng],{renderer:canvas,radius:5,color:'#fff',weight:1,fillColor:_ocColor(ratio),fillOpacity:.95})
-        .bindPopup('<b>NAP '+esc(n.codigo)+'</b><br>Nodo '+esc(n._nodo)+' · '+esc(n._barrio)+'<br><b>'+n._cli+'/'+_OC_PORTS+'</b> ocupadas ('+Math.round(ratio*100)+'%)').addTo(_ocLNaps);
+        .bindPopup('<b>NAP '+esc(n.codigo)+'</b><br>Nodo '+esc(n._nodo)+' · '+esc(n._barrio)+'<br><b>'+n._cli+'/'+_OC_PORTS+'</b> ocupadas ('+Math.round(ratio*100)+'%)'+(n._cliList.length?('<br><div style="margin-top:4px;font-size:12px;max-height:150px;overflow:auto">'+lista+mas+'</div>'):'')).addTo(_ocLNaps);
       });
     _ocToggleCapa();
     if(allP.length>1){ try{ _OCMAP.fitBounds(allP,{padding:[20,20]}); }catch(e){} }
