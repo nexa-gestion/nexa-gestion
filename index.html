@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.0';
+  var VER='v3.1';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2455,41 +2455,49 @@
       });
     });
   }
+  function _agMean(arr){ var la=0,ln=0; arr.forEach(function(v){la+=v.lat;ln+=v.lng;}); return {lat:la/arr.length,lng:ln/arr.length}; }
+  // Reparto por BARRIDO ANGULAR (algoritmo "sweep" de ruteo): se ordenan las visitas por su ángulo alrededor
+  // del centro de todas, y se cortan en porciones de torta contiguas, una por cuadrilla. Cada cuadrilla agarra
+  // una CUÑA del mapa → las zonas NO se pisan, y la que apunta a una zona lejana (ej. Garupá) se lleva también
+  // lo que queda de paso en esa dirección (no maneja 25 km por 1 sola tarea). Reparte parejo POR CANTIDAD de
+  // visitas (lo que pediste: que no haya una con 6 y otra con 1). Respeta cupo y la restricción wireless.
   function _agCluster(visitas,cuads,prioFecha){
-    var pts=visitas.slice(); pts.forEach(function(v){ v._dens=pts.filter(function(w){return _agHav(v,w)<=1.5;}).length; });
-    pts.sort(function(a,b){return b._dens-a._dens;});
-    var seeds=[pts[0]];
-    while(seeds.length<cuads.length){ var best=null,bd=-1; pts.forEach(function(v){ var dmin=Math.min.apply(null,seeds.map(function(s){return _agHav(v,s);})); if(dmin>bd){bd=dmin;best=v;} }); if(!best)break; seeds.push(best); }
-    var cs=cuads.slice().sort(function(a,b){return b.cupo-a.cupo;}), sd=seeds.slice().sort(function(a,b){return b._dens-a._dens;});
-    // c.cen = centro de la zona de la cuadrilla. Arranca en la semilla y se MUEVE en cada pasada al promedio
-    // de sus visitas (k-means), así las zonas quedan compactas y SEPARADAS (no se cruzan).
-    cs.forEach(function(c,i){ var s=sd[i]||sd[sd.length-1]; c.cen={lat:s.lat,lng:s.lng}; c.seed=c.cen; c.stops=[]; c.usado=0; });
-    function apto(v,c){ return (!v.wireless||c.wireless); }   // wireless solo a cuadrilla que hace wireless
-    // Reparto EQUILIBRADO punto medio (compacidad + carga pareja): cada visita va a la cuadrilla que minimiza
-    // distancia_al_centro + PEN × carga_ya_asignada. PEN = "km virtuales" por unidad de carga ya tomada →
-    // reparte sin mandar a una cuadrilla lejos solo para emparejar (la aislada queda en la más cercana).
-    // Se itera: asignar → recalcular centros → repetir. Al mover los centros se deshacen los cruces de zonas.
-    // Subir PEN = más parejo (algún km extra); bajarlo = zonas más compactas pero más dispar.
-    var PEN=2.0, ITERS=15;
-    var cen={lat:0,lng:0}; visitas.forEach(function(v){cen.lat+=v.lat;cen.lng+=v.lng;}); cen.lat/=visitas.length; cen.lng/=visitas.length;
-    // orden de asignación: prioFecha→más viejas primero; si no→más lejanas al centro primero (fija lo aislado en su zona)
-    var orden=visitas.slice().sort(prioFecha?function(a,b){return (b.edad||0)-(a.edad||0);}:function(a,b){return _agHav(b,cen)-_agHav(a,cen);});
-    var sinAsig=[];
-    for(var it=0; it<ITERS; it++){
-      var ultima=(it===ITERS-1);
-      cs.forEach(function(c){ c.stops=[]; c.usado=0; });
-      if(ultima) sinAsig=[];
-      orden.forEach(function(v){
-        var cand=cs.filter(function(c){ return apto(v,c) && c.usado+(v.peso||1)<=c.cupo+0.001; });
-        if(!cand.length){ if(ultima) sinAsig.push(v); return; }
-        cand.forEach(function(c){ c._sc=_agHav(v,c.cen)+PEN*c.usado; });
-        cand.sort(function(a,b){return a._sc-b._sc;});
-        cand[0].stops.push(v); cand[0].usado+=(v.peso||1);
-      });
-      // recalcular el centro de cada cuadrilla = promedio de sus visitas (si quedó vacía, mantiene el centro)
-      cs.forEach(function(c){ if(c.stops.length){ var la=0,ln=0; c.stops.forEach(function(s){la+=s.lat;ln+=s.lng;}); c.cen={lat:la/c.stops.length,lng:ln/c.stops.length}; } });
+    var cs=cuads.map(function(c){ return {id:c.id,nombre:c.nombre,cupo:c.cupo,wireless:c.wireless,stops:[],usado:0}; });
+    var N=cs.length, sinAsig=[];
+    var cen=_agMean(visitas);
+    // ── 1) WIRELESS primero: solo a cuadrillas que hacen wireless, a la menos cargada (desempata la más cercana)
+    var wifis=cs.filter(function(c){return c.wireless;});
+    visitas.filter(function(v){return v.wireless;}).forEach(function(v){
+      var cand=wifis.filter(function(c){ return c.usado+(v.peso||1)<=c.cupo+0.001; });
+      if(!cand.length){ sinAsig.push(v); return; }
+      cand.sort(function(a,b){ return (a.stops.length-b.stops.length) || (_agHav(v,a.stops.length?_agMean(a.stops):cen)-_agHav(v,b.stops.length?_agMean(b.stops):cen)); });
+      cand[0].stops.push(v); cand[0].usado+=(v.peso||1);
+    });
+    // ── 2) RESTO por barrido angular en arcos contiguos balanceados por cantidad
+    var resto=visitas.filter(function(v){return !v.wireless;});
+    if(prioFecha) resto.sort(function(a,b){return (b.edad||0)-(a.edad||0);});   // si hay desborde, las más viejas entran primero
+    var vs=resto.map(function(v){ return {v:v,ang:Math.atan2(v.lat-cen.lat,v.lng-cen.lng)}; });
+    vs.sort(function(a,b){return a.ang-b.ang;});
+    var ng=vs.length, ord=[];
+    if(ng){ // rotar el inicio al hueco angular más grande para no partir un grupo natural por la costura 0/360
+      var maxg=-1,gi=0; for(var i=0;i<ng;i++){ var g=((vs[(i+1)%ng].ang-vs[i].ang)+2*Math.PI)%(2*Math.PI); if(g>maxg){maxg=g;gi=(i+1)%ng;} }
+      for(var i=0;i<ng;i++) ord.push(vs[(gi+i)%ng].v);
     }
-    cs.forEach(function(c){ c.seed=c.cen; });
+    // tamaños finales lo más parejos posible sobre el TOTAL; las cuadrillas que ya hicieron wireless llevan menos
+    var M=visitas.length, sizes=[]; for(var c=0;c<N;c++) sizes.push(Math.floor(M/N)+(c<M%N?1:0));   // ej 10/3 → [4,3,3]
+    var byLoad=cs.map(function(c,i){return i;}).sort(function(a,b){return cs[a].stops.length-cs[b].stops.length;}); // menos cargadas primero
+    var want=new Array(N).fill(0);
+    byLoad.forEach(function(ci,k){ want[ci]=Math.max(0, sizes[k]-cs[ci].stops.length); });
+    // verter los arcos: cada cuadrilla (en orden) recibe un tramo contiguo del barrido hasta su "want", sin pasar cupo
+    var seq=cs.map(function(c,i){return i;}).filter(function(i){return want[i]>0;}), si=0, p=0;
+    while(p<ord.length && si<seq.length){
+      var ci=seq[si], c=cs[ci], v=ord[p];
+      if(want[ci]<=0){ si++; continue; }
+      if(c.usado+(v.peso||1)<=c.cupo+0.001){ c.stops.push(v); c.usado+=(v.peso||1); want[ci]--; p++; if(want[ci]<=0) si++; }
+      else { si++; }   // cupo lleno → siguiente cuadrilla
+    }
+    while(p<ord.length) sinAsig.push(ord[p++]);
+    cs.forEach(function(c){ c.cen=c.stops.length?_agMean(c.stops):cen; c.seed=c.cen; });
     return {cuads:cs,sinAsig:sinAsig};
   }
   function _agRoute(c,depot){
