@@ -42,6 +42,8 @@
   .btn-ok:disabled{ background:#cbd5e1; cursor:not-allowed; }
   .btn-ok:not(:disabled):active{ background:var(--pri-d); }
   .btn-2{ background:#fff; color:#334155; border:2px solid var(--bord); }
+  .btn-2.sel{ border-color:var(--pri); background:#eff6ff; color:var(--pri-d); }
+  .btn-2.off{ opacity:.45; cursor:not-allowed; }
   .gpsbox{ background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:14px; margin-top:8px; }
   .gpsbox.ok{ background:#f0fdf4; border-color:#bbf7d0; }
   .hint{ color:var(--gris); font-size:13px; margin-top:6px; line-height:1.4; }
@@ -63,7 +65,7 @@
     <div class="sub">Internet · Solicitud de conexión</div>
   </div>
   <div id="app"></div>
-  <div class="foot">Nexa SAS · Tus datos se usan solo para coordinar la instalación. · v0.13</div>
+  <div class="foot">Nexa SAS · Tus datos se usan solo para coordinar la instalación. · v0.14</div>
 </div>
 
 <script>
@@ -76,7 +78,10 @@
   var CONFIGURADO = SB_URL.indexOf('TU-PROYECTO') === -1;
 
   var app = document.getElementById('app');
-  var PLANES = [], BARRIOS = [], PROMOS = [], CONFIG = {}, VENDEDOR = null;
+  var PLANES = [], BARRIOS = [], PROMOS = [], CONFIG = {}, VENDEDOR = null, CUPOS = {};
+  var BARRIO_ITAEMBE = 'Itaembé Guazú';
+  var BARRIOS_NO_VENDE = ['508 Viviendas','597 Viviendas','Hipódromo'];   // zona del nodo FTTH: no se ofrece por el link
+  var FRANJAS = [ {id:'mañana', lbl:'Mañana', rango:'8 a 12 hs', cfg:'cupo_manana', def:8}, {id:'tarde', lbl:'Tarde', rango:'12 a 15 hs', cfg:'cupo_tarde', def:4} ];
   function _vendTokenURL(){ try{ return new URLSearchParams(location.search).get('v')||''; }catch(e){ return ''; } }
   function fmtPesos(n){ if(n==null||n==='') return ''; var x=Number(n); if(isNaN(x)) return ''; return '$'+x.toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
   var f = { tv:false, futbol:false, yaCliente:false };
@@ -104,34 +109,73 @@
     return out;
   }
 
+  // ── zona / tecnología / planes según barrio ───────────────────────────
+  function barrioData(nombre){ return BARRIOS.filter(function(b){return b.nombre===nombre;})[0] || null; }
+  function esItaembe(nombre){ return nombre===BARRIO_ITAEMBE; }
+  function tecDeBarrio(nombre){ return esItaembe(nombre) ? 'INALAMBRICO' : 'FTTH'; }   // Itaembé = wireless; el resto = fibra
+  // planes ofrecibles para el barrio: wireless 50/100/150 en Itaembé, FTTH 50/100/200 en el resto (6/12 MB quedan fuera del alta)
+  function planesDeBarrio(nombre){
+    var tec=tecDeBarrio(nombre);
+    return PLANES.filter(function(p){ return p.tecnologia===tec && p.mostrar_form!==false && (tec!=='INALAMBRICO' || Number(p.bajada_mbps)>=50); });
+  }
+  // precio de instalación para el barrio+tipo (nuevo/cambio). Override por barrio; si no, global; si no cobra → 0.
+  function instalacionDe(nombre, tipoSolic){
+    var b=barrioData(nombre), cuotas=(b&&b.instalacion_cuotas)||3, cobra, precio;
+    if(b && b.instalacion_cobrar!=null){ cobra=!!b.instalacion_cobrar; }
+    else { cobra=!!(CONFIG&&CONFIG.instalacion_cobrar); }
+    if(!cobra) return { cobra:false, precio:0, cuotas:cuotas };
+    if(b && tipoSolic==='cambio' && b.instalacion_precio_cambio!=null) precio=Number(b.instalacion_precio_cambio);
+    else if(b && b.instalacion_precio_nuevo!=null) precio=Number(b.instalacion_precio_nuevo);
+    else precio=Number((CONFIG&&CONFIG.instalacion_precio)||0);
+    return { cobra:precio>0, precio:precio, cuotas:cuotas };
+  }
+  // ── días y cupos (agenda) ──────────────────────────────────────────────
+  function _hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function _iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  var _DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'], _MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function fmtDia(d){ return _DIAS[d.getDay()]+' '+d.getDate()+'/'+_MES[d.getMonth()]; }
+  // próximos días hábiles a partir de MAÑANA (nunca hoy); se excluye domingo
+  function diasDisponibles(n){
+    var out=[], d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+1);
+    while(out.length<n){ if(d.getDay()!==0) out.push(new Date(d)); d.setDate(d.getDate()+1); }
+    return out;
+  }
+  function cupoFranja(fr){ var c=Number(CONFIG&&CONFIG[fr.cfg]); return (c===0?0:(c||fr.def)); }
+  function usadoFranja(iso, frId){ return CUPOS[iso+'|'+frId]||0; }
+  function libreFranja(iso, fr){ return Math.max(0, cupoFranja(fr)-usadoFranja(iso, fr.id)); }
+  function diaTieneCupo(iso){ return FRANJAS.some(function(fr){ return libreFranja(iso, fr)>0; }); }
+
   // ── cargar referencia (planes + barrios) ──────────────────────────────
   function cargarRef(cb){
     if(!CONFIGURADO){ cb(); return; }
     var p1 = fetch(SB_URL+'/rest/v1/planes?activo=eq.true&select=id,nombre,tecnologia,bajada_mbps,precio,mostrar_form&order=bajada_mbps.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PLANES=Array.isArray(d)?d:[]; }).catch(function(){});
-    var p2 = fetch(SB_URL+'/rest/v1/barrios?activo=eq.true&select=nombre,tipo,empresa_sugerida&order=tipo.asc,nombre.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ BARRIOS=Array.isArray(d)?d:[]; }).catch(function(){});
+    var p2 = fetch(SB_URL+'/rest/v1/barrios?activo=eq.true&select=nombre,tipo,empresa_sugerida,instalacion_cobrar,instalacion_precio_nuevo,instalacion_precio_cambio,instalacion_cuotas&order=tipo.asc,nombre.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ BARRIOS=Array.isArray(d)?d:[]; }).catch(function(){});
     var p3 = fetch(SB_URL+'/rest/v1/promos?activo=eq.true&select=nombre,meses,descuento_pct,tecnologia,orden&order=orden.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PROMOS=Array.isArray(d)?d:[]; }).catch(function(){});
     var p4 = fetch(SB_URL+'/rest/v1/config_comercial?id=eq.1&select=*', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ CONFIG=(Array.isArray(d)&&d[0])||{}; }).catch(function(){});
     var tok=_vendTokenURL();
     var p5 = tok ? fetch(SB_URL+'/rest/v1/vendedores?token=eq.'+encodeURIComponent(tok)+'&activo=eq.true&select=id,nombre&limit=1', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ VENDEDOR=(Array.isArray(d)&&d[0])||null; }).catch(function(){}) : Promise.resolve();
-    Promise.all([p1,p2,p3,p4,p5]).then(cb);
+    // cupos ya reservados por día+franja (solicitudes pendientes de hoy en adelante) para no pasarnos del tope
+    var p6 = fetch(SB_URL+'/rest/v1/solicitudes_alta?estado=eq.pendiente&dia_preferido=gte.'+_hoyISO()+'&select=dia_preferido,franja_preferida', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ CUPOS={}; (Array.isArray(d)?d:[]).forEach(function(r){ if(!r.dia_preferido)return; var k=r.dia_preferido+'|'+(r.franja_preferida||''); CUPOS[k]=(CUPOS[k]||0)+1; }); }).catch(function(){});
+    Promise.all([p1,p2,p3,p4,p5,p6]).then(cb);
   }
 
   function optsBarrios(){
-    var ch = BARRIOS.filter(function(b){return b.tipo==='CHACRA';});
-    var ba = BARRIOS.filter(function(b){return b.tipo!=='CHACRA';});
+    var vende=function(b){ return BARRIOS_NO_VENDE.indexOf(b.nombre)<0; };   // 508/597 no se ofrecen por el link
+    var ch = BARRIOS.filter(function(b){return b.tipo==='CHACRA' && vende(b);});
+    var ba = BARRIOS.filter(function(b){return b.tipo!=='CHACRA' && vende(b);});
     var h = '<option value="">— Elegí tu barrio o chacra —</option>';
-    if(ba.length){ h+='<optgroup label="Barrios">'; ba.forEach(function(b){ h+='<option value="'+esc(b.nombre)+'">'+esc(b.nombre)+'</option>'; }); h+='</optgroup>'; }
-    if(ch.length){ h+='<optgroup label="Chacras">'; ch.forEach(function(b){ h+='<option value="'+esc(b.nombre)+'">'+esc(b.nombre)+'</option>'; }); h+='</optgroup>'; }
-    h += '<option value="__otro">Otro / no lo encuentro</option>';
+    if(ba.length){ h+='<optgroup label="Barrios">'; ba.forEach(function(b){ h+='<option value="'+esc(b.nombre)+'"'+(f.barrio===b.nombre?' selected':'')+'>'+esc(b.nombre)+'</option>'; }); h+='</optgroup>'; }
+    if(ch.length){ h+='<optgroup label="Chacras">'; ch.forEach(function(b){ h+='<option value="'+esc(b.nombre)+'"'+(f.barrio===b.nombre?' selected':'')+'>'+esc(b.nombre)+'</option>'; }); h+='</optgroup>'; }
+    h += '<option value="__otro"'+(f.barrio==='__otro'?' selected':'')+'>Otro / no lo encuentro</option>';
     return h;
   }
   function optsPlanes(){
     var h = '<option value="">— Elegí un plan —</option>';
-    PLANES.filter(function(p){return p.mostrar_form!==false;}).forEach(function(p){
+    planesDeBarrio(f.barrio).forEach(function(p){
       var et = p.nombre + (p.precio?(' · '+fmtPesos(p.precio)+'/mes'):'');
-      h += '<option value="'+esc(p.id)+'">'+esc(et)+'</option>';
+      h += '<option value="'+esc(p.id)+'"'+(String(f.plan_id)===String(p.id)?' selected':'')+'>'+esc(et)+'</option>';
     });
-    h += '<option value="__otro">No estoy seguro</option>';
+    h += '<option value="__otro"'+(f.plan_id==='__otro'?' selected':'')+'>No estoy seguro</option>';
     return h;
   }
   function planById(id){ return PLANES.filter(function(p){return String(p.id)===String(id);})[0]; }
@@ -149,8 +193,14 @@
     }
     var tvI=addonItem('TV'); if(f.tv && tvI && tvI.precio){ total+=Number(tvI.precio); totalPromo+=Number(tvI.precio); html+='<div style="display:flex;justify-content:space-between;padding:3px 0">+ '+esc(tvI.nombre)+'<span>'+fmtPesos(tvI.precio)+'/mes</span></div>'; }
     var pkI=addonItem('PACK'); if(f.futbol && pkI && pkI.precio){ total+=Number(pkI.precio); totalPromo+=Number(pkI.precio); html+='<div style="display:flex;justify-content:space-between;padding:3px 0">+ '+esc(pkI.nombre)+'<span>'+fmtPesos(pkI.precio)+'/mes</span></div>'; }
-    var instTxt;
-    if(CONFIG && CONFIG.instalacion_cobrar){ instTxt=fmtPesos(CONFIG.instalacion_precio); html+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #e2e8f0;margin-top:4px">Instalación (una vez)<span>'+instTxt+'</span></div>'; }
+    var inst=instalacionDe(f.barrio, f.tipoSolic), instTxt;
+    if(inst.cobra){
+      var cuotaVal=Math.round(inst.precio/(inst.cuotas||3));
+      var etiq=(f.tipoSolic==='cambio')?'Cambio tecnológico':'Instalación y activación';
+      instTxt=fmtPesos(inst.precio)+' o '+inst.cuotas+' cuotas de '+fmtPesos(cuotaVal);
+      html+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #e2e8f0;margin-top:4px">'+etiq+'<span style="text-align:right">'+fmtPesos(inst.precio)+'</span></div>';
+      html+='<div style="font-size:12px;color:#64748b">o '+inst.cuotas+' cuotas de '+fmtPesos(cuotaVal)+' (en tu factura)'+(f.tipoSolic==='cambio'?' · con entrega del equipo anterior':'')+'</div>';
+    }
     else { instTxt='sin cargo'; html+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #e2e8f0;margin-top:4px;color:#15803d">Instalación<span>sin cargo</span></div>'; }
     if(cont) cont.innerHTML = html ? ('<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-top:10px">'+html+'<div style="font-size:12px;color:#64748b;margin-top:8px">Precios sujetos a modificación. El detalle final se confirma al coordinar la instalación.</div></div>') : '';
     if(tp){ if(pl&&pl.precio){ tp.style.display='block'; tp.innerHTML='Tu pedido: <b>'+esc(pl.nombre)+'</b> · '+(hayPromo?(fmtPesos(totalPromo)+'/mes los primeros meses, luego '):'')+fmtPesos(total)+'/mes · instalación '+instTxt+'.'; } else { tp.style.display='none'; tp.innerHTML=''; } }
@@ -158,17 +208,42 @@
 
   // ── formulario ────────────────────────────────────────────────────────
   function render(){
-    var barrioField = BARRIOS.length ? '<select id="barrio">'+optsBarrios()+'</select>' : '<input id="barrio_txt" placeholder="Tu barrio o chacra">';
-    var planField   = PLANES.length  ? '<select id="plan">'+optsPlanes()+'</select>'    : '<input id="plan_texto" placeholder="Ej: el de mayor velocidad">';
+    var barrioField = BARRIOS.length ? '<select id="barrio">'+optsBarrios()+'</select>' : '<input id="barrio_txt" placeholder="Tu barrio o chacra" value="'+esc(f.barrio||'')+'">';
+    var esIt = esItaembe(f.barrio), esCambio = esIt && f.tipoSolic==='cambio';
 
     var h = '';
     h += '<div class="card">';
     h += '<div class="saludo">¡Hola! 👋 Sumate a Nexa</div>';
-    h += '<div class="desc">Completá tus datos y nos comunicamos para coordinar la instalación. Toma 1 minuto.</div>';
+    h += '<div class="desc">Completá tus datos y coordinamos la instalación. Toma 1 minuto.</div>';
     if(VENDEDOR){ h += '<div style="margin-top:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:9px 12px;font-size:14px">🧑‍💼 Te atiende <b>'+esc(VENDEDOR.nombre)+'</b></div>'; }
     h += '</div>';
 
-    // Datos personales
+    // ── 1) BARRIO primero (define todo lo demás) ──
+    h += '<div class="card">';
+    h += '<div class="label">Tu barrio o chacra <span class="req">*</span></div>'+barrioField;
+    if(esIt){
+      h += '<div style="margin-top:12px;background:#ecfeff;border:1px solid #a5f3fc;border-radius:12px;padding:12px">';
+      h += '<div style="font-weight:800;color:#0e7490;font-size:15px">📍 Cobertura en Itaembé Guazú</div>';
+      h += '<div class="hint" style="color:#164e63;margin-top:4px">Por ahora llegamos <b>solo a la zona marcada en verde</b>. Si tu casa está en <b>508 Viviendas</b> o en el <b>Hipódromo (597 Viviendas)</b>, todavía <b>no tenemos cobertura</b>.</div>';
+      h += '<img src="cobertura-itaembe.jpg" alt="Zona de cobertura en Itaembé Guazú" style="width:100%;border-radius:10px;margin-top:10px;border:1px solid #cbd5e1" loading="lazy">';
+      h += '</div>';
+      h += '<div class="label">¿Sos cliente nuevo o querés cambiar de plan? <span class="req">*</span></div>';
+      h += '<div class="row">';
+      h += '<div><button type="button" class="btn btn-2 tsol'+(f.tipoSolic==='alta'?' sel':'')+'" data-ts="alta" style="margin-top:0">🆕 Cliente nuevo</button></div>';
+      h += '<div><button type="button" class="btn btn-2 tsol'+(f.tipoSolic==='cambio'?' sel':'')+'" data-ts="cambio" style="margin-top:0">🔄 Cambio de plan</button></div>';
+      h += '</div>';
+      if(esCambio){ h += '<div class="hint" style="margin-top:8px">Ya sos cliente wireless (6/12 MB) y subís a 50/100/150 MB. Es un <b>cambio tecnológico</b>: se entrega el equipo anterior.</div><div class="label">Tu N° de cliente (si lo sabés)</div><input id="numCli" inputmode="numeric" placeholder="N° de cliente" value="'+esc(f.numCli)+'">'; }
+    } else if(f.barrio && f.barrio!=='__otro'){
+      h += '<div class="pill" style="margin-top:8px">Zona de fibra óptica (FTTH)</div>';
+    }
+    h += '</div>';
+
+    if(!f.barrio){
+      h += '<div class="card" style="text-align:center;color:#64748b">👆 Elegí tu barrio para ver los planes disponibles y continuar.</div>';
+      app.innerHTML = h; wire(); return;
+    }
+
+    // ── 2) Datos personales ──
     h += '<div class="card">';
     h += '<div class="label">Nombre y apellido <span class="req">*</span></div><div class="row"><div><input id="nombre" placeholder="Nombre" value="'+esc(f.nombre)+'"></div><div><input id="apellido" placeholder="Apellido" value="'+esc(f.apellido)+'"></div></div>';
     h += '<div class="label">DNI <span class="req">*</span></div><input id="doc_numero" inputmode="numeric" maxlength="8" placeholder="8 números, sin puntos" value="'+esc(f.doc_numero)+'">';
@@ -176,17 +251,15 @@
     h += '<div class="label">Teléfono alternativo <span class="req">*</span></div><input id="telefono_alt" type="tel" inputmode="tel" placeholder="Otro número de contacto (de un familiar, etc.)" value="'+esc(f.telefono_alt)+'">';
     h += '</div>';
 
-    // Email con confirmación (las facturas van por mail)
+    // ── 3) Email con confirmación ──
     h += '<div class="card">';
     h += '<div class="label">Correo electrónico <span class="req">*</span></div><input id="email" type="email" inputmode="email" autocapitalize="off" placeholder="tucorreo@ejemplo.com" value="'+esc(f.email)+'">';
     h += '<div class="hint">📩 Importante: las facturas se envían a este correo. Revisá que esté bien escrito.</div>';
     h += '<div class="label">Repetí tu correo <span class="req">*</span></div><input id="email2" type="email" inputmode="email" autocapitalize="off" placeholder="Confirmá tu correo" value="'+esc(f.email2)+'">';
     h += '</div>';
 
-    // Dirección + barrio + GPS
+    // ── 4) Dirección + GPS ──
     h += '<div class="card">';
-    h += '<div class="label">Barrio o chacra <span class="req">*</span></div>'+barrioField;
-    h += '<div id="empresa-pill"></div>';
     h += '<div class="label">Dirección <span class="req">*</span></div>';
     h += '<div class="row"><div style="flex:3"><input id="calle" placeholder="Calle" value="'+esc(f.calle)+'"></div><div style="flex:1"><input id="numero" placeholder="N°" value="'+esc(f.numero)+'"></div></div>';
     h += '<div class="row" style="margin-top:8px"><div><input id="piso" placeholder="Piso/Lote (opc.)" value="'+esc(f.piso)+'"></div><div><input id="depto" placeholder="Depto/Casa (opc.)" value="'+esc(f.depto)+'"></div></div>';
@@ -200,24 +273,45 @@
     h += '</div>';
     h += '</div>';
 
-    // Plan + add-ons
+    // ── 5) Plan (filtrado por barrio) + add-ons ──
+    var planField = PLANES.length ? '<select id="plan">'+optsPlanes()+'</select>' : '<input id="plan_texto" placeholder="Ej: el de mayor velocidad" value="'+esc(f.plan_texto||'')+'">';
     h += '<div class="card">';
     var tvI=addonItem('TV'), pkI=addonItem('PACK');
     var tvP=(tvI&&tvI.precio)?(' — '+fmtPesos(tvI.precio)+'/mes'):'';
     var pkP=(pkI&&pkI.precio)?(' — '+fmtPesos(pkI.precio)+'/mes'):'';
-    h += '<div class="label">Plan de internet <span class="req">*</span></div>'+planField;
+    h += '<div class="label">Plan de internet '+(esIt?'wireless':'por fibra')+' <span class="req">*</span></div>'+planField;
     h += '<div id="plan-detalle"></div>';
     h += '<label class="chk'+(f.tv?' on':'')+'" id="chk-tv"><input type="checkbox" id="tv"'+(f.tv?' checked':'')+'><span><span class="t">Agregar TV Online'+tvP+'</span><br><span class="s">Canales en vivo en tu tele/celular</span></span></label>';
     h += '<label class="chk'+(f.futbol?' on':'')+'" id="chk-fut"><input type="checkbox" id="futbol"'+(f.futbol?' checked':'')+'><span><span class="t">Agregar Pack Fútbol'+pkP+'</span><br><span class="s">Adicional sobre TV Online</span></span></label>';
     h += '</div>';
 
-    // ¿Ya sos cliente?
+    // ── 6) Día + franja horaria de la visita ──
     h += '<div class="card">';
-    h += '<label class="chk'+(f.yaCliente?' on':'')+'" id="chk-cli"><input type="checkbox" id="yaCliente"'+(f.yaCliente?' checked':'')+'><span><span class="t">Ya soy cliente de Nexa</span><br><span class="s">Marcá esto si querés sumar un servicio a tu cuenta</span></span></label>';
-    if(f.yaCliente){ h += '<div class="label">Tu número de cliente (si lo sabés)</div><input id="numCli" inputmode="numeric" placeholder="N° de cliente" value="'+esc(f.numCli)+'">'; }
+    h += '<div class="label">¿Qué día querés la visita? <span class="req">*</span></div>';
+    h += '<select id="dia"><option value="">— Elegí el día —</option>';
+    diasDisponibles(12).forEach(function(d){ var iso=_iso(d), full=!diaTieneCupo(iso); h += '<option value="'+iso+'"'+(f.diaPref===iso?' selected':'')+(full?' disabled':'')+'>'+fmtDia(d)+(full?' · completo':'')+'</option>'; });
+    h += '</select>';
+    h += '<div class="hint">A partir del próximo día hábil. El coordinador te confirma por teléfono (puede reprogramar por clima u otra razón).</div>';
+    h += '<div class="label">Franja horaria <span class="req">*</span></div>';
+    h += '<div class="row">';
+    FRANJAS.forEach(function(fr){
+      var libre = f.diaPref ? libreFranja(f.diaPref, fr) : cupoFranja(fr);
+      var full  = f.diaPref && libre<=0;
+      var cupTxt = f.diaPref ? (full?'completo':(libre+' lugar'+(libre===1?'':'es'))) : fr.rango;
+      h += '<div><button type="button" class="btn btn-2 tfr'+(f.franjaPref===fr.id?' sel':'')+(full?' off':'')+'" data-fr="'+fr.id+'"'+(full?' disabled':'')+' style="margin-top:0;line-height:1.3"><b>'+fr.lbl+'</b><br><span style="font-size:12px;color:#64748b">'+fr.rango+'</span><br><span style="font-size:11px">'+cupTxt+'</span></button></div>';
+    });
+    h += '</div>';
     h += '</div>';
 
-    // Términos + enviar
+    // ── 7) ¿Ya sos cliente? (salvo Itaembé-cambio, que ya lo es) ──
+    if(!esCambio){
+      h += '<div class="card">';
+      h += '<label class="chk'+(f.yaCliente?' on':'')+'" id="chk-cli"><input type="checkbox" id="yaCliente"'+(f.yaCliente?' checked':'')+'><span><span class="t">Ya soy cliente de Nexa</span><br><span class="s">Marcá esto si querés sumar un servicio a tu cuenta</span></span></label>';
+      if(f.yaCliente){ h += '<div class="label">Tu número de cliente (si lo sabés)</div><input id="numCli" inputmode="numeric" placeholder="N° de cliente" value="'+esc(f.numCli)+'">'; }
+      h += '</div>';
+    }
+
+    // ── 8) Términos + enviar ──
     h += '<div class="card">';
     h += '<div id="terms-precio" style="font-size:14px;color:#1e3a5f;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;margin-bottom:10px;display:none"></div>';
     h += '<label class="chk'+(f.terminos?' on':'')+'" id="chk-ter"><input type="checkbox" id="terminos"'+(f.terminos?' checked':'')+'><span><span class="t">Acepto los términos y condiciones</span><br><span class="s">Autorizo el contacto para coordinar la instalación</span></span></label>';
@@ -227,15 +321,18 @@
 
     app.innerHTML = h;
     wire();
-    pintarEmpresa();
     pintarPlanDetalle();
   }
 
   function wire(){
-    document.getElementById('gps').addEventListener('click', pedirUbicacion);
-    document.getElementById('enviar').addEventListener('click', enviar);
-    var b=document.getElementById('barrio'); if(b) b.addEventListener('change', function(){ leer(); pintarEmpresa(); });
+    var g=document.getElementById('gps'); if(g) g.addEventListener('click', pedirUbicacion);
+    var en=document.getElementById('enviar'); if(en) en.addEventListener('click', enviar);
+    var b=document.getElementById('barrio'); if(b) b.addEventListener('change', function(){ leer(); f.plan_id=''; render(); });   // cambiar barrio → re-filtra planes
+    var bt=document.getElementById('barrio_txt'); if(bt) bt.addEventListener('change', function(){ leer(); render(); });
+    Array.prototype.forEach.call(document.querySelectorAll('.tsol'), function(el){ el.addEventListener('click', function(){ leer(); f.tipoSolic=el.getAttribute('data-ts'); render(); }); });
     var pp=document.getElementById('plan'); if(pp) pp.addEventListener('change', function(){ leer(); pintarPlanDetalle(); });
+    var dia=document.getElementById('dia'); if(dia) dia.addEventListener('change', function(){ leer(); f.diaPref=dia.value; if(f.diaPref && f.franjaPref){ var fr=FRANJAS.filter(function(x){return x.id===f.franjaPref;})[0]; if(fr && libreFranja(f.diaPref,fr)<=0) f.franjaPref=''; } render(); });
+    Array.prototype.forEach.call(document.querySelectorAll('.tfr'), function(el){ if(el.disabled) return; el.addEventListener('click', function(){ leer(); f.franjaPref=el.getAttribute('data-fr'); render(); }); });
     [['tv','tv','chk-tv'],['futbol','futbol','chk-fut'],['yaCliente','yaCliente','chk-cli'],['terminos','terminos','chk-ter']].forEach(function(t){
       var el=document.getElementById(t[0]); if(el) el.addEventListener('change', function(){ leer(); if(t[0]==='yaCliente') render(); else { document.getElementById(t[2]).classList.toggle('on', el.checked); if(t[0]==='tv'||t[0]==='futbol') pintarPlanDetalle(); } });
     });
@@ -257,11 +354,14 @@
     f.telefono=v('telefono'); f.telefono_alt=v('telefono_alt');
     f.email=v('email'); f.email2=v('email2');
     f.calle=v('calle'); f.numero=v('numero'); f.piso=v('piso'); f.depto=v('depto'); f.referencia=v('referencia');
-    f.tv=v('tv'); f.futbol=v('futbol'); f.yaCliente=v('yaCliente'); f.terminos=v('terminos'); f.numCli=v('numCli');
+    f.tv=v('tv'); f.futbol=v('futbol'); f.terminos=v('terminos');
+    var yc=document.getElementById('yaCliente'); if(yc) f.yaCliente=yc.checked;
+    var nc=document.getElementById('numCli'); if(nc) f.numCli=nc.value.trim();
     var bs=document.getElementById('barrio'); var bt=document.getElementById('barrio_txt');
-    f.barrio = bs ? bs.value : (bt?bt.value.trim():'');
-    var ps=document.getElementById('plan'); f.plan_id = ps ? ps.value : '';
-    var pt=document.getElementById('plan_texto'); f.plan_texto = pt ? pt.value.trim() : '';
+    f.barrio = bs ? bs.value : (bt?bt.value.trim():f.barrio);
+    var ps=document.getElementById('plan'); if(ps) f.plan_id = ps.value;
+    var pt=document.getElementById('plan_texto'); if(pt) f.plan_texto = pt.value.trim();
+    var dd=document.getElementById('dia'); if(dd) f.diaPref = dd.value;
   }
 
   function pedirUbicacion(){
@@ -298,8 +398,16 @@
     if(!emailValido(f.email)){ err.textContent='Revisá tu correo electrónico, parece inválido (ej: nombre@gmail.com).'; return; }
     if(f.email.toLowerCase()!==(f.email2||'').toLowerCase()){ err.textContent='Los dos correos no coinciden.'; return; }
     if(!f.barrio){ err.textContent='Elegí tu barrio o chacra.'; return; }
+    if(BARRIOS_NO_VENDE.indexOf(f.barrio)>=0){ err.textContent='Por ahora no tenemos cobertura en esa zona.'; return; }
+    var esCambio = esItaembe(f.barrio) && f.tipoSolic==='cambio';
+    if(esItaembe(f.barrio) && !f.tipoSolic){ err.textContent='Elegí si sos cliente nuevo o cambio de plan.'; return; }
+    if(esCambio) f.yaCliente=true;
     if(!f.calle || !f.numero){ err.textContent='Completá calle y número.'; return; }
     if(!f.plan_id && !f.plan_texto){ err.textContent='Elegí un plan de internet.'; return; }
+    if(!f.diaPref){ err.textContent='Elegí el día en que querés la visita.'; return; }
+    if(!f.franjaPref){ err.textContent='Elegí la franja horaria (mañana o tarde).'; return; }
+    var _frObj=FRANJAS.filter(function(x){return x.id===f.franjaPref;})[0];
+    if(_frObj && libreFranja(f.diaPref,_frObj)<=0){ err.textContent='Esa franja se completó recién. Elegí otro día u otra franja.'; render(); return; }
     if(gps.lat==null && !gps.desc){ err.textContent='📍 Falta la ubicación. Tocá «Enviar mi ubicación»: si estás en el domicilio mandás el GPS, si no, describís cómo llegar.'; return; }
     if(!f.terminos){ err.textContent='Tenés que aceptar los términos para continuar.'; return; }
     err.textContent='';
@@ -312,15 +420,18 @@
     var barrio = (f.barrio==='__otro') ? null : f.barrio;
     var domFull = [f.calle, f.numero, f.piso?('Piso/Lote '+f.piso):'', f.depto?('Casa/Depto '+f.depto):'', barrio].filter(Boolean).join(' ');
 
+    var tipoSolicDB = (f.tipoSolic==='cambio') ? 'cambio_plan' : 'alta';
+    var frLbl = (FRANJAS.filter(function(x){return x.id===f.franjaPref;})[0]||{}).rango||'';
     var body = {
       nombre:f.nombre, apellido:f.apellido, doc_numero:f.doc_numero,
       telefono:f.telefono, telefono_alt:f.telefono_alt||null,
       email:f.email, calle:f.calle, numero:f.numero, piso:f.piso||null, depto:f.depto||null,
       barrio:barrio, empresa:empresaDeBarrio(f.barrio)||null, domicilio_full:domFull,
-      observaciones:[f.referencia, gps.desc?('Cómo llegar: '+gps.desc):'', f._telExtra||''].filter(Boolean).join(' · ')||null,
+      observaciones:[f.referencia, gps.desc?('Cómo llegar: '+gps.desc):'', f._telExtra||'', 'Visita pedida: '+f.diaPref+' '+frLbl].filter(Boolean).join(' · ')||null,
       lat:gps.lat, lng:gps.lng, plan_id:planId, plan_texto:planTexto,
       tv_online:!!f.tv, pack_futbol:!!f.futbol,
       ya_es_cliente:!!f.yaCliente, numero_cliente_existente:(f.yaCliente?(f.numCli||null):null),
+      tipo_solicitud:tipoSolicDB, dia_preferido:f.diaPref||null, franja_preferida:f.franjaPref||null,
       terminos_aceptados:!!f.terminos, estado:'pendiente', origen:(VENDEDOR?'vendedor':'link'),
       vendedor_id:(VENDEDOR?VENDEDOR.id:null)
     };
