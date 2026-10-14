@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.1';
+  var VER='v3.2';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1333,8 +1333,14 @@
   // Conversión reusable: crea cliente + OT de instalación y marca la solicitud convertida (devuelve el cliente)
   // ¿el DNI sirve para identificar (no comodín)?
   function _dniUtil(doc){ var d=String(doc||'').replace(/\D/g,''); return (d.length>=7 && !/^(\d)\1+$/.test(d) && d!=='9999999')?d:null; }
+  function _franjaHora(fr){ return String(fr||'').toLowerCase().indexOf('tarde')>=0 ? '12:00' : '08:00'; }   // mañana 8-12 → 08:00 · tarde 12-15 → 12:00
+  function _franjaLbl(fr){ if(!fr) return ''; return String(fr).toLowerCase().indexOf('tarde')>=0 ? '🌇 Tarde (12-15)' : '🌅 Mañana (8-12)'; }
   function _crearOTdesdeSolicitud(cliId,s){
-    return sbPost('ordenes_trabajo',{ cliente_id:cliId,solicitud_id:s.id,tipo:'INSTALACION',estado:'PENDIENTE',prioridad:'NORMAL',plan_id:s.plan_id||null,descripcion:'Instalación nueva (desde solicitud)',created_by:USER.id })
+    var esCambio = (s.tipo_solicitud==='cambio_plan');
+    var ot={ cliente_id:cliId,solicitud_id:s.id,tipo:(esCambio?'CAMBIO_PLAN':'INSTALACION'),estado:'PENDIENTE',prioridad:'NORMAL',plan_id:s.plan_id||null,descripcion:(esCambio?'Cambio de plan (desde solicitud)':'Instalación nueva (desde solicitud)'),created_by:USER.id };
+    if(s.dia_preferido) ot.fecha_agendada=s.dia_preferido;                       // el día que pidió el cliente → la OT nace coordinada para ese día
+    if(s.franja_preferida) ot.hora_agendada=_franjaHora(s.franja_preferida);     // mañana/tarde → hora
+    return sbPost('ordenes_trabajo',ot)
       .then(function(r){ if(!Array.isArray(r)||!r.length) throw new Error('No se pudo crear la OT'); return sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'convertida',cliente_id:cliId,gestionado_por:USER.id,gestionado_at:new Date().toISOString() }); });
   }
   function convertirSolicitud(s){
@@ -1373,9 +1379,12 @@
         {k:'sel',t:'',sort:null,r:function(s){return '<input type="checkbox" class="sol-chk" data-id="'+s.id+'"'+(_solSel[s.id]?' checked':'')+'>';}},
         {k:'fecha',t:'Fecha',sort:function(s){return s.created_at||'';},r:function(s){return esc(fmtFecha(s.created_at));}},
         {k:'nombre',t:'Nombre',sort:function(s){return (s.nombre||'')+(s.apellido||'');},r:function(s){return esc((s.nombre||'')+' '+(s.apellido||''))+'<br><span class="muted">'+esc(s.empresa||'')+'</span>';}},
+        {k:'tipo',t:'Tipo',sort:function(s){return s.tipo_solicitud||'';},r:function(s){return s.tipo_solicitud==='cambio_plan'?'<span style="white-space:nowrap">🔄 Cambio</span>':'<span style="white-space:nowrap">🆕 Alta</span>';}},
         {k:'dni',t:'DNI',sort:function(s){return s.doc_numero||'';},r:function(s){return esc(s.doc_numero||'');}},
         {k:'telefono',t:'Teléfono',sort:function(s){return s.telefono||'';},r:function(s){return '<span class="telcell">'+esc(s.telefono||'')+waMini(s.telefono,(s.nombre||'')+' '+(s.apellido||''),'INSTALACION',s.domicilio_full)+'</span>';}},
         {k:'barrio',t:'Barrio',sort:function(s){return s.barrio||'';},r:function(s){return esc(s.barrio||'');}},
+        {k:'dia',t:'Día pedido',sort:function(s){return s.dia_preferido||'';},r:function(s){return s.dia_preferido?('<b style="white-space:nowrap">'+esc(fmtFecha(s.dia_preferido))+'</b>'):'<span class="muted">—</span>';}},
+        {k:'franja',t:'Franja',sort:function(s){return s.franja_preferida||'';},r:function(s){return s.franja_preferida?('<span style="white-space:nowrap">'+esc(_franjaLbl(s.franja_preferida))+'</span>'):'<span class="muted">—</span>';}},
         {k:'plan',t:'Plan internet',sort:function(s){return s.planes?s.planes.nombre:(s.plan_texto||'');},r:function(s){return esc(s.planes?s.planes.nombre:(s.plan_texto||'—'));}},
         {k:'tv',t:'TV',sort:function(s){return s.tv_online?1:0;},r:function(s){return s.tv_online?'✓':'—';}},
         {k:'futbol',t:'Fútbol',sort:function(s){return s.pack_futbol?1:0;},r:function(s){return s.pack_futbol?'⚽':'—';}},
@@ -1385,7 +1394,14 @@
       var cont=document.getElementById('sol-tabla');
       function pintaSol(q){ q=(q||'').toLowerCase().trim(); var toks=q.split(/\s+/).filter(Boolean);
         var rs=toks.length? d.filter(function(s){ var hay=((s.nombre||'')+' '+(s.apellido||'')+' '+(s.empresa||'')+' '+(s.doc_numero||'')+' '+(s.telefono||'')+' '+(s.barrio||'')+' '+(s.planes?s.planes.nombre:(s.plan_texto||''))).toLowerCase(); return toks.every(function(t){return hay.indexOf(t)>=0;}); }) : d;
-        gridRender(cont,cols,rs,{key:'sol2',onRow:function(s){ fichaSolicitud(s); }}); }
+        // Coordinadas = el cliente ya eligió día (y franja) → se muestran arriba, ordenadas por día, para asignarlas primero
+        var coord=rs.filter(function(s){return !!s.dia_preferido;}).sort(function(a,b){ var k=(a.dia_preferido<b.dia_preferido?-1:(a.dia_preferido>b.dia_preferido?1:0)); return k||((a.franja_preferida||'')<(b.franja_preferida||'')?-1:1); });
+        var resto=rs.filter(function(s){return !s.dia_preferido;});
+        cont.innerHTML='<h3 style="margin:6px 0 6px">📅 Coordinadas por el cliente <span class="muted" style="font-weight:400">('+coord.length+') — ya eligieron día y franja, conviene convertir/asignar estas primero</span></h3><div id="sol-coord"></div>'
+          +'<h3 style="margin:22px 0 6px">📋 Sin día/hora pedido <span class="muted" style="font-weight:400">('+resto.length+')</span></h3><div id="sol-resto"></div>';
+        gridRender(document.getElementById('sol-coord'),cols,coord,{key:'solC',onRow:function(s){ fichaSolicitud(s); }});
+        gridRender(document.getElementById('sol-resto'),cols,resto,{key:'solR',onRow:function(s){ fichaSolicitud(s); }});
+      }
       pintaSol('');
       document.getElementById('sol-q').addEventListener('input',function(){ pintaSol(this.value); });
       document.getElementById('sol-nueva').addEventListener('click',function(){ fichaSolicitud({}); });
