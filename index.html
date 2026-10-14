@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.8';
+  var VER='v3.9';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4066,7 +4066,9 @@
   function _ocZonaName(z){ z=String(z||'').trim();
     if(!z || /^olt|^plt|^pon|placa|botella|^\d+\s*ramal|^nodo\s*\d/i.test(z)) return null;
     z=z.replace(/^ID\s*\d*\s*/i,'').replace(/\([^)]*\)/g,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim();
-    return z||null;
+    if(!z) return null;
+    z=z.replace(/\bextencion\b/ig,'Extensión').replace(/[a-záéíóúñ]\S*/gi,function(w){ return w.charAt(0).toUpperCase()+w.slice(1); });
+    return z;
   }
   function vOcupacion(){ loading(); ensureLeaflet(function(){ ensureChartJs(_ocCargar); }); }
   function _chaRings(geom){ // MultiPolygon/Polygon → arrays de anillos [[lat,lng],...]
@@ -4085,7 +4087,8 @@
       sbGetAll('clientes?estado=eq.activo&select=id,nombre,apellido,barrio,tecnologia,lat,lng&order=id.asc'),
       sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng,zona&order=id.asc'),
       sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo'),
-      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst')
+      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst'),
+      sbGet('geo_chacras?select=cha,geom')
     ]).then(function(r){
       // ── CONGLOMERADO: por cliente, el GPS real del técnico (instalación/reparación) pisa al geocodificado ──
       var otGps={}; (r[3]||[]).forEach(function(o){ if(o.cliente_id!=null&&o.lat_fin!=null&&o.lng_fin!=null) otGps[o.cliente_id]={lat:o.lat_fin,lng:o.lng_fin}; });
@@ -4095,25 +4098,26 @@
       var cli=cliAll.filter(function(c){ if(_esWifi(c.tecnologia)){ exclW++; return false; } if(_OC_EXCL.test(c.barrio||'')){ exclZ++; return false; } return true; });
       var naps=(r[1]||[]).filter(function(n){return n.lat!=null&&n.lng!=null;});
       var polys=(r[2]||[]).filter(function(p){return Array.isArray(p.coords)&&p.coords.length>2;});
-      _OCDATA={cli:cli,naps:naps,polys:polys,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
+      // chacras: SOLO para NOMBRAR el barrio (ej "Chacra 181") de las NAPs fuera de un polígono del KMZ; el contorno se dibuja con las NAPs, no con la chacra catastral
+      var chacras=(r[4]||[]).map(function(c){ return {cha:parseInt(c.cha,10)||c.cha, rings:_chaRings(c.geom)}; }).filter(function(c){return c.rings.length;});
+      _OCDATA={cli:cli,naps:naps,polys:polys,chacras:chacras,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
       _ocRender();
     }).catch(function(){ view.innerHTML='<h1>Ocupación de red</h1><div class="center">No se pudieron cargar los datos.</div>'; });
   }
   function _ocCompute(){
     var d=_OCDATA, PORTS=_OC_PORTS;
     // 1) ZONA por NAP: primero polígono (geo_poligonos); si no cae en ninguno, chacra catastral (fix "sin zona")
-    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin zona)'; n._zid=null; n._geom=null;
+    // NOMBRE del barrio: 1° polígono del KMZ · 2° chacra ("Chacra 181", así le llaman) · 3° nombre de zona (Garupá) · 4° (sin nombre)
+    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin nombre)'; n._zid=null; n._geom=null; n._gkey=null;
       for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._zid='P'+i; n._geom=d.polys[i].coords; break; } }
+      if(n._zid) return;
+      var cha=null; for(var c=0;c<d.chacras.length;c++){ var rs=d.chacras[c].rings; for(var r=0;r<rs.length;r++){ if(pointInPoly(n.lat,n.lng,rs[r])){ cha=d.chacras[c].cha; break; } } if(cha!=null)break; }
+      if(cha!=null){ n._gkey='C'+cha; n._barrio='Chacra '+cha; }
+      else { var pl=_ocZonaName(n.zona); if(pl){ n._gkey='Z|'+pl; n._barrio=pl; } else { n._gkey='U'+n._nodo; n._barrio='(sin nombre)'; } }
     });
-    // 1b) NAPs fuera de los polígonos del KMZ (Garupá, nodos nuevos…): se agrupan por NODO y se pinta su contorno
-    // (son "nuestras zonas/barrios"). NO se usan chacras catastrales. Mínimo 4 NAPs para evitar manchas sueltas.
-    var sinz={}; d.naps.forEach(function(n){ if(n._zid)return; (sinz[n._nodo]=sinz[n._nodo]||[]).push(n); });
-    Object.keys(sinz).forEach(function(nd){ var grp=sinz[nd]; if(grp.length<4)return; var hull=_ocHull(grp); if(!hull)return;
-      var names={}; grp.forEach(function(n){ var nm=_ocZonaName(n.zona); if(nm)names[nm]=(names[nm]||0)+1; });
-      var best=Object.keys(names).sort(function(a,b){return names[b]-names[a];})[0];
-      var nombre=best?(best+' (nodo '+nd+')'):('Nodo '+nd);
-      grp.forEach(function(n){ n._barrio=nombre; n._zid='N'+nd; n._geom=hull; });
-    });
+    // Contorno (hull de las NAPs, NO la chacra catastral) por cada grupo de nombre
+    var groups={}; d.naps.forEach(function(n){ if(n._zid||!n._gkey)return; (groups[n._gkey]=groups[n._gkey]||[]).push(n); });
+    Object.keys(groups).forEach(function(g){ var grp=groups[g]; if(grp.length<3)return; var hull=_ocHull(grp); if(!hull)return; grp.forEach(function(n){ n._zid=g; n._geom=hull; }); });
     // 2) grilla para NAP más cercana + lista de clientes por NAP
     var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
     d.naps.forEach(function(n){ var k=GK(n.lat,n.lng); (grid[k]=grid[k]||[]).push(n); });
@@ -4184,7 +4188,7 @@
   }
   var _ocCharts={};
   function _ocDashboard(res){
-    var _sinz=function(o){ return /sin zona/i.test(o.zona); };   // "(sin zona)" = fuera del catastro, no accionable
+    var _sinz=function(o){ return /sin nombre|sin zona/i.test(o.zona); };   // sin nombre asignable → no va al ranking comercial
     // Ranking "dónde atacar": zonas con red tendida (NAPs≥2) y más bocas libres, ocupación baja/media
     var rows=(_ocVista==='barrio'?res.byBarrio:res.byNodo).filter(function(o){return o.naps>=2 && o.libres>0 && !_sinz(o);})
       .sort(function(a,b){ return b.libres-a.libres; }).slice(0,6);
