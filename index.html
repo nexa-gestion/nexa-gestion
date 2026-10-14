@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.15';
+  var VER='v3.16';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4049,7 +4049,7 @@
   var _OC_EXCL=/508|hip[oó]dromo|597|itaemb/i;
   // Nombre de barrio por nodo, sacado de las CARPETAS del KMZ (así le llaman ustedes, abarca varias chacras)
   var _OC_NODO_BARRIO={"2":"CH 252 y 248","3":"CH 252 y 248","4":"CH 142 e Itaberá","5":"CH 142 e Itaberá","6":"CH 142 e Itaberá","7":"Barrio 7","8":"Barrio 8","9":"Chacra 101","10":"Chacra 120 y 112 (Yohazá)","11":"Villa del Barrio Unido","12":"Chacra 158, 159 y 201","13":"Mangal, Laurel, Guayabirá y Chacra 187","14":"Chacra 181","15":"Cerro Pelón","16":"Villa de La Chacra 65","17":"Villa de La Chacra Rocamora","18":"Los Potrillos","19":"Tablada Norte","20":"Prosol 1","21":"Chacra 26","22":"Nueva Garupá","23":"Nueva Garupá","24":"La Esperanza","25":"La Cantera","26":"Villa Cariño","27":"Los Lapachitos","28":"Altos de Bella Vista","29":"San Onofre 2","30":"San Onofre","31":"Madariaga","32":"Los Paraísos","33":"El Porvenir","34":"El Piedral","35":"Estepa","36":"Baliña y Pueblo Chico","42":"Santa Clara 2","56":"Calandria","61":"Baliña y Pueblo Chico"};
-  var _ocLPoly=null, _ocLNaps=null, _ocCapaPoly=true, _ocCapaNaps=true, _ocDashOpen=true, _ocRankAll=false, _ocBar1All=false, _ocBar2All=false;
+  var _ocLPoly=null, _ocLNaps=null, _ocCapaPoly=true, _ocCapaNaps=false, _ocDashOpen=true, _ocRankAll=false, _ocBar1All=false, _ocBar2All=false;
   function _ocNodo(cod){ var m=String(cod||'').match(/^\s*(\d+)/); return m?m[1]:'?'; }
   function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
   function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
@@ -4081,7 +4081,7 @@
     z=z.replace(/\bextencion\b/ig,'Extensión').replace(/[a-záéíóúñ]\S*/gi,function(w){ return w.charAt(0).toUpperCase()+w.slice(1); });
     return z;
   }
-  function vOcupacion(){ _ocCapaPoly=true; _ocCapaNaps=true; loading(); ensureLeaflet(function(){ ensureChartJs(_ocCargar); }); }
+  function vOcupacion(){ _ocCapaPoly=true; _ocCapaNaps=false; loading(); ensureLeaflet(function(){ ensureChartJs(_ocCargar); }); }
   function _chaRings(geom){ // MultiPolygon/Polygon → arrays de anillos [[lat,lng],...]
     if(!geom||!geom.coordinates) return [];
     var out=[], cs=geom.coordinates;
@@ -4092,14 +4092,14 @@
   }
   function _ocCargar(){
     view.innerHTML='<h1>Ocupación de red <span class="muted" style="font-size:14px;font-weight:400">· aproximado</span></h1>'
-      +'<p class="sub">Penetración por barrio y por nodo: clientes activos vs capacidad de la red (NAPs × salidas). Cliente ubicado por GPS a la NAP más cercana (≤150 m).</p>'
+      +'<p class="sub">Penetración por barrio: clientes activos vs capacidad de la red (NAPs × salidas). Barrios con contorno y nombre OFICIAL (RENABAP). Cliente ubicado por GPS a la NAP más cercana (≤150 m).</p>'
       +'<div class="center"><div class="spin"></div><div class="muted" style="margin-top:8px">Cargando red y clientes…</div></div>';
     Promise.all([
       sbGetAll('clientes?estado=eq.activo&select=id,nombre,apellido,barrio,tecnologia,lat,lng&order=id.asc'),
       sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng,zona&order=id.asc'),
       sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo'),
       sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst'),
-      sbGet('geo_chacras?select=cha,geom')
+      sbGet('geo_barrios?activo=eq.true&select=id_renabap,nombre,rings').catch(function(){return [];})
     ]).then(function(r){
       // ── CONGLOMERADO: por cliente, el GPS real del técnico (instalación/reparación) pisa al geocodificado ──
       var otGps={}; (r[3]||[]).forEach(function(o){ if(o.cliente_id!=null&&o.lat_fin!=null&&o.lng_fin!=null) otGps[o.cliente_id]={lat:o.lat_fin,lng:o.lng_fin}; });
@@ -4109,30 +4109,22 @@
       var cli=cliAll.filter(function(c){ if(_esWifi(c.tecnologia)){ exclW++; return false; } if(_OC_EXCL.test(c.barrio||'')){ exclZ++; return false; } return true; });
       var naps=(r[1]||[]).filter(function(n){return n.lat!=null&&n.lng!=null;});
       var polys=(r[2]||[]).filter(function(p){return Array.isArray(p.coords)&&p.coords.length>2;});
-      // chacras: para SEPARAR los nodos con nombre combinado (ej "Mangal, Laurel y Chacra 187" → cada NAP a su "Chacra NNN")
-      var chacras=(r[4]||[]).map(function(c){ return {cha:parseInt(c.cha,10)||c.cha, rings:_chaRings(c.geom)}; }).filter(function(c){return c.rings.length;});
-      _OCDATA={cli:cli,naps:naps,polys:polys,chacras:chacras,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
+      // BARRIOS POPULARES (RENABAP): polígono + nombre OFICIAL de cada barrio/chacra (dep. Capital: Posadas + Garupá)
+      var barrios=(Array.isArray(r[4])?r[4]:[]).map(function(b){ var rr=Array.isArray(b.rings)?b.rings.filter(function(x){return Array.isArray(x)&&x.length>2;}):[]; return {id:b.id_renabap,nombre:b.nombre||('Barrio '+b.id_renabap),rings:rr}; }).filter(function(b){return b.rings.length;});
+      _OCDATA={cli:cli,naps:naps,polys:polys,barrios:barrios,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
       _ocRender();
     }).catch(function(){ view.innerHTML='<h1>Ocupación de red</h1><div class="center">No se pudieron cargar los datos.</div>'; });
   }
   function _ocCompute(){
     var d=_OCDATA, PORTS=_OC_PORTS;
-    // NOMBRE del barrio: 1° polígono del KMZ · 2° carpeta del KMZ si es UN solo barrio · 3° si el nombre es COMBINADO
-    // (ej "Mangal, Laurel y Chacra 187"), se separa por chacra catastral → "Chacra NNN" · 4° (sin nombre)
-    var _combi=function(s){ return /,| y | e /i.test(String(s||'')); };
-    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin nombre)'; n._zid=null; n._geom=null; n._polyGeom=null;
-      for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._polyGeom=d.polys[i].coords; break; } }
-      if(n._polyGeom) return;
-      var bn=_OC_NODO_BARRIO[n._nodo];
-      if(bn && !_combi(bn)){ n._barrio=bn; return; }
-      // nombre combinado o sin nombre → separar por chacra
-      var cha=null; for(var c=0;c<d.chacras.length;c++){ var rs=d.chacras[c].rings; for(var r=0;r<rs.length;r++){ if(pointInPoly(n.lat,n.lng,rs[r])){ cha=d.chacras[c].cha; break; } } if(cha!=null)break; }
-      if(cha!=null) n._barrio='Chacra '+cha; else if(bn) n._barrio=bn;   // Garupá sin chacra → queda el nombre combinado
+    // NOMBRE y CONTORNO 100% REALES: cada NAP cae en su Barrio Popular OFICIAL de RENABAP (polígono + nombre).
+    // Los NAPs que no caen en ningún barrio quedan '(sin zona)' y se ven como puntos (no se inventa contorno).
+    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin zona)'; n._zid=null; n._geom=null;
+      for(var i=0;i<d.barrios.length;i++){ var b=d.barrios[i], hit=false;
+        for(var r=0;r<b.rings.length;r++){ if(pointInPoly(n.lat,n.lng,b.rings[r])){ hit=true; break; } }
+        if(hit){ n._barrio=b.nombre; n._zid='B'+b.id; n._geom=b.rings; break; }
+      }
     });
-    // agrupar por NOMBRE: el contorno es SOLO el polígono dibujado en el KMZ. Las zonas sin polígono se ven por sus
-    // NAPs (puntos de color), NO se inventa contorno (los hulls quedaban feos con NAPs dispersos).
-    var byName={}; d.naps.forEach(function(n){ var o=byName[n._barrio]||(byName[n._barrio]={naps:[],geom:null}); o.naps.push(n); if(n._polyGeom && !o.geom) o.geom=n._polyGeom; });
-    Object.keys(byName).forEach(function(k){ var g=byName[k]; g.naps.forEach(function(n){ n._zid=k; n._geom=g.geom; }); });
     // 2) grilla para NAP más cercana + lista de clientes por NAP
     var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
     d.naps.forEach(function(n){ var k=GK(n.lat,n.lng); (grid[k]=grid[k]||[]).push(n); });
@@ -4144,7 +4136,7 @@
     function agg(key){ var m={}; d.naps.forEach(function(n){ var k=key(n); var o=m[k]||(m[k]={zona:k,naps:0,cli:0}); o.naps++; o.cli+=n._cli; });
       return Object.keys(m).map(function(k){ var o=m[k]; o.cap=o.naps*PORTS; o.libres=Math.max(0,o.cap-o.cli); o.ocup=o.cap?o.cli/o.cap:0; return o; }); }
     var byBarrio=agg(function(n){return n._barrio;}).sort(function(a,b){return b.ocup-a.ocup;});
-    var byNodo=agg(function(n){ return (_OC_NODO_BARRIO[n._nodo]||n._barrio||'(sin nombre)')+' · n'+n._nodo; }).sort(function(a,b){return b.libres-a.libres;});
+    var byNodo=agg(function(n){ return (n._barrio||'(sin zona)')+' · n'+n._nodo; }).sort(function(a,b){return b.libres-a.libres;});
     // por ZONA (para pintar el mapa): cada polígono/chacra con sus NAPs/clientes/ocupación + geometría
     var byZona={}; d.naps.forEach(function(n){ if(!n._zid)return; var o=byZona[n._zid]||(byZona[n._zid]={name:n._barrio,geom:n._geom,naps:0,cli:0}); o.naps++; o.cli+=n._cli; });
     Object.keys(byZona).forEach(function(k){ var o=byZona[k]; o.cap=o.naps*PORTS; o.ocup=o.cap?o.cli/o.cap:0; o.libres=Math.max(0,o.cap-o.cli); });
@@ -4168,8 +4160,8 @@
       +'<div id="oc-dash-body" style="display:'+(_ocDashOpen?'flex':'none')+';gap:12px;flex-wrap:wrap;margin-bottom:12px">'
         +'<div style="flex:1;min-width:200px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Ocupación global</div><canvas id="oc-ch-donut" style="max-height:170px"></canvas></div>'
         +'<div style="flex:1.2;min-width:240px;background:linear-gradient(180deg,#f0fdf4,#fff);border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:800;color:#15803d">🎯 Dónde atacar</span><a id="oc-rank-all" style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600">Ver todas ▾</a></div><div id="oc-rank" style="font-size:13px;max-height:'+(_ocRankAll?'340px':'none')+';overflow:auto"></div></div>'
-        +'<div style="flex:1.6;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">Bocas libres por barrio</span><a id="oc-bar1-all" style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600">'+(_ocBar1All?'Ver menos ▴':'Ver todas ▾')+'</a></div><div style="max-height:'+(_ocBar1All?'400px':'240px')+';overflow:auto"><canvas id="oc-ch-bar"></canvas></div></div>'
-        +'<div style="flex:1.6;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">Ocupación % por barrio</span><a id="oc-bar2-all" style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600">'+(_ocBar2All?'Ver menos ▴':'Ver todas ▾')+'</a></div><div style="max-height:'+(_ocBar2All?'400px':'240px')+';overflow:auto"><canvas id="oc-ch-bar2"></canvas></div></div>'
+        +'<div style="flex:1.6;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">Bocas libres por barrio</span><a id="oc-bar1-all" style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600">'+(_ocBar1All?'Ver menos ▴':'Ver todas ▾')+'</a></div><div style="max-height:'+(_ocBar1All?'560px':'340px')+';overflow:auto"><canvas id="oc-ch-bar"></canvas></div></div>'
+        +'<div style="flex:1.6;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">Ocupación % por barrio</span><a id="oc-bar2-all" style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600">'+(_ocBar2All?'Ver menos ▴':'Ver todas ▾')+'</a></div><div style="max-height:'+(_ocBar2All?'560px':'340px')+';overflow:auto"><canvas id="oc-ch-bar2"></canvas></div></div>'
       +'</div>'
       +'<div class="toolbar" style="align-items:center;gap:10px">'
         +'<div style="display:inline-flex;border:1px solid var(--bord);border-radius:10px;overflow:hidden">'
@@ -4221,19 +4213,19 @@
     }catch(e){}
     // Barra 1: bocas libres por barrio
     _ocBarChart('bar','oc-ch-bar', base.filter(function(o){return o.libres>0;}).sort(function(a,b){return b.libres-a.libres;}), _ocBar1All, 'Bocas libres', function(o){return o.libres;});
-    var b1=document.getElementById('oc-bar1-all'); if(b1){ b1.textContent=_ocBar1All?'Ver menos ▴':'Ver todas ▾'; b1.onclick=function(){ _ocBar1All=!_ocBar1All; var p=document.getElementById('oc-ch-bar').parentNode; if(p)p.style.maxHeight=_ocBar1All?'400px':'240px'; _ocDashboard(_OCDATA._res); }; }
+    var b1=document.getElementById('oc-bar1-all'); if(b1){ b1.textContent=_ocBar1All?'Ver menos ▴':'Ver todas ▾'; b1.onclick=function(){ _ocBar1All=!_ocBar1All; var p=document.getElementById('oc-ch-bar').parentNode; if(p)p.style.maxHeight=_ocBar1All?'560px':'340px'; _ocDashboard(_OCDATA._res); }; }
     // Barra 2: ocupación % por barrio
     _ocBarChart('bar2','oc-ch-bar2', base.filter(function(o){return o.naps>=1;}).sort(function(a,b){return b.ocup-a.ocup;}), _ocBar2All, 'Ocupación %', function(o){return Math.round(o.ocup*100);});
-    var b2=document.getElementById('oc-bar2-all'); if(b2){ b2.textContent=_ocBar2All?'Ver menos ▴':'Ver todas ▾'; b2.onclick=function(){ _ocBar2All=!_ocBar2All; var p=document.getElementById('oc-ch-bar2').parentNode; if(p)p.style.maxHeight=_ocBar2All?'400px':'240px'; _ocDashboard(_OCDATA._res); }; }
+    var b2=document.getElementById('oc-bar2-all'); if(b2){ b2.textContent=_ocBar2All?'Ver menos ▴':'Ver todas ▾'; b2.onclick=function(){ _ocBar2All=!_ocBar2All; var p=document.getElementById('oc-ch-bar2').parentNode; if(p)p.style.maxHeight=_ocBar2All?'560px':'340px'; _ocDashboard(_OCDATA._res); }; }
   }
   function _ocBarChart(key, canvasId, data, all, label, val){
     try{ if(_ocCharts[key]){_ocCharts[key].destroy();} var c=document.getElementById(canvasId); if(!c||!window.Chart)return;
       var arr=all?data:data.slice(0,12);
       var full=arr.map(function(o){return o.zona;});
       var short=full.map(function(s){ return s.length>22?(s.slice(0,21)+'…'):s; });
-      if(all){ c.height=Math.max(240, arr.length*24); } else { c.removeAttribute('height'); }
-      _ocCharts[key]=new Chart(c,{type:'bar',data:{labels:short,datasets:[{label:label,data:arr.map(val),backgroundColor:arr.map(function(o){return _ocColor(o.ocup);}),borderWidth:0,barThickness:all?14:undefined}]},
-        options:{indexAxis:'y',maintainAspectRatio:!all,responsive:true,layout:{padding:{right:12}},
+      c.height=Math.max(260, arr.length*26);
+      _ocCharts[key]=new Chart(c,{type:'bar',data:{labels:short,datasets:[{label:label,data:arr.map(val),backgroundColor:arr.map(function(o){return _ocColor(o.ocup);}),borderWidth:0,barThickness:16}]},
+        options:{indexAxis:'y',maintainAspectRatio:false,responsive:true,layout:{padding:{right:12}},
           plugins:{legend:{display:false},tooltip:{callbacks:{title:function(it){return full[it[0].dataIndex];}}}},
           scales:{x:{beginAtZero:true,grid:{color:'#f1f5f9'}},y:{ticks:{font:{size:11},autoSkip:false},grid:{display:false}}}}});
     }catch(e){}
@@ -4272,12 +4264,14 @@
     // ── Capa ZONAS (coropleta por ocupación): cada barrio/chacra con NAPs pintado, click = ficha ──
     _ocLPoly=L.layerGroup();
     Object.keys(res.byZona).forEach(function(zid){
-      var o=res.byZona[zid]; if(!o.geom) return; var ll=o.geom.map(function(c){return [c[0],c[1]];});
+      var o=res.byZona[zid]; if(!o.geom||!o.geom.length) return;
       var col=_ocColor(o.ocup);
-      var pg=L.polygon(ll,{color:col,weight:2.5,fillColor:col,fillOpacity:.55});
-      pg.bindPopup('<b>'+esc(o.name)+'</b><br>🗃️ <b>'+o.naps+'</b> cajas NAP<br>👥 <b>'+o.cli+'</b> clientes<br>📦 Capacidad: <b>'+o.cap+'</b> ('+o.libres+' libres)<br>📊 Ocupación: <b>'+Math.round(o.ocup*100)+'%</b>');
-      pg.bindTooltip(o.name+' · '+Math.round(o.ocup*100)+'%',{sticky:true});
-      pg.addTo(_ocLPoly); ll.forEach(function(c){ allP.push(c); });
+      var popup='<b>'+esc(o.name)+'</b><br>🗃️ <b>'+o.naps+'</b> cajas NAP<br>👥 <b>'+o.cli+'</b> clientes<br>📦 Capacidad: <b>'+o.cap+'</b> ('+o.libres+' libres)<br>📊 Ocupación: <b>'+Math.round(o.ocup*100)+'%</b>';
+      o.geom.forEach(function(ring){ if(!ring||ring.length<3) return;
+        var pg=L.polygon(ring,{color:col,weight:2,fillColor:col,fillOpacity:.5});
+        pg.bindPopup(popup); pg.bindTooltip(o.name+' · '+Math.round(o.ocup*100)+'%',{sticky:true});
+        pg.addTo(_ocLPoly); ring.forEach(function(c){ allP.push(c); });
+      });
     });
     // ── Capa NAPs (puntos) con lista de clientes ──
     var canvas=L.canvas({tolerance:6});
