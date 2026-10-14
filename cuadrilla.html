@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.44</title>
+<title>Nexa · Técnico — v0.45</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.44';
+  var VER='v0.45';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -279,7 +279,7 @@
   function _cieBkey(){ return (CIE&&CIE.o)?('nexa_cie_'+CIE.o.id):null; }
   function _cieGuardar(){
     if(!CIE||!CIE.o||CIE.modoRechazo) return;   // los rechazos son rápidos, no se persisten
-    try{ localStorage.setItem(_cieBkey(), JSON.stringify({ accion:CIE.accion, ttId:CIE.ttId, mats:CIE.mats, mos:CIE.mos, datos:CIE.datos,
+    try{ localStorage.setItem(_cieBkey(), JSON.stringify({ accion:CIE.accion, ttId:CIE.ttId, mats:CIE.mats, mos:CIE.mos, datos:CIE.datos, noCaja:!!CIE.noCaja,
       fotos:(CIE.fotos||[]).filter(function(f){return f.url;}).map(function(f){return {url:f.url,preview:f.url}; }), t:Date.now() })); }catch(e){}
   }
   function _cieBorrar(){ try{ var k=_cieBkey(); if(k) localStorage.removeItem(k); }catch(e){} }
@@ -291,6 +291,7 @@
       if(b.mats&&Object.keys(b.mats).length) CIE.mats=b.mats;
       if(b.mos&&Object.keys(b.mos).length) CIE.mos=b.mos;
       if(b.datos) CIE.datos=b.datos;
+      if(b.noCaja) CIE.noCaja=true;
       if(b.fotos&&b.fotos.length) CIE.fotos=b.fotos;
       return true;
     }catch(e){ return false; }
@@ -350,8 +351,10 @@
       CIE.kitMo.forEach(function(m){ var c=CIE.mos[m.id]||0;
         h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><input type="number" inputmode="numeric" min="0" class="mo-cant" data-m="'+m.id+'" value="'+(c>0?c:'')+'" placeholder="0" style="width:92px;text-align:center;font-weight:700"></div>';
       });
+      var _esInstal=/INSTALACION/i.test(o.tipo||'');
       h+='</div><div class="card"><div class="label">Datos de la conexión (para ISPcube) <span style="font-weight:400;color:var(--gris)">· Caja (NAP) y Puerto obligatorios en FTTH</span></div>'
-        +dInput('precinto','Precinto')+dInput('caja_nap','Caja (NAP)')+dInput('puerto','Puerto de fibra')+dInput('access_point','Access Point')+dInput('mac','MAC')+dInput('serial','Serial / Modelo')+'</div>'
+        +dInput('precinto','Precinto')+dInput('caja_nap','Caja (NAP)')+dInput('puerto','Puerto de fibra')+dInput('access_point','Access Point')+dInput('mac','MAC')+dInput('serial','Serial / Modelo')
+        +(_esInstal?'':'<label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:13px;color:var(--gris)"><input type="checkbox" id="cie-nocaja"'+(CIE.noCaja?' checked':'')+'> 🏠 Trabajo interno — no toqué la caja (no cargar caja/puerto)</label>')+'</div>'
         +'<div class="card"><div class="label">Fotos</div><div id="cie-fotos">'+renderFotos()+'</div><input type="file" accept="image/*" multiple id="cie-foto-in" style="margin-top:8px;border:0;padding:6px 0"></div>'
         +'<div class="card"><div class="label">Observaciones</div><textarea id="cie-obs" rows="3" style="width:100%"></textarea></div>';
     } else {
@@ -378,6 +381,7 @@
     each('.ser-man',function(inp){ var add=function(){ var s=cieMat(inp.getAttribute('data-m')),v=(inp.value||'').trim().toUpperCase().replace(/[:\-.\s]/g,''); if(v&&s.sel.indexOf(v)<0){ s.sel.push(v); renderCierre(); } }; inp.onchange=add; inp.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } }; });
     each('.ser-scan',function(b){ b.onclick=function(){ _scanSerial(b.getAttribute('data-m')); }; });
     each('.cie-dato',function(inp){ inp.oninput=function(){ if(!CIE.datos)CIE.datos={}; CIE.datos[inp.getAttribute('data-k')]=inp.value; _cieGuardar(); }; });
+    var _nc=document.getElementById('cie-nocaja'); if(_nc) _nc.addEventListener('change',function(){ CIE.noCaja=this.checked; _cieGuardar(); });
     each('.foto-del',function(b){ b.onclick=function(){ CIE.fotos.splice(+b.getAttribute('data-i'),1); renderCierre(); }; });
     var fin=document.getElementById('cie-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirFotos(e.target.files); });
     document.getElementById('cie-confirmar').addEventListener('click',confirmarCierre);
@@ -434,10 +438,12 @@
     // así el dato queda cargado y el cliente entra bien al polígono/ocupación. Wireless no tiene caja → se omite.
     if(CIE.accion==='REALIZADA' && CIE.o.clientes && CIE.o.clientes.id){
       var _tec=CIE.o.clientes.tecnologia||'', _esWifi=/(inalamb|wireless|wifi)/i.test(_tec);
-      if(!_esWifi){
+      var _esInstal=/INSTALACION/i.test(CIE.o.tipo||'');
+      var _interno=!_esInstal && !!(document.getElementById('cie-nocaja')&&document.getElementById('cie-nocaja').checked);
+      if(!_esWifi && !_interno){   // instalación: siempre · reparación/otros: salvo "trabajo interno"
         var _dn={}; each('.cie-dato',function(inp){ _dn[inp.getAttribute('data-k')]=(inp.value||'').trim(); });
-        if(!_dn.caja_nap){ err.textContent='Cargá la Caja (NAP) de la conexión (dato obligatorio).'; return; }
-        if(!_dn.puerto){ err.textContent='Cargá el Puerto de fibra de la conexión (dato obligatorio).'; return; }
+        if(!_dn.caja_nap){ err.textContent='Cargá la Caja (NAP) de la conexión (obligatorio; si no tocaste la caja marcá «Trabajo interno»).'; return; }
+        if(!_dn.puerto){ err.textContent='Cargá el Puerto de fibra de la conexión (obligatorio; si no tocaste la caja marcá «Trabajo interno»).'; return; }
       }
     }
     if(CIE.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá a que terminen de subir las fotos.'; return; }
