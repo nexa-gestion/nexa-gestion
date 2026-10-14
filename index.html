@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v2.9';
+  var VER='v3.0';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2461,25 +2461,35 @@
     var seeds=[pts[0]];
     while(seeds.length<cuads.length){ var best=null,bd=-1; pts.forEach(function(v){ var dmin=Math.min.apply(null,seeds.map(function(s){return _agHav(v,s);})); if(dmin>bd){bd=dmin;best=v;} }); if(!best)break; seeds.push(best); }
     var cs=cuads.slice().sort(function(a,b){return b.cupo-a.cupo;}), sd=seeds.slice().sort(function(a,b){return b._dens-a._dens;});
-    cs.forEach(function(c,i){ c.seed=sd[i]||sd[sd.length-1]; c.stops=[]; c.usado=0; });
+    // c.cen = centro de la zona de la cuadrilla. Arranca en la semilla y se MUEVE en cada pasada al promedio
+    // de sus visitas (k-means), así las zonas quedan compactas y SEPARADAS (no se cruzan).
+    cs.forEach(function(c,i){ var s=sd[i]||sd[sd.length-1]; c.cen={lat:s.lat,lng:s.lng}; c.seed=c.cen; c.stops=[]; c.usado=0; });
     function apto(v,c){ return (!v.wireless||c.wireless); }   // wireless solo a cuadrilla que hace wireless
-    // Reparto EQUILIBRADO (carga + cercanía): cada visita va a la cuadrilla que minimiza
-    // distancia_al_seed + PEN × carga_ya_asignada. PEN son "km virtuales" que suma cada unidad de carga
-    // ya tomada → empuja las tareas a repartirse entre varias cuadrillas en vez de amontonarse en la más
-    // cercana. Una tarea AISLADA igual queda en la cuadrilla más cercana (su distancia enorme le gana a la
-    // penalización) → no se la manda lejos a otra solo para emparejar. Subir PEN = más parejo, algún km extra.
-    var PEN=5.0;
+    // Reparto EQUILIBRADO punto medio (compacidad + carga pareja): cada visita va a la cuadrilla que minimiza
+    // distancia_al_centro + PEN × carga_ya_asignada. PEN = "km virtuales" por unidad de carga ya tomada →
+    // reparte sin mandar a una cuadrilla lejos solo para emparejar (la aislada queda en la más cercana).
+    // Se itera: asignar → recalcular centros → repetir. Al mover los centros se deshacen los cruces de zonas.
+    // Subir PEN = más parejo (algún km extra); bajarlo = zonas más compactas pero más dispar.
+    var PEN=2.0, ITERS=15;
     var cen={lat:0,lng:0}; visitas.forEach(function(v){cen.lat+=v.lat;cen.lng+=v.lng;}); cen.lat/=visitas.length; cen.lng/=visitas.length;
     // orden de asignación: prioFecha→más viejas primero; si no→más lejanas al centro primero (fija lo aislado en su zona)
     var orden=visitas.slice().sort(prioFecha?function(a,b){return (b.edad||0)-(a.edad||0);}:function(a,b){return _agHav(b,cen)-_agHav(a,cen);});
-    var sinAsig=[], asign={};
-    orden.forEach(function(v){
-      var cand=cs.filter(function(c){ return apto(v,c) && c.usado+(v.peso||1)<=c.cupo+0.001; });
-      if(!cand.length){ sinAsig.push(v); return; }
-      cand.forEach(function(c){ c._sc=_agHav(v,c.seed)+PEN*c.usado; });
-      cand.sort(function(a,b){return a._sc-b._sc;});
-      cand[0].stops.push(v); cand[0].usado+=(v.peso||1); asign[v.cliId]=1;
-    });
+    var sinAsig=[];
+    for(var it=0; it<ITERS; it++){
+      var ultima=(it===ITERS-1);
+      cs.forEach(function(c){ c.stops=[]; c.usado=0; });
+      if(ultima) sinAsig=[];
+      orden.forEach(function(v){
+        var cand=cs.filter(function(c){ return apto(v,c) && c.usado+(v.peso||1)<=c.cupo+0.001; });
+        if(!cand.length){ if(ultima) sinAsig.push(v); return; }
+        cand.forEach(function(c){ c._sc=_agHav(v,c.cen)+PEN*c.usado; });
+        cand.sort(function(a,b){return a._sc-b._sc;});
+        cand[0].stops.push(v); cand[0].usado+=(v.peso||1);
+      });
+      // recalcular el centro de cada cuadrilla = promedio de sus visitas (si quedó vacía, mantiene el centro)
+      cs.forEach(function(c){ if(c.stops.length){ var la=0,ln=0; c.stops.forEach(function(s){la+=s.lat;ln+=s.lng;}); c.cen={lat:la/c.stops.length,lng:ln/c.stops.length}; } });
+    }
+    cs.forEach(function(c){ c.seed=c.cen; });
     return {cuads:cs,sinAsig:sinAsig};
   }
   function _agRoute(c,depot){
