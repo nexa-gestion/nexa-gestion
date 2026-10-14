@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v2.8';
+  var VER='v2.9';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2463,13 +2463,24 @@
     var cs=cuads.slice().sort(function(a,b){return b.cupo-a.cupo;}), sd=seeds.slice().sort(function(a,b){return b._dens-a._dens;});
     cs.forEach(function(c,i){ c.seed=sd[i]||sd[sd.length-1]; c.stops=[]; c.usado=0; });
     function apto(v,c){ return (!v.wireless||c.wireless); }   // wireless solo a cuadrilla que hace wireless
-    if(prioFecha){
-      var sinAsig=[]; visitas.slice().sort(function(a,b){return b.edad-a.edad;}).forEach(function(v){ var cand=cs.filter(function(c){return apto(v,c)&&c.usado+v.peso<=c.cupo+0.001;}); if(!cand.length){sinAsig.push(v);return;} cand.sort(function(a,b){return _agHav(v,a.seed)-_agHav(v,b.seed);}); cand[0].stops.push(v); cand[0].usado+=v.peso; });
-      return {cuads:cs,sinAsig:sinAsig};
-    }
-    var pares=[]; visitas.forEach(function(v){ cs.forEach(function(c){ if(apto(v,c)) pares.push({v:v,c:c,d:_agHav(v,c.seed)}); }); }); pares.sort(function(a,b){return a.d-b.d;});
-    var asign={}; pares.forEach(function(p){ if(asign[p.v.cliId])return; if(p.c.usado+p.v.peso<=p.c.cupo+0.001){ p.c.stops.push(p.v); p.c.usado+=p.v.peso; asign[p.v.cliId]=1; } });
-    return {cuads:cs,sinAsig:visitas.filter(function(v){return !asign[v.cliId];})};
+    // Reparto EQUILIBRADO (carga + cercanía): cada visita va a la cuadrilla que minimiza
+    // distancia_al_seed + PEN × carga_ya_asignada. PEN son "km virtuales" que suma cada unidad de carga
+    // ya tomada → empuja las tareas a repartirse entre varias cuadrillas en vez de amontonarse en la más
+    // cercana. Una tarea AISLADA igual queda en la cuadrilla más cercana (su distancia enorme le gana a la
+    // penalización) → no se la manda lejos a otra solo para emparejar. Subir PEN = más parejo, algún km extra.
+    var PEN=5.0;
+    var cen={lat:0,lng:0}; visitas.forEach(function(v){cen.lat+=v.lat;cen.lng+=v.lng;}); cen.lat/=visitas.length; cen.lng/=visitas.length;
+    // orden de asignación: prioFecha→más viejas primero; si no→más lejanas al centro primero (fija lo aislado en su zona)
+    var orden=visitas.slice().sort(prioFecha?function(a,b){return (b.edad||0)-(a.edad||0);}:function(a,b){return _agHav(b,cen)-_agHav(a,cen);});
+    var sinAsig=[], asign={};
+    orden.forEach(function(v){
+      var cand=cs.filter(function(c){ return apto(v,c) && c.usado+(v.peso||1)<=c.cupo+0.001; });
+      if(!cand.length){ sinAsig.push(v); return; }
+      cand.forEach(function(c){ c._sc=_agHav(v,c.seed)+PEN*c.usado; });
+      cand.sort(function(a,b){return a._sc-b._sc;});
+      cand[0].stops.push(v); cand[0].usado+=(v.peso||1); asign[v.cliId]=1;
+    });
+    return {cuads:cs,sinAsig:sinAsig};
   }
   function _agRoute(c,depot){
     var rem=c.stops.slice(); if(!rem.length){ c.km=0; return; }
