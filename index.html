@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.10';
+  var VER='v3.11';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4047,6 +4047,8 @@
   var _OCDATA=null, _OCMAP=null, _ocVista='barrio', _OC_PORTS=8;
   // Se excluyen del cálculo FTTH: clientes wireless (no usan NAP) y los de 508/Hipódromo/597/Itaembé (red ya no nuestra).
   var _OC_EXCL=/508|hip[oó]dromo|597|itaemb/i;
+  // Nombre de barrio por nodo, sacado de las CARPETAS del KMZ (así le llaman ustedes, abarca varias chacras)
+  var _OC_NODO_BARRIO={"2":"CH 252 y 248","3":"CH 252 y 248","4":"CH 142 e Itaberá","5":"CH 142 e Itaberá","6":"CH 142 e Itaberá","7":"Barrio 7","8":"Barrio 8","9":"Chacra 101","10":"Chacra 120 y 112 (Yohazá)","11":"Villa del Barrio Unido","12":"Chacra 158, 159 y 201","13":"Mangal, Laurel, Guayabirá y Chacra 187","14":"Chacra 181","15":"Cerro Pelón","16":"Villa de La Chacra 65","17":"Villa de La Chacra Rocamora","18":"Los Potrillos","19":"Tablada Norte","20":"Prosol 1","21":"Chacra 26","22":"Nueva Garupá","23":"Nueva Garupá","24":"La Esperanza","25":"La Cantera","26":"Villa Cariño","27":"Los Lapachitos","28":"Altos de Bella Vista","29":"San Onofre 2","30":"San Onofre","31":"Madariaga","32":"Los Paraísos","33":"El Porvenir","34":"El Piedral","35":"Estepa","36":"Baliña y Pueblo Chico","42":"Santa Clara 2","56":"Calandria","61":"Baliña y Pueblo Chico"};
   var _ocLPoly=null, _ocLNaps=null, _ocCapaPoly=true, _ocCapaNaps=false, _ocDashOpen=true;
   function _ocNodo(cod){ var m=String(cod||'').match(/^\s*(\d+)/); return m?m[1]:'?'; }
   function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
@@ -4087,8 +4089,7 @@
       sbGetAll('clientes?estado=eq.activo&select=id,nombre,apellido,barrio,tecnologia,lat,lng&order=id.asc'),
       sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng,zona&order=id.asc'),
       sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo'),
-      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst'),
-      sbGet('geo_chacras?select=cha,geom')
+      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst')
     ]).then(function(r){
       // ── CONGLOMERADO: por cliente, el GPS real del técnico (instalación/reparación) pisa al geocodificado ──
       var otGps={}; (r[3]||[]).forEach(function(o){ if(o.cliente_id!=null&&o.lat_fin!=null&&o.lng_fin!=null) otGps[o.cliente_id]={lat:o.lat_fin,lng:o.lng_fin}; });
@@ -4098,26 +4099,20 @@
       var cli=cliAll.filter(function(c){ if(_esWifi(c.tecnologia)){ exclW++; return false; } if(_OC_EXCL.test(c.barrio||'')){ exclZ++; return false; } return true; });
       var naps=(r[1]||[]).filter(function(n){return n.lat!=null&&n.lng!=null;});
       var polys=(r[2]||[]).filter(function(p){return Array.isArray(p.coords)&&p.coords.length>2;});
-      // chacras: SOLO para NOMBRAR el barrio (ej "Chacra 181") de las NAPs fuera de un polígono del KMZ; el contorno se dibuja con las NAPs, no con la chacra catastral
-      var chacras=(r[4]||[]).map(function(c){ return {cha:parseInt(c.cha,10)||c.cha, rings:_chaRings(c.geom)}; }).filter(function(c){return c.rings.length;});
-      _OCDATA={cli:cli,naps:naps,polys:polys,chacras:chacras,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
+      _OCDATA={cli:cli,naps:naps,polys:polys,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
       _ocRender();
     }).catch(function(){ view.innerHTML='<h1>Ocupación de red</h1><div class="center">No se pudieron cargar los datos.</div>'; });
   }
   function _ocCompute(){
     var d=_OCDATA, PORTS=_OC_PORTS;
-    // 1) ZONA por NAP: primero polígono (geo_poligonos); si no cae en ninguno, chacra catastral (fix "sin zona")
-    // NOMBRE del barrio: 1° polígono del KMZ · 2° chacra ("Chacra 181", así le llaman) · 3° nombre de zona (Garupá) · 4° (sin nombre)
-    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin nombre)'; n._zid=null; n._geom=null; n._gkey=null;
-      for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._zid='P'+i; n._geom=d.polys[i].coords; break; } }
-      if(n._zid) return;
-      var cha=null; for(var c=0;c<d.chacras.length;c++){ var rs=d.chacras[c].rings; for(var r=0;r<rs.length;r++){ if(pointInPoly(n.lat,n.lng,rs[r])){ cha=d.chacras[c].cha; break; } } if(cha!=null)break; }
-      if(cha!=null){ n._gkey='C'+cha; n._barrio='Chacra '+cha; }
-      else { var pl=_ocZonaName(n.zona); if(pl){ n._gkey='Z|'+pl; n._barrio=pl; } else { n._gkey='U'+n._nodo; n._barrio='(sin nombre)'; } }
+    // NOMBRE del barrio: 1° polígono dibujado en el KMZ · 2° nombre de la CARPETA del KMZ por nodo (Chacra 181, Nueva Garupá…) · 3° (sin nombre)
+    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin nombre)'; n._zid=null; n._geom=null; n._polyGeom=null;
+      for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._polyGeom=d.polys[i].coords; break; } }
+      if(!n._polyGeom){ var bn=_OC_NODO_BARRIO[n._nodo]; if(bn) n._barrio=bn; }
     });
-    // Contorno (hull de las NAPs, NO la chacra catastral) por cada grupo de nombre
-    var groups={}; d.naps.forEach(function(n){ if(n._zid||!n._gkey)return; (groups[n._gkey]=groups[n._gkey]||[]).push(n); });
-    Object.keys(groups).forEach(function(g){ var grp=groups[g]; if(grp.length<3)return; var hull=_ocHull(grp); if(!hull)return; grp.forEach(function(n){ n._zid=g; n._geom=hull; }); });
+    // agrupar por NOMBRE: el contorno es el polígono del KMZ si la zona tiene uno; si no, el hull de sus NAPs
+    var byName={}; d.naps.forEach(function(n){ var o=byName[n._barrio]||(byName[n._barrio]={naps:[],geom:null}); o.naps.push(n); if(n._polyGeom && !o.geom) o.geom=n._polyGeom; });
+    Object.keys(byName).forEach(function(k){ var g=byName[k]; if(!g.geom && g.naps.length>=3) g.geom=_ocHull(g.naps); g.naps.forEach(function(n){ n._zid=k; n._geom=g.geom; }); });
     // 2) grilla para NAP más cercana + lista de clientes por NAP
     var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
     d.naps.forEach(function(n){ var k=GK(n.lat,n.lng); (grid[k]=grid[k]||[]).push(n); });
@@ -4129,7 +4124,7 @@
     function agg(key){ var m={}; d.naps.forEach(function(n){ var k=key(n); var o=m[k]||(m[k]={zona:k,naps:0,cli:0}); o.naps++; o.cli+=n._cli; });
       return Object.keys(m).map(function(k){ var o=m[k]; o.cap=o.naps*PORTS; o.libres=Math.max(0,o.cap-o.cli); o.ocup=o.cap?o.cli/o.cap:0; return o; }); }
     var byBarrio=agg(function(n){return n._barrio;}).sort(function(a,b){return b.ocup-a.ocup;});
-    var byNodo=agg(function(n){return 'Nodo '+n._nodo;}).sort(function(a,b){return (parseInt(a.zona.replace(/\D/g,''))||999)-(parseInt(b.zona.replace(/\D/g,''))||999);});
+    var byNodo=agg(function(n){ return (_OC_NODO_BARRIO[n._nodo]||n._barrio||'(sin nombre)')+' · n'+n._nodo; }).sort(function(a,b){return b.libres-a.libres;});
     // por ZONA (para pintar el mapa): cada polígono/chacra con sus NAPs/clientes/ocupación + geometría
     var byZona={}; d.naps.forEach(function(n){ if(!n._zid)return; var o=byZona[n._zid]||(byZona[n._zid]={name:n._barrio,geom:n._geom,naps:0,cli:0}); o.naps++; o.cli+=n._cli; });
     Object.keys(byZona).forEach(function(k){ var o=byZona[k]; o.cap=o.naps*PORTS; o.ocup=o.cap?o.cli/o.cap:0; o.libres=Math.max(0,o.cap-o.cli); });
