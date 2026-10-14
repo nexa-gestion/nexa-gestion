@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.6';
+  var VER='v3.7';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4052,6 +4052,22 @@
   function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
   function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
   function _ocColor(ratio){ return ratio<=0.001?'#94a3b8':(ratio<0.5?'#22c55e':(ratio<0.85?'#f59e0b':(ratio<=1.0?'#ef4444':'#7f1d1d'))); }
+  // convex hull (monotone chain) sobre puntos {lat,lng} → anillo [[lat,lng],...] (para pintar zonas sin polígono, ej Garupá)
+  function _ocHull(pts){ if(pts.length<3) return null;
+    var p=pts.map(function(q){return [q.lng,q.lat];}).sort(function(a,b){return a[0]-b[0]||a[1]-b[1];});
+    function cr(o,a,b){return (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);}
+    var lo=[],up=[],i;
+    for(i=0;i<p.length;i++){ while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],p[i])<=0)lo.pop(); lo.push(p[i]); }
+    for(i=p.length-1;i>=0;i--){ while(up.length>=2&&cr(up[up.length-2],up[up.length-1],p[i])<=0)up.pop(); up.push(p[i]); }
+    lo.pop(); up.pop(); var h=lo.concat(up); if(h.length<3) return null;
+    return h.map(function(c){return [c[1],c[0]];});
+  }
+  // nombre de zona a partir del campo zona de la NAP (solo si parece un lugar, no OLT/PON/botella)
+  function _ocZonaName(z){ z=String(z||'').trim();
+    if(!z || /^olt|^plt|^pon|placa|botella|^\d+\s*ramal|^nodo\s*\d/i.test(z)) return null;
+    z=z.replace(/^ID\s*\d*\s*/i,'').replace(/\([^)]*\)/g,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim();
+    return z||null;
+  }
   function vOcupacion(){ loading(); ensureLeaflet(function(){ ensureChartJs(_ocCargar); }); }
   function _chaRings(geom){ // MultiPolygon/Polygon → arrays de anillos [[lat,lng],...]
     if(!geom||!geom.coordinates) return [];
@@ -4067,7 +4083,7 @@
       +'<div class="center"><div class="spin"></div><div class="muted" style="margin-top:8px">Cargando red y clientes…</div></div>';
     Promise.all([
       sbGetAll('clientes?estado=eq.activo&select=id,nombre,apellido,barrio,tecnologia,lat,lng&order=id.asc'),
-      sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng&order=id.asc'),
+      sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng,zona&order=id.asc'),
       sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo'),
       sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst'),
       sbGet('geo_chacras?select=cha,geom')
@@ -4092,6 +4108,14 @@
     d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin zona)'; n._zid=null; n._geom=null;
       for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._zid='P'+i; n._geom=d.polys[i].coords; break; } }
       if(!n._zid){ for(var c=0;c<d.chacras.length;c++){ var rs=d.chacras[c].rings; for(var r=0;r<rs.length;r++){ if(pointInPoly(n.lat,n.lng,rs[r])){ n._barrio='CH '+d.chacras[c].cha; n._zid='C'+d.chacras[c].cha; n._geom=rs[r]; break; } } if(n._zid)break; } }
+    });
+    // 1b) NAPs que no cayeron en ningún polígono/chacra (Garupá, nodos nuevos…): armar un contorno por nodo y pintarlo
+    var sinz={}; d.naps.forEach(function(n){ if(n._zid)return; (sinz[n._nodo]=sinz[n._nodo]||[]).push(n); });
+    Object.keys(sinz).forEach(function(nd){ var grp=sinz[nd]; var hull=_ocHull(grp); if(!hull)return;
+      var names={}; grp.forEach(function(n){ var nm=_ocZonaName(n.zona); if(nm)names[nm]=(names[nm]||0)+1; });
+      var best=Object.keys(names).sort(function(a,b){return names[b]-names[a];})[0];
+      var nombre=best||('Nodo '+nd);
+      grp.forEach(function(n){ n._barrio=nombre; n._zid='N'+nd; n._geom=hull; });
     });
     // 2) grilla para NAP más cercana + lista de clientes por NAP
     var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
