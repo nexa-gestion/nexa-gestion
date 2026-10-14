@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.3';
+  var VER='v3.4';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4045,6 +4045,8 @@
   // ══════════ OCUPACIÓN DE RED (penetración por barrio / nodo) ══════════
   // Aproximado: asigna cada cliente activo geolocalizado a la NAP más cercana (≤150 m) y supone N salidas por NAP.
   var _OCDATA=null, _OCMAP=null, _ocVista='barrio', _OC_PORTS=8;
+  // Se excluyen del cálculo FTTH: clientes wireless (no usan NAP) y los de 508/Hipódromo/597/Itaembé (red ya no nuestra).
+  var _OC_EXCL=/508|hip[oó]dromo|597|itaemb/i;
   function _ocNodo(cod){ var m=String(cod||'').match(/^\s*(\d+)/); return m?m[1]:'?'; }
   function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
   function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
@@ -4059,10 +4061,12 @@
       sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng&order=id.asc'),
       sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo')
     ]).then(function(r){
-      var cli=(r[0]||[]).filter(function(c){return c.lat!=null&&c.lng!=null;});
+      var cliGeo=(r[0]||[]).filter(function(c){return c.lat!=null&&c.lng!=null;});
+      var exclW=0, exclZ=0;
+      var cli=cliGeo.filter(function(c){ if(_esWifi(c.tecnologia)){ exclW++; return false; } if(_OC_EXCL.test(c.barrio||'')){ exclZ++; return false; } return true; });
       var naps=(r[1]||[]).filter(function(n){return n.lat!=null&&n.lng!=null;});
       var polys=(r[2]||[]).filter(function(p){return Array.isArray(p.coords)&&p.coords.length>2;});
-      _OCDATA={cli:cli,naps:naps,polys:polys};
+      _OCDATA={cli:cli,naps:naps,polys:polys,exclW:exclW,exclZ:exclZ};
       _ocRender();
     }).catch(function(){ view.innerHTML='<h1>Ocupación de red</h1><div class="center">No se pudieron cargar los datos.</div>'; });
   }
@@ -4096,8 +4100,9 @@
         +_ocCard('Capacidad total', res.cap.toLocaleString('es-AR')+' bocas', res.totNaps+' NAPs × '+_OC_PORTS)
         +_ocCard('Ocupación global', pct(res.occ), res.totCli.toLocaleString('es-AR')+' clientes ubicados')
         +_ocCard('Bocas libres', res.libres.toLocaleString('es-AR'), 'capacidad para vender')
-        +_ocCard('Sin NAP cercana', res.sinNap.toLocaleString('es-AR'), 'wireless o GPS aproximado')
+        +_ocCard('Sin NAP cercana', res.sinNap.toLocaleString('es-AR'), 'FTTH propio sin ubicar (GPS aprox.)')
       +'</div>'
+      +'<div class="muted" style="font-size:12px;margin:-2px 0 6px">Excluidos del cálculo: <b>'+((_OCDATA.exclW||0)).toLocaleString('es-AR')+'</b> wireless + <b>'+((_OCDATA.exclZ||0)).toLocaleString('es-AR')+'</b> de 508/Hipódromo/597/Itaembé (no son red FTTH propia).</div>'
       +'<div class="toolbar" style="align-items:center;gap:10px">'
         +'<div style="display:inline-flex;border:1px solid var(--bord);border-radius:10px;overflow:hidden">'
           +'<button class="btn '+(_ocVista==='barrio'?'btn-pri':'btn-2')+'" id="oc-vb" style="border-radius:0;margin:0">Por barrio</button>'
