@@ -208,6 +208,7 @@
       <a data-v="solicitudes">📥 Solicitudes</a>
       <a data-v="tickets">🎫 Tickets ISP</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
+      <a data-v="ocupacion">📊 Ocupación de red</a>
       <div class="sec">Servicios</div>
       <a data-v="servicios">🧰 Servicios (fuera de internet)</a>
       <div class="sec">Telemetría</div>
@@ -244,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.2';
+  var VER='v3.3';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -463,7 +464,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -4041,6 +4042,115 @@
   var _PEND_STY={ INSTALACION:['#2563eb','🔧 Instalaciones'], REPARACION:['#dc2626','🛠️ Reparaciones'], RECONEXION:['#16a34a','🔌 Reconexiones'], DESCONEXION:['#64748b','✂️ Desconexiones'], CAMBIO_PLAN:['#7c3aed','📶 Cambios de plan'], CAMBIO_DOMICILIO:['#0891b2','🏠 Cambios de domicilio'], MANTENIMIENTO:['#d97706','🧰 Mantenimiento'], RETIRO_EQUIPOS:['#92400e','📦 Retiro de equipos'], OTRO:['#475569','• Otros'] };
   function _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
   function radCli(){ var z=_MAP?_MAP.getZoom():13; return Math.max(3, Math.min(6, 3 + Math.max(0, z-15)*1.0)); } // chico a nivel ciudad/barrio, crece suave solo al acercar mucho
+  // ══════════ OCUPACIÓN DE RED (penetración por barrio / nodo) ══════════
+  // Aproximado: asigna cada cliente activo geolocalizado a la NAP más cercana (≤150 m) y supone N salidas por NAP.
+  var _OCDATA=null, _OCMAP=null, _ocVista='barrio', _OC_PORTS=8;
+  function _ocNodo(cod){ var m=String(cod||'').match(/^\s*(\d+)/); return m?m[1]:'?'; }
+  function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
+  function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
+  function _ocColor(ratio){ return ratio<=0.001?'#94a3b8':(ratio<0.5?'#22c55e':(ratio<0.85?'#f59e0b':(ratio<=1.0?'#ef4444':'#7f1d1d'))); }
+  function vOcupacion(){ loading(); ensureLeaflet(_ocCargar); }
+  function _ocCargar(){
+    view.innerHTML='<h1>Ocupación de red <span class="muted" style="font-size:14px;font-weight:400">· aproximado</span></h1>'
+      +'<p class="sub">Penetración por barrio y por nodo: clientes activos vs capacidad de la red (NAPs × salidas). Cliente ubicado por GPS a la NAP más cercana (≤150 m).</p>'
+      +'<div class="center"><div class="spin"></div><div class="muted" style="margin-top:8px">Cargando red y clientes…</div></div>';
+    Promise.all([
+      sbGetAll('clientes?estado=eq.activo&lat=not.is.null&select=barrio,tecnologia,lat,lng&order=id.asc'),
+      sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng&order=id.asc'),
+      sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo')
+    ]).then(function(r){
+      var cli=(r[0]||[]).filter(function(c){return c.lat!=null&&c.lng!=null;});
+      var naps=(r[1]||[]).filter(function(n){return n.lat!=null&&n.lng!=null;});
+      var polys=(r[2]||[]).filter(function(p){return Array.isArray(p.coords)&&p.coords.length>2;});
+      _OCDATA={cli:cli,naps:naps,polys:polys};
+      _ocRender();
+    }).catch(function(){ view.innerHTML='<h1>Ocupación de red</h1><div class="center">No se pudieron cargar los datos.</div>'; });
+  }
+  function _ocCompute(){
+    var d=_OCDATA, PORTS=_OC_PORTS;
+    // 1) nodo + barrio (point-in-polygon) por NAP
+    d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._barrio='(sin zona)';
+      for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); break; } } });
+    // 2) grilla para NAP más cercana
+    var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
+    d.naps.forEach(function(n){ var k=GK(n.lat,n.lng); (grid[k]=grid[k]||[]).push(n); });
+    var sinNap=0;
+    d.cli.forEach(function(c){ var best=null,bd=1e9, kla=Math.round(c.lat*400), kln=Math.round(c.lng*400);
+      for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){ var arr=grid[(kla+dx)+'_'+(kln+dy)]; if(arr)for(var i=0;i<arr.length;i++){ var dd=_ocHav(c.lat,c.lng,arr[i].lat,arr[i].lng); if(dd<bd){bd=dd;best=arr[i];} } }
+      if(best && bd<=150){ best._cli++; } else sinNap++; });
+    // 3) agregar
+    function agg(key){ var m={}; d.naps.forEach(function(n){ var k=key(n); var o=m[k]||(m[k]={zona:k,naps:0,cli:0}); o.naps++; o.cli+=n._cli; });
+      return Object.keys(m).map(function(k){ var o=m[k]; o.cap=o.naps*PORTS; o.libres=Math.max(0,o.cap-o.cli); o.ocup=o.cap?o.cli/o.cap:0; return o; }); }
+    var byBarrio=agg(function(n){return n._barrio;}).sort(function(a,b){return b.ocup-a.ocup;});
+    var byNodo=agg(function(n){return 'Nodo '+n._nodo;}).sort(function(a,b){return (parseInt(a.zona.replace(/\D/g,''))||999)-(parseInt(b.zona.replace(/\D/g,''))||999);});
+    var totNaps=d.naps.length, cap=totNaps*PORTS, totCli=d.naps.reduce(function(a,n){return a+n._cli;},0);
+    _OCDATA._res={byBarrio:byBarrio,byNodo:byNodo,sinNap:sinNap,totNaps:totNaps,cap:cap,totCli:totCli,libres:Math.max(0,cap-totCli),occ:cap?totCli/cap:0};
+    return _OCDATA._res;
+  }
+  function _ocRender(){
+    var res=_ocCompute();
+    var pct=function(x){ return Math.round(x*100)+'%'; };
+    view.innerHTML='<h1>Ocupación de red <span class="muted" style="font-size:14px;font-weight:400">· aproximado</span></h1>'
+      +'<p class="sub">Clientes activos geolocalizados vs capacidad de la red (NAPs × salidas). Asignación por cercanía ≤150 m.</p>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">'
+        +_ocCard('Capacidad total', res.cap.toLocaleString('es-AR')+' bocas', res.totNaps+' NAPs × '+_OC_PORTS)
+        +_ocCard('Ocupación global', pct(res.occ), res.totCli.toLocaleString('es-AR')+' clientes ubicados')
+        +_ocCard('Bocas libres', res.libres.toLocaleString('es-AR'), 'capacidad para vender')
+        +_ocCard('Sin NAP cercana', res.sinNap.toLocaleString('es-AR'), 'wireless o GPS aproximado')
+      +'</div>'
+      +'<div class="toolbar" style="align-items:center;gap:10px">'
+        +'<div style="display:inline-flex;border:1px solid var(--bord);border-radius:10px;overflow:hidden">'
+          +'<button class="btn '+(_ocVista==='barrio'?'btn-pri':'btn-2')+'" id="oc-vb" style="border-radius:0;margin:0">Por barrio</button>'
+          +'<button class="btn '+(_ocVista==='nodo'?'btn-pri':'btn-2')+'" id="oc-vn" style="border-radius:0;margin:0">Por nodo</button>'
+        +'</div>'
+        +'<label style="display:flex;align-items:center;gap:5px;font-size:13px">Salidas por NAP: <input id="oc-ports" type="number" min="1" max="64" value="'+_OC_PORTS+'" style="width:64px"></label>'
+        +'<button class="btn btn-2" id="oc-export">⬇️ Exportar</button>'
+        +'<span class="muted" style="font-size:12px">🟩 &lt;50% · 🟧 50-85% · 🟥 &gt;85% · ⬛ saturada</span>'
+      +'</div>'
+      +'<div id="oc-map" style="height:360px;border:1px solid var(--bord);border-radius:12px;margin-bottom:12px"></div>'
+      +'<div id="oc-tabla"></div>';
+    document.getElementById('oc-vb').addEventListener('click',function(){ _ocVista='barrio'; _ocRender(); });
+    document.getElementById('oc-vn').addEventListener('click',function(){ _ocVista='nodo'; _ocRender(); });
+    document.getElementById('oc-ports').addEventListener('change',function(){ var v=parseInt(this.value); if(v>0&&v<=64){ _OC_PORTS=v; _ocRender(); } });
+    document.getElementById('oc-export').addEventListener('click',_ocExport);
+    _ocTabla(res);
+    _ocMapa();
+  }
+  function _ocCard(t,big,sub){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">'+esc(t)+'</div><div style="font-size:24px;font-weight:800;margin:2px 0">'+esc(big)+'</div><div class="muted" style="font-size:12px">'+esc(sub)+'</div></div>'; }
+  function _ocTabla(res){
+    var rows=(_ocVista==='barrio'?res.byBarrio:res.byNodo);
+    var cont=document.getElementById('oc-tabla');
+    var cols=[
+      {k:'zona',t:(_ocVista==='barrio'?'Barrio / zona':'Nodo'),sort:function(o){return o.zona;},r:function(o){return '<b>'+esc(o.zona)+'</b>';}},
+      {k:'naps',t:'NAPs',sort:function(o){return o.naps;},r:function(o){return o.naps;}},
+      {k:'cap',t:'Capacidad',sort:function(o){return o.cap;},r:function(o){return o.cap;}},
+      {k:'cli',t:'Clientes',sort:function(o){return o.cli;},r:function(o){return o.cli;}},
+      {k:'libres',t:'Libres',sort:function(o){return o.libres;},r:function(o){return '<b style="color:#15803d">'+o.libres+'</b>';}},
+      {k:'ocup',t:'Ocupación',sort:function(o){return o.ocup;},r:function(o){ var p=Math.round(o.ocup*100), w=Math.min(100,p); return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;max-width:120px;background:#eef2f7;border-radius:6px;height:14px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:'+_ocColor(o.ocup)+'"></div></div><b>'+p+'%</b></div>'; }}
+    ];
+    gridRender(cont,cols,rows,{key:'oc-'+_ocVista});
+  }
+  function _ocMapa(){
+    var el=document.getElementById('oc-map'); if(!el||typeof L==='undefined')return;
+    if(_OCMAP){ try{ _OCMAP.remove(); }catch(e){} _OCMAP=null; }
+    _OCMAP=L.map('oc-map').setView([-27.43,-55.95],12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_OCMAP);
+    var canvas=L.canvas({tolerance:6}), all=[];
+    _OCDATA.naps.forEach(function(n){ var ratio=n._cli/_OC_PORTS;
+      L.circleMarker([n.lat,n.lng],{renderer:canvas,radius:6,color:'#fff',weight:1,fillColor:_ocColor(ratio),fillOpacity:.9})
+        .bindPopup('<b>NAP '+esc(n.codigo)+'</b><br>Nodo '+esc(n._nodo)+' · '+esc(n._barrio)+'<br><b>'+n._cli+'/'+_OC_PORTS+'</b> ocupadas ('+Math.round(ratio*100)+'%)').addTo(_OCMAP);
+      all.push([n.lat,n.lng]); });
+    if(all.length>1){ try{ _OCMAP.fitBounds(all,{padding:[30,30]}); }catch(e){} }
+    setTimeout(function(){ if(_OCMAP) _OCMAP.invalidateSize(); },250);
+  }
+  function _ocExport(){
+    var res=_OCDATA._res, rows=(_ocVista==='barrio'?res.byBarrio:res.byNodo);
+    var head=(_ocVista==='barrio'?'Barrio':'Nodo')+',NAPs,Capacidad,Clientes,Libres,Ocupacion%\n';
+    var body=rows.map(function(o){ return '"'+String(o.zona).replace(/"/g,'""')+'",'+o.naps+','+o.cap+','+o.cli+','+o.libres+','+Math.round(o.ocup*100); }).join('\n');
+    var csv=head+body+'\n\nSupuesto: '+_OC_PORTS+' salidas por NAP · clientes activos geolocalizados ≤150m · sin NAP cercana: '+res.sinNap;
+    var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='ocupacion_red_'+_ocVista+'.csv'; a.click();
+    toast('📄 Exportado');
+  }
   function vCobertura(){ loading(); ensureLeaflet(_coberturaRender); }
   function _coberturaRender(){
     view.innerHTML='<h1>Cobertura / Red</h1><p class="sub">Zonas, cajas NAP (con ocupación) y clientes. Chequeá la cobertura de un domicilio.</p>'
