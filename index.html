@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.9';
+  var VER='v3.10';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4166,6 +4166,7 @@
         +'<span style="margin-left:6px;font-size:12px;font-weight:700;color:var(--gris)">CAPAS:</span>'
         +'<label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="oc-cp"'+(_ocCapaPoly?' checked':'')+'> Polígonos</label>'
         +'<label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="oc-cn"'+(_ocCapaNaps?' checked':'')+'> NAPs</label>'
+        +'<button class="btn btn-2" id="oc-full" style="margin-left:4px">⛶ Pantalla completa</button>'
         +'<span class="muted" style="font-size:12px">🟩 &lt;50% · 🟧 50-85% · 🟥 &gt;85% · ⬛ saturada</span>'
       +'</div>'
       +'<div id="oc-map" style="height:380px;border:1px solid var(--bord);border-radius:12px;margin-bottom:12px"></div>'
@@ -4177,6 +4178,7 @@
     document.getElementById('oc-pdf').addEventListener('click',_ocPDF);
     document.getElementById('oc-cp').addEventListener('change',function(){ _ocCapaPoly=this.checked; _ocToggleCapa(); });
     document.getElementById('oc-cn').addEventListener('change',function(){ _ocCapaNaps=this.checked; _ocToggleCapa(); });
+    document.getElementById('oc-full').addEventListener('click',_ocFull);
     document.getElementById('oc-dash-head').addEventListener('click',function(){ _ocDashOpen=!_ocDashOpen;
       document.getElementById('oc-dash-body').style.display=_ocDashOpen?'flex':'none';
       document.getElementById('oc-dash-arrow').textContent=_ocDashOpen?'▼':'▶';
@@ -4218,6 +4220,13 @@
       {k:'ocup',t:'Ocupación',sort:function(o){return o.ocup;},r:function(o){ var p=Math.round(o.ocup*100), w=Math.min(100,p); return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;max-width:120px;background:#eef2f7;border-radius:6px;height:14px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:'+_ocColor(o.ocup)+'"></div></div><b>'+p+'%</b></div>'; }}
     ];
     gridRender(cont,cols,rows,{key:'oc-'+_ocVista});
+  }
+  function _ocFull(){
+    var m=document.getElementById('oc-map'); if(!m)return;
+    if(m._full){ m.style.cssText='height:380px;border:1px solid var(--bord);border-radius:12px;margin-bottom:12px'; var c=document.getElementById('oc-map-close'); if(c)c.remove(); m._full=false; }
+    else { m.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;border:0;border-radius:0;margin:0';
+      var b=document.createElement('button'); b.id='oc-map-close'; b.textContent='✕ Cerrar mapa'; b.style.cssText='position:fixed;top:12px;right:12px;z-index:100000;padding:9px 16px;background:#0f172a;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;box-shadow:0 2px 10px rgba(0,0,0,.4)'; b.addEventListener('click',_ocFull); document.body.appendChild(b); m._full=true; }
+    setTimeout(function(){ if(_OCMAP) _OCMAP.invalidateSize(); },120);
   }
   function _ocToggleCapa(){ if(!_OCMAP)return;
     if(_ocLPoly){ if(_ocCapaPoly) _ocLPoly.addTo(_OCMAP); else _OCMAP.removeLayer(_ocLPoly); }
