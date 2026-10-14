@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.12';
+  var VER='v3.13';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4072,7 +4072,7 @@
     z=z.replace(/\bextencion\b/ig,'Extensión').replace(/[a-záéíóúñ]\S*/gi,function(w){ return w.charAt(0).toUpperCase()+w.slice(1); });
     return z;
   }
-  function vOcupacion(){ loading(); ensureLeaflet(function(){ ensureChartJs(_ocCargar); }); }
+  function vOcupacion(){ _ocCapaPoly=true; _ocCapaNaps=true; loading(); ensureLeaflet(function(){ ensureChartJs(_ocCargar); }); }
   function _chaRings(geom){ // MultiPolygon/Polygon → arrays de anillos [[lat,lng],...]
     if(!geom||!geom.coordinates) return [];
     var out=[], cs=geom.coordinates;
@@ -4210,8 +4210,13 @@
   function _ocBarChart(key, canvasId, data, all, label, val){
     try{ if(_ocCharts[key]){_ocCharts[key].destroy();} var c=document.getElementById(canvasId); if(!c||!window.Chart)return;
       var arr=all?data:data.slice(0,12);
-      if(all) c.height=Math.max(240, arr.length*20);
-      _ocCharts[key]=new Chart(c,{type:'bar',data:{labels:arr.map(function(o){return o.zona;}),datasets:[{label:label,data:arr.map(val),backgroundColor:arr.map(function(o){return _ocColor(o.ocup);})}]},options:{indexAxis:'y',maintainAspectRatio:!all,responsive:true,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true},y:{ticks:{font:{size:10},autoSkip:false}}}}});
+      var full=arr.map(function(o){return o.zona;});
+      var short=full.map(function(s){ return s.length>22?(s.slice(0,21)+'…'):s; });
+      if(all){ c.height=Math.max(240, arr.length*24); } else { c.removeAttribute('height'); }
+      _ocCharts[key]=new Chart(c,{type:'bar',data:{labels:short,datasets:[{label:label,data:arr.map(val),backgroundColor:arr.map(function(o){return _ocColor(o.ocup);}),borderWidth:0,barThickness:all?14:undefined}]},
+        options:{indexAxis:'y',maintainAspectRatio:!all,responsive:true,layout:{padding:{right:12}},
+          plugins:{legend:{display:false},tooltip:{callbacks:{title:function(it){return full[it[0].dataIndex];}}}},
+          scales:{x:{beginAtZero:true,grid:{color:'#f1f5f9'}},y:{ticks:{font:{size:11},autoSkip:false},grid:{display:false}}}}});
     }catch(e){}
   }
   function _ocCard(t,big,sub){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">'+esc(t)+'</div><div style="font-size:24px;font-weight:800;margin:2px 0">'+esc(big)+'</div><div class="muted" style="font-size:12px">'+esc(sub)+'</div></div>'; }
