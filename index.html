@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.14';
+  var VER='v3.15';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4098,7 +4098,8 @@
       sbGetAll('clientes?estado=eq.activo&select=id,nombre,apellido,barrio,tecnologia,lat,lng&order=id.asc'),
       sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng,zona&order=id.asc'),
       sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo'),
-      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst')
+      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst'),
+      sbGet('geo_chacras?select=cha,geom')
     ]).then(function(r){
       // ── CONGLOMERADO: por cliente, el GPS real del técnico (instalación/reparación) pisa al geocodificado ──
       var otGps={}; (r[3]||[]).forEach(function(o){ if(o.cliente_id!=null&&o.lat_fin!=null&&o.lng_fin!=null) otGps[o.cliente_id]={lat:o.lat_fin,lng:o.lng_fin}; });
@@ -4108,21 +4109,30 @@
       var cli=cliAll.filter(function(c){ if(_esWifi(c.tecnologia)){ exclW++; return false; } if(_OC_EXCL.test(c.barrio||'')){ exclZ++; return false; } return true; });
       var naps=(r[1]||[]).filter(function(n){return n.lat!=null&&n.lng!=null;});
       var polys=(r[2]||[]).filter(function(p){return Array.isArray(p.coords)&&p.coords.length>2;});
-      _OCDATA={cli:cli,naps:naps,polys:polys,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
+      // chacras: para SEPARAR los nodos con nombre combinado (ej "Mangal, Laurel y Chacra 187" → cada NAP a su "Chacra NNN")
+      var chacras=(r[4]||[]).map(function(c){ return {cha:parseInt(c.cha,10)||c.cha, rings:_chaRings(c.geom)}; }).filter(function(c){return c.rings.length;});
+      _OCDATA={cli:cli,naps:naps,polys:polys,chacras:chacras,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
       _ocRender();
     }).catch(function(){ view.innerHTML='<h1>Ocupación de red</h1><div class="center">No se pudieron cargar los datos.</div>'; });
   }
   function _ocCompute(){
     var d=_OCDATA, PORTS=_OC_PORTS;
-    // NOMBRE del barrio: 1° polígono dibujado en el KMZ · 2° nombre de la CARPETA del KMZ por nodo (Chacra 181, Nueva Garupá…) · 3° (sin nombre)
+    // NOMBRE del barrio: 1° polígono del KMZ · 2° carpeta del KMZ si es UN solo barrio · 3° si el nombre es COMBINADO
+    // (ej "Mangal, Laurel y Chacra 187"), se separa por chacra catastral → "Chacra NNN" · 4° (sin nombre)
+    var _combi=function(s){ return /,| y | e /i.test(String(s||'')); };
     d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin nombre)'; n._zid=null; n._geom=null; n._polyGeom=null;
       for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._polyGeom=d.polys[i].coords; break; } }
-      if(!n._polyGeom){ var bn=_OC_NODO_BARRIO[n._nodo]; if(bn) n._barrio=bn; }
+      if(n._polyGeom) return;
+      var bn=_OC_NODO_BARRIO[n._nodo];
+      if(bn && !_combi(bn)){ n._barrio=bn; return; }
+      // nombre combinado o sin nombre → separar por chacra
+      var cha=null; for(var c=0;c<d.chacras.length;c++){ var rs=d.chacras[c].rings; for(var r=0;r<rs.length;r++){ if(pointInPoly(n.lat,n.lng,rs[r])){ cha=d.chacras[c].cha; break; } } if(cha!=null)break; }
+      if(cha!=null) n._barrio='Chacra '+cha; else if(bn) n._barrio=bn;   // Garupá sin chacra → queda el nombre combinado
     });
     // agrupar por NOMBRE: el contorno es SOLO el polígono dibujado en el KMZ. Las zonas sin polígono se ven por sus
     // NAPs (puntos de color), NO se inventa contorno (los hulls quedaban feos con NAPs dispersos).
     var byName={}; d.naps.forEach(function(n){ var o=byName[n._barrio]||(byName[n._barrio]={naps:[],geom:null}); o.naps.push(n); if(n._polyGeom && !o.geom) o.geom=n._polyGeom; });
-    Object.keys(byName).forEach(function(k){ var g=byName[k]; if(!g.geom && !/sin nombre/i.test(k)) g.geom=_ocHullZona(g.naps); g.naps.forEach(function(n){ n._zid=k; n._geom=g.geom; }); });
+    Object.keys(byName).forEach(function(k){ var g=byName[k]; g.naps.forEach(function(n){ n._zid=k; n._geom=g.geom; }); });
     // 2) grilla para NAP más cercana + lista de clientes por NAP
     var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
     d.naps.forEach(function(n){ var k=GK(n.lat,n.lng); (grid[k]=grid[k]||[]).push(n); });
