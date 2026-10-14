@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.11';
+  var VER='v3.12';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4049,7 +4049,7 @@
   var _OC_EXCL=/508|hip[oó]dromo|597|itaemb/i;
   // Nombre de barrio por nodo, sacado de las CARPETAS del KMZ (así le llaman ustedes, abarca varias chacras)
   var _OC_NODO_BARRIO={"2":"CH 252 y 248","3":"CH 252 y 248","4":"CH 142 e Itaberá","5":"CH 142 e Itaberá","6":"CH 142 e Itaberá","7":"Barrio 7","8":"Barrio 8","9":"Chacra 101","10":"Chacra 120 y 112 (Yohazá)","11":"Villa del Barrio Unido","12":"Chacra 158, 159 y 201","13":"Mangal, Laurel, Guayabirá y Chacra 187","14":"Chacra 181","15":"Cerro Pelón","16":"Villa de La Chacra 65","17":"Villa de La Chacra Rocamora","18":"Los Potrillos","19":"Tablada Norte","20":"Prosol 1","21":"Chacra 26","22":"Nueva Garupá","23":"Nueva Garupá","24":"La Esperanza","25":"La Cantera","26":"Villa Cariño","27":"Los Lapachitos","28":"Altos de Bella Vista","29":"San Onofre 2","30":"San Onofre","31":"Madariaga","32":"Los Paraísos","33":"El Porvenir","34":"El Piedral","35":"Estepa","36":"Baliña y Pueblo Chico","42":"Santa Clara 2","56":"Calandria","61":"Baliña y Pueblo Chico"};
-  var _ocLPoly=null, _ocLNaps=null, _ocCapaPoly=true, _ocCapaNaps=false, _ocDashOpen=true;
+  var _ocLPoly=null, _ocLNaps=null, _ocCapaPoly=true, _ocCapaNaps=true, _ocDashOpen=true, _ocRankAll=false, _ocBar1All=false, _ocBar2All=false;
   function _ocNodo(cod){ var m=String(cod||'').match(/^\s*(\d+)/); return m?m[1]:'?'; }
   function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
   function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
@@ -4110,9 +4110,10 @@
       for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._polyGeom=d.polys[i].coords; break; } }
       if(!n._polyGeom){ var bn=_OC_NODO_BARRIO[n._nodo]; if(bn) n._barrio=bn; }
     });
-    // agrupar por NOMBRE: el contorno es el polígono del KMZ si la zona tiene uno; si no, el hull de sus NAPs
+    // agrupar por NOMBRE: el contorno es SOLO el polígono dibujado en el KMZ. Las zonas sin polígono se ven por sus
+    // NAPs (puntos de color), NO se inventa contorno (los hulls quedaban feos con NAPs dispersos).
     var byName={}; d.naps.forEach(function(n){ var o=byName[n._barrio]||(byName[n._barrio]={naps:[],geom:null}); o.naps.push(n); if(n._polyGeom && !o.geom) o.geom=n._polyGeom; });
-    Object.keys(byName).forEach(function(k){ var g=byName[k]; if(!g.geom && g.naps.length>=3) g.geom=_ocHull(g.naps); g.naps.forEach(function(n){ n._zid=k; n._geom=g.geom; }); });
+    Object.keys(byName).forEach(function(k){ var g=byName[k]; g.naps.forEach(function(n){ n._zid=k; n._geom=g.geom; }); });
     // 2) grilla para NAP más cercana + lista de clientes por NAP
     var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
     d.naps.forEach(function(n){ var k=GK(n.lat,n.lng); (grid[k]=grid[k]||[]).push(n); });
@@ -4146,9 +4147,10 @@
       +'<div class="muted" style="font-size:12px;margin:-2px 0 6px">📍 <b>'+((_OCDATA.mejorados||0)).toLocaleString('es-AR')+'</b> clientes ubicados con el GPS real del técnico (instalación/reparación). · Excluidos del cálculo: <b>'+((_OCDATA.exclW||0)).toLocaleString('es-AR')+'</b> wireless + <b>'+((_OCDATA.exclZ||0)).toLocaleString('es-AR')+'</b> de 508/Hipódromo/597/Itaembé (no son red FTTH propia).</div>'
       +'<div id="oc-dash-head" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;margin:4px 0 8px;color:#1e293b"><span id="oc-dash-arrow">'+(_ocDashOpen?'▼':'▶')+'</span> 📊 Análisis comercial <span class="muted" style="font-weight:400;font-size:12px">(gráficos y oportunidades)</span></div>'
       +'<div id="oc-dash-body" style="display:'+(_ocDashOpen?'flex':'none')+';gap:12px;flex-wrap:wrap;margin-bottom:12px">'
-        +'<div style="flex:1;min-width:220px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Ocupación global</div><canvas id="oc-ch-donut" style="max-height:170px"></canvas></div>'
-        +'<div style="flex:1.4;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Más capacidad ociosa ('+(_ocVista==='barrio'?'barrios':'nodos')+') — dónde hay bocas para vender</div><canvas id="oc-ch-bar" style="max-height:230px"></canvas></div>'
-        +'<div style="flex:1;min-width:230px;background:linear-gradient(180deg,#f0fdf4,#fff);border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-weight:800;color:#15803d;margin-bottom:6px">🎯 Dónde atacar comercialmente</div><div id="oc-rank" style="font-size:13px"></div></div>'
+        +'<div style="flex:1;min-width:200px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Ocupación global</div><canvas id="oc-ch-donut" style="max-height:170px"></canvas></div>'
+        +'<div style="flex:1.2;min-width:240px;background:linear-gradient(180deg,#f0fdf4,#fff);border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:800;color:#15803d">🎯 Dónde atacar</span><a id="oc-rank-all" style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600">Ver todas ▾</a></div><div id="oc-rank" style="font-size:13px;max-height:'+(_ocRankAll?'340px':'none')+';overflow:auto"></div></div>'
+        +'<div style="flex:1.6;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">Bocas libres por barrio</span><a id="oc-bar1-all" style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600">'+(_ocBar1All?'Ver menos ▴':'Ver todas ▾')+'</a></div><div style="max-height:'+(_ocBar1All?'400px':'240px')+';overflow:auto"><canvas id="oc-ch-bar"></canvas></div></div>'
+        +'<div style="flex:1.6;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">Ocupación % por barrio</span><a id="oc-bar2-all" style="cursor:pointer;color:#2563eb;font-size:12px;font-weight:600">'+(_ocBar2All?'Ver menos ▴':'Ver todas ▾')+'</a></div><div style="max-height:'+(_ocBar2All?'400px':'240px')+';overflow:auto"><canvas id="oc-ch-bar2"></canvas></div></div>'
       +'</div>'
       +'<div class="toolbar" style="align-items:center;gap:10px">'
         +'<div style="display:inline-flex;border:1px solid var(--bord);border-radius:10px;overflow:hidden">'
@@ -4185,21 +4187,31 @@
   }
   var _ocCharts={};
   function _ocDashboard(res){
-    var _sinz=function(o){ return /sin nombre|sin zona/i.test(o.zona); };   // sin nombre asignable → no va al ranking comercial
-    // Ranking "dónde atacar": zonas con red tendida (NAPs≥2) y más bocas libres, ocupación baja/media
-    var rows=(_ocVista==='barrio'?res.byBarrio:res.byNodo).filter(function(o){return o.naps>=2 && o.libres>0 && !_sinz(o);})
-      .sort(function(a,b){ return b.libres-a.libres; }).slice(0,6);
+    var _sinz=function(o){ return /sin nombre|sin zona/i.test(o.zona); };
+    var base=(_ocVista==='barrio'?res.byBarrio:res.byNodo).filter(function(o){return !_sinz(o);});
+    // Ranking "dónde atacar": red tendida (NAPs≥2) y más bocas libres
+    var rows=base.filter(function(o){return o.naps>=2 && o.libres>0;}).sort(function(a,b){ return b.libres-a.libres; });
+    var rkRows=_ocRankAll?rows:rows.slice(0,6);
     var rk=document.getElementById('oc-rank');
-    if(rk){ rk.innerHTML = rows.length? rows.map(function(o,i){ return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:'+(i?'1px solid #dcfce7':'none')+'"><span><b>'+(i+1)+'.</b> '+esc(o.zona)+' <span class="muted" style="font-size:11px">'+o.naps+' NAPs · '+Math.round(o.ocup*100)+'%</span></span><b style="color:#15803d">'+o.libres+' libres</b></div>'; }).join('')
+    if(rk){ rk.innerHTML = rkRows.length? rkRows.map(function(o,i){ return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:'+(i?'1px solid #dcfce7':'none')+';gap:8px"><span><b>'+(i+1)+'.</b> '+esc(o.zona)+' <span class="muted" style="font-size:11px">'+o.naps+' NAPs · '+Math.round(o.ocup*100)+'%</span></span><b style="color:#15803d;white-space:nowrap">'+o.libres+' libres</b></div>'; }).join('')
       : '<span class="muted">—</span>'; }
+    var rka=document.getElementById('oc-rank-all'); if(rka){ rka.textContent=_ocRankAll?'Ver menos ▴':('Ver todas ('+rows.length+') ▾'); rka.onclick=function(){ _ocRankAll=!_ocRankAll; var r=document.getElementById('oc-rank'); if(r)r.style.maxHeight=_ocRankAll?'340px':'none'; _ocDashboard(_OCDATA._res); }; }
     // Donut ocupación global
     try{ if(_ocCharts.donut){_ocCharts.donut.destroy();} var cd=document.getElementById('oc-ch-donut');
-      if(cd&&window.Chart){ _ocCharts.donut=new Chart(cd,{type:'doughnut',data:{labels:['Ocupadas','Libres'],datasets:[{data:[res.totCli,res.libres],backgroundColor:['#2563eb','#d1fae5'],borderWidth:0}]},options:{plugins:{legend:{position:'bottom'}},cutout:'62%'}}); }
+      if(cd&&window.Chart){ _ocCharts.donut=new Chart(cd,{type:'doughnut',data:{labels:['Ocupadas','Libres'],datasets:[{data:[res.totCli,res.libres],backgroundColor:['#2563eb','#d1fae5'],borderWidth:0}]},options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:function(c){return c.label+': '+c.raw+' ('+Math.round(c.raw/(res.cap||1)*100)+'%)';}}}},cutout:'62%'}}); }
     }catch(e){}
-    // Barras: top zonas por bocas libres
-    try{ if(_ocCharts.bar){_ocCharts.bar.destroy();} var cb=document.getElementById('oc-ch-bar');
-      var top=(_ocVista==='barrio'?res.byBarrio:res.byNodo).filter(function(o){return o.libres>0 && !_sinz(o);}).sort(function(a,b){return b.libres-a.libres;}).slice(0,12);
-      if(cb&&window.Chart){ _ocCharts.bar=new Chart(cb,{type:'bar',data:{labels:top.map(function(o){return o.zona;}),datasets:[{label:'Bocas libres',data:top.map(function(o){return o.libres;}),backgroundColor:top.map(function(o){return _ocColor(o.ocup);})}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}}); }
+    // Barra 1: bocas libres por barrio
+    _ocBarChart('bar','oc-ch-bar', base.filter(function(o){return o.libres>0;}).sort(function(a,b){return b.libres-a.libres;}), _ocBar1All, 'Bocas libres', function(o){return o.libres;});
+    var b1=document.getElementById('oc-bar1-all'); if(b1){ b1.textContent=_ocBar1All?'Ver menos ▴':'Ver todas ▾'; b1.onclick=function(){ _ocBar1All=!_ocBar1All; var p=document.getElementById('oc-ch-bar').parentNode; if(p)p.style.maxHeight=_ocBar1All?'400px':'240px'; _ocDashboard(_OCDATA._res); }; }
+    // Barra 2: ocupación % por barrio
+    _ocBarChart('bar2','oc-ch-bar2', base.filter(function(o){return o.naps>=1;}).sort(function(a,b){return b.ocup-a.ocup;}), _ocBar2All, 'Ocupación %', function(o){return Math.round(o.ocup*100);});
+    var b2=document.getElementById('oc-bar2-all'); if(b2){ b2.textContent=_ocBar2All?'Ver menos ▴':'Ver todas ▾'; b2.onclick=function(){ _ocBar2All=!_ocBar2All; var p=document.getElementById('oc-ch-bar2').parentNode; if(p)p.style.maxHeight=_ocBar2All?'400px':'240px'; _ocDashboard(_OCDATA._res); }; }
+  }
+  function _ocBarChart(key, canvasId, data, all, label, val){
+    try{ if(_ocCharts[key]){_ocCharts[key].destroy();} var c=document.getElementById(canvasId); if(!c||!window.Chart)return;
+      var arr=all?data:data.slice(0,12);
+      if(all) c.height=Math.max(240, arr.length*20);
+      _ocCharts[key]=new Chart(c,{type:'bar',data:{labels:arr.map(function(o){return o.zona;}),datasets:[{label:label,data:arr.map(val),backgroundColor:arr.map(function(o){return _ocColor(o.ocup);})}]},options:{indexAxis:'y',maintainAspectRatio:!all,responsive:true,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true},y:{ticks:{font:{size:10},autoSkip:false}}}}});
     }catch(e){}
   }
   function _ocCard(t,big,sub){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">'+esc(t)+'</div><div style="font-size:24px;font-weight:800;margin:2px 0">'+esc(big)+'</div><div class="muted" style="font-size:12px">'+esc(sub)+'</div></div>'; }
@@ -4250,8 +4262,8 @@
       var lista=n._cliList.slice(0,12).map(function(x){return '• '+esc(x);}).join('<br>');
       var mas=n._cliList.length>12?('<br><span class="muted">… y '+(n._cliList.length-12)+' más</span>'):'';
       L.circleMarker([n.lat,n.lng],{renderer:canvas,radius:5,color:'#fff',weight:1,fillColor:_ocColor(ratio),fillOpacity:.95})
-        .bindPopup('<b>NAP '+esc(n.codigo)+'</b><br>Nodo '+esc(n._nodo)+' · '+esc(n._barrio)+'<br><b>'+n._cli+'/'+_OC_PORTS+'</b> ocupadas ('+Math.round(ratio*100)+'%)'+(n._cliList.length?('<br><div style="margin-top:4px;font-size:12px;max-height:150px;overflow:auto">'+lista+mas+'</div>'):'')).addTo(_ocLNaps);
-      });
+        .bindPopup('<b>NAP '+esc(n.codigo)+'</b><br>'+esc(n._barrio)+'<br><b>'+n._cli+'/'+_OC_PORTS+'</b> ocupadas ('+Math.round(ratio*100)+'%)'+(n._cliList.length?('<br><div style="margin-top:4px;font-size:12px;max-height:150px;overflow:auto">'+lista+mas+'</div>'):'')).addTo(_ocLNaps);
+      allP.push([n.lat,n.lng]); });
     _ocToggleCapa();
     if(allP.length>1){ try{ _OCMAP.fitBounds(allP,{padding:[20,20]}); }catch(e){} }
     setTimeout(function(){ if(_OCMAP) _OCMAP.invalidateSize(); },250);
