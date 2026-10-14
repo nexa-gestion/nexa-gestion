@@ -244,7 +244,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v2.7';
+  var VER='v2.8';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2481,15 +2481,22 @@
     c.stops=route; c.km=km(route); c.kmRecta=c.km;
   }
   // Recorrido REAL por calle (OSRM): geometría que sigue las calles + km reales · circuito cerrado (vuelve al depósito)
+  // Robusto: prueba varios servidores OSRM (el demo público es inestable) y solo cae a la línea recta si fallan TODOS.
+  var _AG_OSRM=['https://routing.openstreetmap.de/routed-car/route/v1/driving/','https://router.project-osrm.org/route/v1/driving/'];
   function _agOsrmRoute(c,depot){
     if(!c.stops.length){ c.geometry=null; return Promise.resolve(); }
     var coords=[[depot.lng,depot.lat]].concat(c.stops.map(function(s){return [s.lng,s.lat];})).concat([[depot.lng,depot.lat]]);
-    var url='https://router.project-osrm.org/route/v1/driving/'+coords.map(function(p){return p[0]+','+p[1];}).join(';')+'?overview=full&geometries=geojson';
-    var ctrl=('AbortController' in window)?new AbortController():null, t=ctrl?setTimeout(function(){ctrl.abort();},20000):null;
-    return fetch(url,ctrl?{signal:ctrl.signal}:{}).then(function(r){return r.json();}).then(function(j){
-      if(t)clearTimeout(t);
-      if(j&&j.routes&&j.routes[0]){ c.geometry=j.routes[0].geometry.coordinates.map(function(p){return [p[1],p[0]];}); c.km=j.routes[0].distance/1000; c.viaCalle=true; }
-    }).catch(function(){ if(t)clearTimeout(t); /* fallback: queda la recta */ });
+    var path=coords.map(function(p){return p[0]+','+p[1];}).join(';')+'?overview=full&geometries=geojson';
+    function attempt(idx){
+      if(idx>=_AG_OSRM.length) return;   // fallaron todos → queda la recta
+      var ctrl=('AbortController' in window)?new AbortController():null, t=ctrl?setTimeout(function(){ctrl.abort();},15000):null;
+      return fetch(_AG_OSRM[idx]+path,ctrl?{signal:ctrl.signal}:{}).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
+        if(t)clearTimeout(t);
+        if(j&&j.routes&&j.routes[0]&&j.routes[0].geometry){ c.geometry=j.routes[0].geometry.coordinates.map(function(p){return [p[1],p[0]];}); c.km=j.routes[0].distance/1000; c.viaCalle=true; return; }
+        throw 0;
+      }).catch(function(){ if(t)clearTimeout(t); return attempt(idx+1); });
+    }
+    return Promise.resolve(attempt(0));
   }
   function _agChip(t,n){ return '<span style="display:inline-block;background:#eef2ff;color:#3730a3;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:3px">'+esc(t)+(n>1?(' ×'+n):'')+'</span>'; }
   function _agGeoBadge(src){ var m={gps:['📍 GPS','#16a34a'],nap:['📡 NAP','#2563eb'],barrio:['🏘️ barrio aprox.','#d97706'],osm:['🗺️ mapa aprox.','#d97706']}; var x=m[src]||m.gps; return ' <span style="font-size:10px;font-weight:700;color:'+x[1]+'">'+x[0]+'</span>'; }
