@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.7';
+  var VER='v3.8';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4047,7 +4047,7 @@
   var _OCDATA=null, _OCMAP=null, _ocVista='barrio', _OC_PORTS=8;
   // Se excluyen del cálculo FTTH: clientes wireless (no usan NAP) y los de 508/Hipódromo/597/Itaembé (red ya no nuestra).
   var _OC_EXCL=/508|hip[oó]dromo|597|itaemb/i;
-  var _ocLPoly=null, _ocLNaps=null, _ocCapaPoly=true, _ocCapaNaps=false;
+  var _ocLPoly=null, _ocLNaps=null, _ocCapaPoly=true, _ocCapaNaps=false, _ocDashOpen=true;
   function _ocNodo(cod){ var m=String(cod||'').match(/^\s*(\d+)/); return m?m[1]:'?'; }
   function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
   function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
@@ -4085,8 +4085,7 @@
       sbGetAll('clientes?estado=eq.activo&select=id,nombre,apellido,barrio,tecnologia,lat,lng&order=id.asc'),
       sbGetAll('geo_naps?activo=eq.true&select=codigo,lat,lng,zona&order=id.asc'),
       sbGet('geo_poligonos?activo=eq.true&select=nombre,coords,tipo'),
-      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst'),
-      sbGet('geo_chacras?select=cha,geom')
+      sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst')
     ]).then(function(r){
       // ── CONGLOMERADO: por cliente, el GPS real del técnico (instalación/reparación) pisa al geocodificado ──
       var otGps={}; (r[3]||[]).forEach(function(o){ if(o.cliente_id!=null&&o.lat_fin!=null&&o.lng_fin!=null) otGps[o.cliente_id]={lat:o.lat_fin,lng:o.lng_fin}; });
@@ -4096,9 +4095,7 @@
       var cli=cliAll.filter(function(c){ if(_esWifi(c.tecnologia)){ exclW++; return false; } if(_OC_EXCL.test(c.barrio||'')){ exclZ++; return false; } return true; });
       var naps=(r[1]||[]).filter(function(n){return n.lat!=null&&n.lng!=null;});
       var polys=(r[2]||[]).filter(function(p){return Array.isArray(p.coords)&&p.coords.length>2;});
-      // chacras catastrales: para asignar las CH que no tienen polígono propio (fix "sin zona")
-      var chacras=(r[4]||[]).map(function(c){ return {cha:parseInt(c.cha,10)||c.cha, rings:_chaRings(c.geom)}; }).filter(function(c){return c.rings.length;});
-      _OCDATA={cli:cli,naps:naps,polys:polys,chacras:chacras,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
+      _OCDATA={cli:cli,naps:naps,polys:polys,exclW:exclW,exclZ:exclZ,mejorados:mejorados};
       _ocRender();
     }).catch(function(){ view.innerHTML='<h1>Ocupación de red</h1><div class="center">No se pudieron cargar los datos.</div>'; });
   }
@@ -4107,14 +4104,14 @@
     // 1) ZONA por NAP: primero polígono (geo_poligonos); si no cae en ninguno, chacra catastral (fix "sin zona")
     d.naps.forEach(function(n){ n._nodo=_ocNodo(n.codigo); n._cli=0; n._cliList=[]; n._barrio='(sin zona)'; n._zid=null; n._geom=null;
       for(var i=0;i<d.polys.length;i++){ if(pointInPoly(n.lat,n.lng,d.polys[i].coords)){ n._barrio=_ocBarrio(d.polys[i].nombre); n._zid='P'+i; n._geom=d.polys[i].coords; break; } }
-      if(!n._zid){ for(var c=0;c<d.chacras.length;c++){ var rs=d.chacras[c].rings; for(var r=0;r<rs.length;r++){ if(pointInPoly(n.lat,n.lng,rs[r])){ n._barrio='CH '+d.chacras[c].cha; n._zid='C'+d.chacras[c].cha; n._geom=rs[r]; break; } } if(n._zid)break; } }
     });
-    // 1b) NAPs que no cayeron en ningún polígono/chacra (Garupá, nodos nuevos…): armar un contorno por nodo y pintarlo
+    // 1b) NAPs fuera de los polígonos del KMZ (Garupá, nodos nuevos…): se agrupan por NODO y se pinta su contorno
+    // (son "nuestras zonas/barrios"). NO se usan chacras catastrales. Mínimo 4 NAPs para evitar manchas sueltas.
     var sinz={}; d.naps.forEach(function(n){ if(n._zid)return; (sinz[n._nodo]=sinz[n._nodo]||[]).push(n); });
-    Object.keys(sinz).forEach(function(nd){ var grp=sinz[nd]; var hull=_ocHull(grp); if(!hull)return;
+    Object.keys(sinz).forEach(function(nd){ var grp=sinz[nd]; if(grp.length<4)return; var hull=_ocHull(grp); if(!hull)return;
       var names={}; grp.forEach(function(n){ var nm=_ocZonaName(n.zona); if(nm)names[nm]=(names[nm]||0)+1; });
       var best=Object.keys(names).sort(function(a,b){return names[b]-names[a];})[0];
-      var nombre=best||('Nodo '+nd);
+      var nombre=best?(best+' (nodo '+nd+')'):('Nodo '+nd);
       grp.forEach(function(n){ n._barrio=nombre; n._zid='N'+nd; n._geom=hull; });
     });
     // 2) grilla para NAP más cercana + lista de clientes por NAP
@@ -4148,7 +4145,8 @@
         +_ocCard('Sin NAP cercana', res.sinNap.toLocaleString('es-AR'), 'FTTH propio sin ubicar (GPS aprox.)')
       +'</div>'
       +'<div class="muted" style="font-size:12px;margin:-2px 0 6px">📍 <b>'+((_OCDATA.mejorados||0)).toLocaleString('es-AR')+'</b> clientes ubicados con el GPS real del técnico (instalación/reparación). · Excluidos del cálculo: <b>'+((_OCDATA.exclW||0)).toLocaleString('es-AR')+'</b> wireless + <b>'+((_OCDATA.exclZ||0)).toLocaleString('es-AR')+'</b> de 508/Hipódromo/597/Itaembé (no son red FTTH propia).</div>'
-      +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
+      +'<div id="oc-dash-head" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;margin:4px 0 8px;color:#1e293b"><span id="oc-dash-arrow">'+(_ocDashOpen?'▼':'▶')+'</span> 📊 Análisis comercial <span class="muted" style="font-weight:400;font-size:12px">(gráficos y oportunidades)</span></div>'
+      +'<div id="oc-dash-body" style="display:'+(_ocDashOpen?'flex':'none')+';gap:12px;flex-wrap:wrap;margin-bottom:12px">'
         +'<div style="flex:1;min-width:220px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Ocupación global</div><canvas id="oc-ch-donut" style="max-height:170px"></canvas></div>'
         +'<div style="flex:1.4;min-width:300px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Más capacidad ociosa ('+(_ocVista==='barrio'?'barrios':'nodos')+') — dónde hay bocas para vender</div><canvas id="oc-ch-bar" style="max-height:230px"></canvas></div>'
         +'<div style="flex:1;min-width:230px;background:linear-gradient(180deg,#f0fdf4,#fff);border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-weight:800;color:#15803d;margin-bottom:6px">🎯 Dónde atacar comercialmente</div><div id="oc-rank" style="font-size:13px"></div></div>'
@@ -4159,7 +4157,8 @@
           +'<button class="btn '+(_ocVista==='nodo'?'btn-pri':'btn-2')+'" id="oc-vn" style="border-radius:0;margin:0">Por nodo</button>'
         +'</div>'
         +'<label style="display:flex;align-items:center;gap:5px;font-size:13px">Salidas por NAP: <input id="oc-ports" type="number" min="1" max="64" value="'+_OC_PORTS+'" style="width:64px"></label>'
-        +'<button class="btn btn-2" id="oc-export">⬇️ Exportar</button>'
+        +'<button class="btn btn-2" id="oc-xls">📊 Excel</button>'
+        +'<button class="btn btn-2" id="oc-pdf">📄 PDF</button>'
         +'<span style="margin-left:6px;font-size:12px;font-weight:700;color:var(--gris)">CAPAS:</span>'
         +'<label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="oc-cp"'+(_ocCapaPoly?' checked':'')+'> Polígonos</label>'
         +'<label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="oc-cn"'+(_ocCapaNaps?' checked':'')+'> NAPs</label>'
@@ -4170,12 +4169,18 @@
     document.getElementById('oc-vb').addEventListener('click',function(){ _ocVista='barrio'; _ocRender(); });
     document.getElementById('oc-vn').addEventListener('click',function(){ _ocVista='nodo'; _ocRender(); });
     document.getElementById('oc-ports').addEventListener('change',function(){ var v=parseInt(this.value); if(v>0&&v<=64){ _OC_PORTS=v; _ocRender(); } });
-    document.getElementById('oc-export').addEventListener('click',_ocExport);
+    document.getElementById('oc-xls').addEventListener('click',_ocExcel);
+    document.getElementById('oc-pdf').addEventListener('click',_ocPDF);
     document.getElementById('oc-cp').addEventListener('change',function(){ _ocCapaPoly=this.checked; _ocToggleCapa(); });
     document.getElementById('oc-cn').addEventListener('change',function(){ _ocCapaNaps=this.checked; _ocToggleCapa(); });
+    document.getElementById('oc-dash-head').addEventListener('click',function(){ _ocDashOpen=!_ocDashOpen;
+      document.getElementById('oc-dash-body').style.display=_ocDashOpen?'flex':'none';
+      document.getElementById('oc-dash-arrow').textContent=_ocDashOpen?'▼':'▶';
+      if(_ocDashOpen) _ocDashboard(_OCDATA._res);
+    });
     _ocTabla(res);
     _ocMapa();
-    _ocDashboard(res);
+    if(_ocDashOpen) _ocDashboard(res);
   }
   var _ocCharts={};
   function _ocDashboard(res){
@@ -4243,13 +4248,62 @@
     if(allP.length>1){ try{ _OCMAP.fitBounds(allP,{padding:[20,20]}); }catch(e){} }
     setTimeout(function(){ if(_OCMAP) _OCMAP.invalidateSize(); },250);
   }
-  function _ocExport(){
-    var res=_OCDATA._res, rows=(_ocVista==='barrio'?res.byBarrio:res.byNodo);
-    var head=(_ocVista==='barrio'?'Barrio':'Nodo')+',NAPs,Capacidad,Clientes,Libres,Ocupacion%\n';
-    var body=rows.map(function(o){ return '"'+String(o.zona).replace(/"/g,'""')+'",'+o.naps+','+o.cap+','+o.cli+','+o.libres+','+Math.round(o.ocup*100); }).join('\n');
-    var csv=head+body+'\n\nSupuesto: '+_OC_PORTS+' salidas por NAP · clientes activos geolocalizados ≤150m · sin NAP cercana: '+res.sinNap;
-    var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='ocupacion_red_'+_ocVista+'.csv'; a.click();
-    toast('📄 Exportado');
+  function _ocLoadScript(src,cb){ var s=document.createElement('script'); s.src=src; s.onload=cb; s.onerror=function(){ toast('No se pudo cargar la librería de exportación'); }; document.head.appendChild(s); }
+  function _ocEnsureXLSX(cb){ if(window.XLSX)return cb(); _ocLoadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',cb); }
+  function _ocEnsurePDF(cb){ if(window.jspdf&&window.jspdf.jsPDF&&window.jspdf.jsPDF.API.autoTable)return cb(); _ocLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(){ _ocLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',cb); }); }
+  function _ocFecha(){ var d=new Date(); return d.toLocaleDateString('es-AR')+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }
+  function _ocResumenAoa(res){ return [
+    ['NEXA · Ocupación de red (aproximado)'],['Generado',_ocFecha()],[''],
+    ['Capacidad total (bocas)', res.cap],['NAPs', res.totNaps],['Salidas por NAP (supuesto)', _OC_PORTS],
+    ['Clientes ubicados', res.totCli],['Ocupación global', Math.round(res.occ*100)+'%'],['Bocas libres', res.libres],
+    ['Sin NAP cercana (FTTH propio sin ubicar)', res.sinNap],
+    ['Clientes ubicados con GPS de técnico', _OCDATA.mejorados||0],
+    ['Excluidos: wireless', _OCDATA.exclW||0],['Excluidos: 508/Hipódromo/597/Itaembé', _OCDATA.exclZ||0],
+    [''],['Nota','Ocupación = clientes activos geolocalizados ÷ (NAPs × salidas). Asignación por cercanía ≤150 m.']
+  ]; }
+  function _ocZonaAoa(rows){ var a=[['Zona','NAPs','Capacidad','Clientes','Libres','Ocupación %']];
+    rows.forEach(function(o){ a.push([o.zona,o.naps,o.cap,o.cli,o.libres,Math.round(o.ocup*100)]); }); return a; }
+  function _ocExcel(){
+    var btn=document.getElementById('oc-xls'); btn.disabled=true; var t0=btn.textContent; btn.textContent='Generando…';
+    _ocEnsureXLSX(function(){ try{
+      var res=_OCDATA._res; var wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_ocResumenAoa(res)), 'Resumen');
+      var rk=res.byBarrio.filter(function(o){return o.naps>=2&&o.libres>0&&!/sin zona/i.test(o.zona);}).sort(function(a,b){return b.libres-a.libres;});
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['🎯 Dónde atacar comercialmente (ordenado por bocas libres)']].concat(_ocZonaAoa(rk))), 'Oportunidades');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_ocZonaAoa(res.byBarrio.slice().sort(function(a,b){return b.libres-a.libres;}))), 'Por barrio');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_ocZonaAoa(res.byNodo)), 'Por nodo');
+      XLSX.writeFile(wb, 'Ocupacion_red_Nexa.xlsx');
+      toast('📊 Excel generado');
+    }catch(e){ toast('Error generando Excel'); } btn.disabled=false; btn.textContent=t0; });
+  }
+  function _ocPDF(){
+    var btn=document.getElementById('oc-pdf'); btn.disabled=true; var t0=btn.textContent; btn.textContent='Generando…';
+    _ocEnsurePDF(function(){ try{
+      var res=_OCDATA._res; var jsPDF=window.jspdf.jsPDF; var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'}); var W=210, y=14;
+      doc.setFontSize(18); doc.setTextColor(30,41,59); doc.text('NEXA · Ocupación de red', 14, y); y+=6;
+      doc.setFontSize(10); doc.setTextColor(100); doc.text('Penetración de red FTTH — '+_ocFecha()+'  ·  aproximado', 14, y); y+=8;
+      // KPIs
+      doc.setFontSize(11); doc.setTextColor(20);
+      var kpis=[['Capacidad', res.cap+' bocas ('+res.totNaps+' NAPs × '+_OC_PORTS+')'],['Ocupación global', Math.round(res.occ*100)+'%  ·  '+res.totCli+' clientes'],['Bocas libres', res.libres+'  (capacidad para vender)']];
+      doc.autoTable({ startY:y, body:kpis, theme:'plain', styles:{fontSize:11,cellPadding:1}, columnStyles:{0:{fontStyle:'bold',cellWidth:45}} }); y=doc.lastAutoTable.finalY+4;
+      // charts como imagen
+      try{ var cd=document.getElementById('oc-ch-donut'); var cb=document.getElementById('oc-ch-bar');
+        if(cd){ doc.addImage(cd.toDataURL('image/png',1), 'PNG', 14, y, 80, 55); }
+        if(cb){ doc.addImage(cb.toDataURL('image/png',1), 'PNG', 100, y, 96, 55); }
+        y+=60;
+      }catch(e){}
+      // ranking
+      var rk=res.byBarrio.filter(function(o){return o.naps>=2&&o.libres>0&&!/sin zona/i.test(o.zona);}).sort(function(a,b){return b.libres-a.libres;}).slice(0,10);
+      doc.setFontSize(13); doc.setTextColor(21,128,61); doc.text('Donde atacar comercialmente', 14, y); y+=2;
+      doc.autoTable({ startY:y, head:[['#','Zona','NAPs','Libres','Ocup.%']], body:rk.map(function(o,i){return [i+1,o.zona,o.naps,o.libres,Math.round(o.ocup*100)+'%'];}), styles:{fontSize:9}, headStyles:{fillColor:[22,163,74]} }); y=doc.lastAutoTable.finalY+6;
+      // tablas completas
+      var bb=res.byBarrio.slice().sort(function(a,b){return b.libres-a.libres;});
+      doc.setFontSize(13); doc.setTextColor(30); if(y>250){doc.addPage();y=16;} doc.text('Por barrio / zona', 14, y); y+=2;
+      doc.autoTable({ startY:y, head:[['Zona','NAPs','Capacidad','Clientes','Libres','Ocup.%']], body:bb.map(function(o){return [o.zona,o.naps,o.cap,o.cli,o.libres,Math.round(o.ocup*100)+'%'];}), styles:{fontSize:8}, headStyles:{fillColor:[37,99,235]} });
+      doc.addPage(); doc.setFontSize(13); doc.text('Por nodo', 14, 16);
+      doc.autoTable({ startY:18, head:[['Nodo','NAPs','Capacidad','Clientes','Libres','Ocup.%']], body:res.byNodo.map(function(o){return [o.zona,o.naps,o.cap,o.cli,o.libres,Math.round(o.ocup*100)+'%'];}), styles:{fontSize:8}, headStyles:{fillColor:[37,99,235]} });
+      doc.save('Ocupacion_red_Nexa.pdf'); toast('📄 PDF generado');
+    }catch(e){ toast('Error generando PDF'); } btn.disabled=false; btn.textContent=t0; });
   }
   function vCobertura(){ loading(); ensureLeaflet(_coberturaRender); }
   function _coberturaRender(){
