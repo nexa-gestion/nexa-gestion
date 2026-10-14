@@ -65,13 +65,14 @@
     <div class="sub">Internet · Solicitud de conexión</div>
   </div>
   <div id="app"></div>
-  <div class="foot">Nexa SAS · Tus datos se usan solo para coordinar la instalación. · v0.14</div>
+  <div class="foot">Nexa SAS · Tus datos se usan solo para coordinar la instalación. · <span id="ver"></span></div>
 </div>
 
 <script>
 (function(){
   'use strict';
   // ── CONFIG ────────────────────────────────────────────────────────────
+  var VER = 'v0.15';
   var SB_URL = 'https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
@@ -225,7 +226,7 @@
       h += '<div style="margin-top:12px;background:#ecfeff;border:1px solid #a5f3fc;border-radius:12px;padding:12px">';
       h += '<div style="font-weight:800;color:#0e7490;font-size:15px">📍 Cobertura en Itaembé Guazú</div>';
       h += '<div class="hint" style="color:#164e63;margin-top:4px">Por ahora llegamos <b>solo a la zona marcada en verde</b>. Si tu casa está en <b>508 Viviendas</b> o en el <b>Hipódromo (597 Viviendas)</b>, todavía <b>no tenemos cobertura</b>.</div>';
-      h += '<img src="cobertura-itaembe.jpg" alt="Zona de cobertura en Itaembé Guazú" style="width:100%;border-radius:10px;margin-top:10px;border:1px solid #cbd5e1" loading="lazy">';
+      h += '<img src="cobertura-itaembe.jpg?'+VER+'" alt="Zona de cobertura en Itaembé Guazú" style="width:100%;border-radius:10px;margin-top:10px;border:1px solid #cbd5e1" loading="lazy">';
       h += '</div>';
       h += '<div class="label">¿Sos cliente nuevo o querés cambiar de plan? <span class="req">*</span></div>';
       h += '<div class="row">';
@@ -476,6 +477,7 @@
   }
 
   // arranque
+  try{ document.getElementById('ver').textContent = VER; }catch(e){}
   estado('','', '<div class="spin"></div><div class="txt" style="margin-top:14px">Cargando…</div>');
   cargarRef(render);
 })();
