@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.13';
+  var VER='v3.14';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4064,6 +4064,15 @@
     lo.pop(); up.pop(); var h=lo.concat(up); if(h.length<3) return null;
     return h.map(function(c){return [c[1],c[0]];});
   }
+  // contorno de una zona filtrando NAPs mal ubicadas (outliers que hacían los "chorizos"): se quedan solo las cercanas a la mediana
+  function _ocHullZona(naps){
+    if(naps.length<3) return null;
+    var la=naps.map(function(n){return n.lat;}).sort(function(a,b){return a-b;}), ln=naps.map(function(n){return n.lng;}).sort(function(a,b){return a-b;});
+    var mla=la[Math.floor(la.length/2)], mln=ln[Math.floor(ln.length/2)];
+    var inl=naps.filter(function(n){ return _ocHav(n.lat,n.lng,mla,mln) < 1200; });   // ≤1,2 km de la mediana
+    if(inl.length<3) inl=naps;
+    return _ocHull(inl);
+  }
   // nombre de zona a partir del campo zona de la NAP (solo si parece un lugar, no OLT/PON/botella)
   function _ocZonaName(z){ z=String(z||'').trim();
     if(!z || /^olt|^plt|^pon|placa|botella|^\d+\s*ramal|^nodo\s*\d/i.test(z)) return null;
@@ -4113,7 +4122,7 @@
     // agrupar por NOMBRE: el contorno es SOLO el polígono dibujado en el KMZ. Las zonas sin polígono se ven por sus
     // NAPs (puntos de color), NO se inventa contorno (los hulls quedaban feos con NAPs dispersos).
     var byName={}; d.naps.forEach(function(n){ var o=byName[n._barrio]||(byName[n._barrio]={naps:[],geom:null}); o.naps.push(n); if(n._polyGeom && !o.geom) o.geom=n._polyGeom; });
-    Object.keys(byName).forEach(function(k){ var g=byName[k]; g.naps.forEach(function(n){ n._zid=k; n._geom=g.geom; }); });
+    Object.keys(byName).forEach(function(k){ var g=byName[k]; if(!g.geom && !/sin nombre/i.test(k)) g.geom=_ocHullZona(g.naps); g.naps.forEach(function(n){ n._zid=k; n._geom=g.geom; }); });
     // 2) grilla para NAP más cercana + lista de clientes por NAP
     var grid={}, GK=function(la,ln){ return Math.round(la*400)+'_'+Math.round(ln*400); };
     d.naps.forEach(function(n){ var k=GK(n.lat,n.lng); (grid[k]=grid[k]||[]).push(n); });
