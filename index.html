@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.25';
+  var VER='v3.26';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1802,8 +1802,9 @@
       var nums=o.clientes?('N° Nexa '+o.clientes.numero_cliente+(o.clientes.codigo_ispcube?(' · Cód. ISPcube '+o.clientes.codigo_ispcube):' · sin cargar en ISPcube')):'';
       var oTel=o.clientes?o.clientes.telefono:'', oDom=_domLimpio(o.clientes?o.clientes.domicilio_full:'');
       var _sa=o.solicitudes_alta, _coordBanner=(_sa&&_sa.dia_preferido)?('<div style="background:#eef4ff;border:1px solid #c7dbff;border-radius:10px;padding:9px 12px;margin:2px 0 10px;color:#1e40af;font-size:13.5px">📅 <b>Coordinado por el cliente:</b> pidió '+esc(fmtFecha(_sa.dia_preferido))+(_sa.franja_preferida?(' · '+esc(_franjaLbl(_sa.franja_preferida))):'')+' <span class="muted" style="font-size:12px">(lo eligió al completar la solicitud · agendá la OT para esa fecha)</span></div>'):'';
-      modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+(oTel?waLink(oTel,cli,o.tipo,oDom,'Coordinar visita'):'')+'</p>'
+      modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+(oTel?waLink(oTel,cli,o.tipo,oDom,'Coordinar visita'):'')+((['PENDIENTE','ASIGNADA','EN_CURSO'].indexOf(o.estado)>=0&&o.clientes)?'<button class="btn btn-pri" id="ot-asignar-top" style="padding:7px 13px">📋 Asignar a cuadrilla</button>':'')+'</p>'
         +_coordBanner
+        +'<div id="ot-asignar-box" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 12px;margin:0 0 10px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="font-weight:700;color:#166534">Asignar a:</span><select id="ot-asignar-cuad" style="width:auto;min-width:180px">'+cuadOpts+'</select><button class="btn btn-ok" id="ot-asignar-go" style="padding:7px 14px">✅ Asignar'+((_sa&&_sa.dia_preferido)?(' para el '+esc(fmtFecha(_sa.dia_preferido))):'')+'</button></div><div class="muted" style="font-size:11.5px;margin-top:5px">Queda agendada con la fecha/hora de abajo (precargada con lo que pidió el cliente).</div></div>'
         +'<div class="fichagrid">'+fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+(o.clientes?fr('DNI',(o.clientes.tipo_doc||'DNI')+' '+(o.clientes.doc_numero||'—')):'')+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(oTel||'—')+' '+waLink(oTel,cli,o.tipo,oDom)+'</span></div>'+(o.clientes?fr('📧 Email',o.clientes.email):'')+(o.clientes&&o.clientes.telefono_alt?fr('Tel. alternativo',o.clientes.telefono_alt):'')+fr('Domicilio',oDom)+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(o.clientes.lat,o.clientes.lng)+'</span></div>':'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
@@ -1827,6 +1828,11 @@
         +'<div id="ot-hist" style="margin-top:14px"></div>', 'wide');
       document.getElementById('ot-x').addEventListener('click',cerrarModal);
       document.getElementById('ot-print').addEventListener('click',function(){ imprimirOT(id); });
+      // Botón "Asignar a cuadrilla" arriba: despliega un selector y reusa el Guardar (misma lógica: chequeo ISPcube, fecha, estado)
+      (function(){ var top=document.getElementById('ot-asignar-top'), box=document.getElementById('ot-asignar-box'); if(!top||!box)return;
+        top.addEventListener('click',function(){ var show=(box.style.display==='none'); box.style.display=show?'':'none'; if(show){ var cur=document.getElementById('ot-cuad-edit'), pick=document.getElementById('ot-asignar-cuad'); if(cur&&pick&&cur.value)pick.value=cur.value; if(pick)pick.focus(); } });
+        var go=document.getElementById('ot-asignar-go'); if(go) go.addEventListener('click',function(){ var pick=document.getElementById('ot-asignar-cuad'); if(!pick||!pick.value){ toast('Elegí una cuadrilla.'); return; } var cur=document.getElementById('ot-cuad-edit'); if(cur)cur.value=pick.value; var est=document.getElementById('ot-est'); if(est)est.value='ASIGNADA'; document.getElementById('ot-save').click(); });
+      })();
       var _ec=document.getElementById('ot-editcli'); if(_ec) _ec.addEventListener('click',function(){ editarClienteOT(o); });
       // ✏️ editar la Descripción inline (lo que ve el técnico en el PWA y en la OT)
       (function(){
