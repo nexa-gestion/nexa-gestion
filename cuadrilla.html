@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.45</title>
+<title>Nexa · Técnico — v0.46</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.45';
+  var VER='v0.46';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -352,9 +352,9 @@
         h+='<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bord);padding:9px 0"><div style="flex:1;font-weight:600">'+esc(m.nombre)+'</div><input type="number" inputmode="numeric" min="0" class="mo-cant" data-m="'+m.id+'" value="'+(c>0?c:'')+'" placeholder="0" style="width:92px;text-align:center;font-weight:700"></div>';
       });
       var _esInstal=/INSTALACION/i.test(o.tipo||'');
-      h+='</div><div class="card"><div class="label">Datos de la conexión (para ISPcube) <span style="font-weight:400;color:var(--gris)">· Caja (NAP) y Puerto obligatorios en FTTH</span></div>'
+      h+='</div><div class="card"><div class="label">Datos de la conexión (para ISPcube) <span style="font-weight:400;color:var(--gris)">· Caja (NAP), Puerto y Precinto obligatorios en FTTH</span></div>'
         +dInput('precinto','Precinto')+dInput('caja_nap','Caja (NAP)')+dInput('puerto','Puerto de fibra')+dInput('access_point','Access Point')+dInput('mac','MAC')+dInput('serial','Serial / Modelo')
-        +(_esInstal?'':'<label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:13px;color:var(--gris)"><input type="checkbox" id="cie-nocaja"'+(CIE.noCaja?' checked':'')+'> 🏠 Trabajo interno — no toqué la caja (no cargar caja/puerto)</label>')+'</div>'
+        +(_esInstal?'':'<label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:13px;color:var(--gris)"><input type="checkbox" id="cie-nocaja"'+(CIE.noCaja?' checked':'')+'> 🏠 Trabajo interno — no toqué la caja (no cargar caja/puerto/precinto)</label>')+'</div>'
         +'<div class="card"><div class="label">Fotos</div><div id="cie-fotos">'+renderFotos()+'</div><input type="file" accept="image/*" multiple id="cie-foto-in" style="margin-top:8px;border:0;padding:6px 0"></div>'
         +'<div class="card"><div class="label">Observaciones</div><textarea id="cie-obs" rows="3" style="width:100%"></textarea></div>';
     } else {
@@ -434,7 +434,7 @@
     var o=CIE.o, btn=document.getElementById('cie-confirmar');
     var obsEl=document.getElementById('cie-obs'), obs=obsEl?obsEl.value.trim():'';
     if(CIE.accion==='NO_REALIZADA'){ var mEl=document.getElementById('cie-motivo'),mot=mEl?mEl.value:''; if(!mot){ err.textContent='Elegí un motivo.'; return; } if(!obs){ err.textContent='La observación es obligatoria.'; return; } CIE._motivo=mot; }
-    // Caja (NAP) + Puerto OBLIGATORIOS al realizar una tarea FTTH con cliente real (instalación o reparación),
+    // Caja (NAP) + Puerto + Precinto OBLIGATORIOS al realizar una tarea FTTH con cliente real (instalación o reparación),
     // así el dato queda cargado y el cliente entra bien al polígono/ocupación. Wireless no tiene caja → se omite.
     if(CIE.accion==='REALIZADA' && CIE.o.clientes && CIE.o.clientes.id){
       var _tec=CIE.o.clientes.tecnologia||'', _esWifi=/(inalamb|wireless|wifi)/i.test(_tec);
@@ -442,8 +442,8 @@
       var _interno=!_esInstal && !!(document.getElementById('cie-nocaja')&&document.getElementById('cie-nocaja').checked);
       if(!_esWifi && !_interno){   // instalación: siempre · reparación/otros: salvo "trabajo interno"
         var _dn={}; each('.cie-dato',function(inp){ _dn[inp.getAttribute('data-k')]=(inp.value||'').trim(); });
-        if(!_dn.caja_nap){ err.textContent='Cargá la Caja (NAP) de la conexión (obligatorio; si no tocaste la caja marcá «Trabajo interno»).'; return; }
-        if(!_dn.puerto){ err.textContent='Cargá el Puerto de fibra de la conexión (obligatorio; si no tocaste la caja marcá «Trabajo interno»).'; return; }
+        var _falta=(!_dn.caja_nap?'la Caja (NAP)':(!_dn.puerto?'el Puerto de fibra':(!_dn.precinto?'el Precinto':'')));
+        if(_falta){ err.textContent='Cargá '+_falta+' de la conexión (obligatorio; si no tocaste la caja marcá «Trabajo interno»).'; return; }
       }
     }
     if(CIE.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá a que terminen de subir las fotos.'; return; }
