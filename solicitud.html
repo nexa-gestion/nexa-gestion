@@ -72,7 +72,7 @@
 (function(){
   'use strict';
   // ── CONFIG ────────────────────────────────────────────────────────────
-  var VER = 'v0.15';
+  var VER = 'v0.16';
   var SB_URL = 'https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
@@ -135,9 +135,10 @@
   function _iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   var _DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'], _MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   function fmtDia(d){ return _DIAS[d.getDay()]+' '+d.getDate()+'/'+_MES[d.getMonth()]; }
-  // próximos días hábiles a partir de MAÑANA (nunca hoy); se excluye domingo
+  // próximos días hábiles (se excluye domingo). CORTE 13:00: si el cliente completa
+  // después de las 13 hs ya no se le ofrece el día siguiente → arranca desde el día posterior.
   function diasDisponibles(n){
-    var out=[], d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+1);
+    var out=[], d=new Date(); var pasoCorte=d.getHours()>=13; d.setHours(0,0,0,0); d.setDate(d.getDate()+(pasoCorte?2:1));
     while(out.length<n){ if(d.getDay()!==0) out.push(new Date(d)); d.setDate(d.getDate()+1); }
     return out;
   }
@@ -292,7 +293,7 @@
     h += '<select id="dia"><option value="">— Elegí el día —</option>';
     diasDisponibles(12).forEach(function(d){ var iso=_iso(d), full=!diaTieneCupo(iso); h += '<option value="'+iso+'"'+(f.diaPref===iso?' selected':'')+(full?' disabled':'')+'>'+fmtDia(d)+(full?' · completo':'')+'</option>'; });
     h += '</select>';
-    h += '<div class="hint">A partir del próximo día hábil. El coordinador te confirma por teléfono (puede reprogramar por clima u otra razón).</div>';
+    h += '<div class="hint" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;color:#9a3412;margin-top:6px">⚠️ El día y la franja que elijas <b>no quedan garantizados</b>: un asesor se va a comunicar con vos para confirmar la coordinación (puede cambiar por cupo, clima u otra razón).</div>';
     h += '<div class="label">Franja horaria <span class="req">*</span></div>';
     h += '<div class="row">';
     FRANJAS.forEach(function(fr){
