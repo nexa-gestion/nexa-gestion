@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.21';
+  var VER='v3.22';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -476,7 +476,7 @@
       for(var i=1;i<p.length;i++){ if(p[i]==='pend'){ clState.pend=true; } else if(p[i]){ var kv=p[i].split('='); clState[kv[0]]=kv[1]; } }
       navTo('clientes');
     } else if(v==='sol'){ navTo('solicitudes'); }
-    else if(v==='ot'){ otState.estado=p[1]||''; otState.tipo=p[2]||''; otState.antig=p[3]||''; otState.page=0; navTo('ordenes'); }
+    else if(v==='ot'){ otState.estado=p[1]||''; otState.tipo=p[2]||''; otState.antig=p[3]||''; otState.coord=(p[4]==='coord'); otState.page=0; navTo('ordenes'); }
     else if(v==='val'){ navTo('validacion'); }
     else if(v==='nav'){ navTo(p[1]); }
     else if(v==='nuevaOT'){ navTo('ordenes'); setTimeout(function(){ if(typeof nuevaOT==='function') nuevaOT(); },60); }
@@ -548,7 +548,7 @@
           +dkpi(finHoy,'Finalizadas hoy','cerradas por el técnico hoy','green','')
           +dkpi(aValidar,'A validar','cierres del técnico','cyan','val')
           +dkpi(sinCoord.length,'Sin coordinar','asignadas sin fecha','amber','ot|ASIGNADA')
-          +dkpi(coordN,'Coordinadas','por el cliente · ya con día/franja','blue','ot|PENDIENTE')
+          +dkpi(coordN,'Coordinadas','por el cliente · ya con día/franja','blue','ot||||coord')
         +'</div>'
         +(huer.length?'<div class="ocard" style="border-left:4px solid #dc2626;background:#fef2f2;cursor:pointer" id="huer-card">⚠️ <b>'+huer.length+' OT</b> sigue'+(huer.length===1?'':'n')+' asignada'+(huer.length===1?'':'s')+' a cuadrillas <b>desactivadas</b> ('+huer.map(function(o){return 'N° '+esc(o.numero);}).join(', ')+'). Reasignalas o devolvelas al pool. <span style="color:#2563eb">Ver órdenes →</span></div>':'')
         // ===== OPERACIÓN POR DÍA (navegable) — Internet + Servicios =====
@@ -1587,7 +1587,7 @@
       +'<button class="btn '+(otState.soloTv?'btn-x':'btn-2')+'" id="ot-tv" title="Solo clientes que pidieron TV o Pack Fútbol">📺 Con TV/Fútbol'+(otState.soloTv?' ✓':'')+'</button>'
       +'<button class="btn btn-ok" id="ot-nueva" style="margin-left:auto">+ Nueva OT</button>'
       +'</div><div id="ot-tabla"></div>';
-    document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.page=0; cargarOT(); });
+    document.getElementById('ot-filtrar').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.coord=false; otState.page=0; cargarOT(); });
     document.getElementById('ot-tv').addEventListener('click',function(){ otState.estado=document.getElementById('ot-estado').value; otState.tipo=document.getElementById('ot-filtro-tipo').value; otState.antig=document.getElementById('ot-filtro-antig').value; otState.soloTv=!otState.soloTv; otState.page=0; vOrdenes(); });
     document.getElementById('ot-nueva').addEventListener('click',function(){ nuevaOT(null); });
     var _ocu=document.getElementById('ot-cuad'); if(_ocu) _ocu.addEventListener('change',function(){ otState.cuad=this.value; otState.page=0; renderOT(); });
@@ -1610,6 +1610,7 @@
       otState.rows=Array.isArray(d)?d:[]; otState.page=0; renderOT();
     }).catch(function(e){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudieron cargar las órdenes. Probá de nuevo.</div>'; });
   }
+  function _wireCoordClear(){ var b=document.getElementById('ot-coord-clear'); if(b) b.addEventListener('click',function(){ otState.coord=false; renderOT(); }); }
   function renderOT(){
     var cont=document.getElementById('ot-tabla'); if(!cont) return;
     var rows=(otState.rows||[]).slice();
@@ -1619,6 +1620,7 @@
     if(otState.cuad){ rows=rows.filter(function(o){ return String(o.cuadrilla_id||'')===String(otState.cuad); }); }
     if(otState.desde){ rows=rows.filter(function(o){ return o.fecha_agendada && String(o.fecha_agendada).substring(0,10)>=otState.desde; }); }
     if(otState.hasta){ rows=rows.filter(function(o){ return o.fecha_agendada && String(o.fecha_agendada).substring(0,10)<=otState.hasta; }); }
+    if(otState.coord){ rows=rows.filter(function(o){ return o.solicitud_id && o.fecha_agendada && (o.estado==='PENDIENTE'||o.estado==='ASIGNADA'); }); }
     var col=OT_COLS.filter(function(c){return c.k===otState.orderBy;})[0]||OT_COLS.filter(function(c){return c.k==='creada';})[0];
     if(col&&col.ord){ var dir=otState.orderDir==='asc'?1:-1; rows.sort(function(a,b){ var va=col.ord(a),vb=col.ord(b); if(va<vb)return -dir; if(va>vb)return dir; return 0; }); }
     otState.total=rows.length;
@@ -1626,12 +1628,13 @@
     var pageRows=rows.slice(otState.page*otState.size,(otState.page+1)*otState.size);
     var cols=OT_COLS.filter(function(co){return otColVis(co.k);});
     var top='<div class="toolbar" style="justify-content:flex-end;gap:8px;margin-bottom:8px"><div id="ot-asig-box" style="margin-right:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div><div style="position:relative"><button class="btn btn-2" id="ot-cb">⚙️ Columnas</button><div id="ot-cm" class="colmenu" style="display:none"></div></div></div>';
-    if(!otState.total){ cont.innerHTML=top+'<div class="center">No hay órdenes'+(otState.estado?' en ese estado':'')+'.</div>'; wireOtCols(); updateOtSelUI(); return; }
+    if(otState.coord) top='<div style="background:#eef4ff;border:1px solid #c7dbff;border-radius:8px;padding:9px 12px;margin-bottom:8px;font-size:13px;color:#1e40af;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>📅 <b>Coordinadas por el cliente</b> — eligieron día y franja en la solicitud. Asignalas a una cuadrilla para esa fecha.</span><a id="ot-coord-clear" style="cursor:pointer;color:#2563eb;font-weight:700;white-space:nowrap">✕ quitar filtro</a></div>'+top;
+    if(!otState.total){ cont.innerHTML=top+'<div class="center">No hay órdenes'+(otState.estado?' en ese estado':'')+(otState.coord?' coordinadas por el cliente':'')+'.</div>'; wireOtCols(); updateOtSelUI(); _wireCoordClear(); return; }
     var h=top+'<table><thead><tr><th style="width:30px"><input type="checkbox" id="ot-all"></th>'+cols.map(function(co){ var act=otState.orderBy===co.k, ar=act?(otState.orderDir==='asc'?' ▲':' ▼'):(co.ord?' ⇅':''); return '<th'+(co.ord?' class="thsort" data-k="'+co.k+'" style="cursor:pointer;user-select:none"':'')+'>'+esc(co.t)+'<span style="color:#94a3b8;font-size:10px">'+ar+'</span></th>'; }).join('')+'</tr></thead><tbody>';
     pageRows.forEach(function(o){ h+='<tr data-id="'+o.id+'"><td><input type="checkbox" class="ot-chk" data-id="'+o.id+'" data-num="'+esc(o.numero)+'"'+(otState.sel[o.id]?' checked':'')+'></td>'+cols.map(function(co){return '<td style="cursor:pointer" class="ot-cell">'+co.r(o)+'</td>';}).join('')+'</tr>'; });
     h+='</tbody></table>';
     h+='<div class="pag"><button class="btn btn-2" id="ot-prev" '+(otState.page<=0?'disabled':'')+'>‹</button><span class="muted">Página '+(otState.page+1)+' de '+pages+' · '+otState.total+' OT'+(otState.total>=3000?' (primeras 3000)':'')+' · orden: '+esc(otState.orderBy)+' '+otState.orderDir+'</span><button class="btn btn-2" id="ot-next" '+(otState.page>=pages-1?'disabled':'')+'>›</button></div>';
-    cont.innerHTML=h; wireOtCols(); updateOtSelUI();
+    cont.innerHTML=h; wireOtCols(); updateOtSelUI(); _wireCoordClear();
     Array.prototype.forEach.call(cont.querySelectorAll('.ot-cell'),function(td){ td.addEventListener('click',function(){ detalleOT(td.parentNode.getAttribute('data-id')); }); });
     Array.prototype.forEach.call(cont.querySelectorAll('.ot-chk'),function(ck){ ck.addEventListener('change',function(ev){ ev.stopPropagation(); otState.sel[ck.getAttribute('data-id')]=ck.checked?{num:ck.getAttribute('data-num')}:false; updateOtSelUI(); }); });
     var all=document.getElementById('ot-all'); if(all) all.addEventListener('change',function(){ Array.prototype.forEach.call(cont.querySelectorAll('.ot-chk'),function(ck){ ck.checked=all.checked; otState.sel[ck.getAttribute('data-id')]=all.checked?{num:ck.getAttribute('data-num')}:false; }); updateOtSelUI(); });
