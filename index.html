@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.18';
+  var VER='v3.19';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1336,6 +1336,15 @@
   function _dniUtil(doc){ var d=String(doc||'').replace(/\D/g,''); return (d.length>=7 && !/^(\d)\1+$/.test(d) && d!=='9999999')?d:null; }
   function _franjaHora(fr){ return String(fr||'').toLowerCase().indexOf('tarde')>=0 ? '12:00' : '08:00'; }   // mañana 8-12 → 08:00 · tarde 12-15 → 12:00
   function _franjaLbl(fr){ if(!fr) return ''; return String(fr).toLowerCase().indexOf('tarde')>=0 ? '🌇 Tarde (12-15)' : '🌅 Mañana (8-12)'; }
+  // "Fuera de corte / en riesgo": la solicitud pide un día que ya no llega (hoy o pasado), o pide
+  // mañana pero ya pasó el corte de las 13:00 → el adm la tiene que ver primero (badge + arriba).
+  function _solRiesgo(s){
+    if(!s||!s.dia_preferido||(s.estado&&s.estado!=='pendiente')) return false;
+    var hoy=_hoyISO(); if(s.dia_preferido<=hoy) return true;
+    var d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+1);
+    var manana=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+    return (s.dia_preferido===manana && new Date().getHours()>=13);
+  }
   function _crearOTdesdeSolicitud(cliId,s){
     var esCambio = (s.tipo_solicitud==='cambio_plan');
     var ot={ cliente_id:cliId,solicitud_id:s.id,tipo:(esCambio?'CAMBIO_PLAN':'INSTALACION'),estado:'PENDIENTE',prioridad:'NORMAL',plan_id:s.plan_id||null,descripcion:(esCambio?'Cambio de plan (desde solicitud)':'Instalación nueva (desde solicitud)'),created_by:USER.id };
@@ -1384,7 +1393,7 @@
         {k:'dni',t:'DNI',sort:function(s){return s.doc_numero||'';},r:function(s){return esc(s.doc_numero||'');}},
         {k:'telefono',t:'Teléfono',sort:function(s){return s.telefono||'';},r:function(s){return '<span class="telcell">'+esc(s.telefono||'')+waMini(s.telefono,(s.nombre||'')+' '+(s.apellido||''),'INSTALACION',s.domicilio_full)+'</span>';}},
         {k:'barrio',t:'Barrio',sort:function(s){return s.barrio||'';},r:function(s){return esc(s.barrio||'');}},
-        {k:'dia',t:'Día pedido',sort:function(s){return s.dia_preferido||'';},r:function(s){return s.dia_preferido?('<b style="white-space:nowrap">'+esc(fmtFecha(s.dia_preferido))+'</b>'):'<span class="muted">—</span>';}},
+        {k:'dia',t:'Día pedido',sort:function(s){return (_solRiesgo(s)?'0':'1')+(s.dia_preferido||'');},r:function(s){return s.dia_preferido?('<b style="white-space:nowrap">'+esc(fmtFecha(s.dia_preferido))+'</b>'+(_solRiesgo(s)?' <span class="pill" style="background:#fef2f2;color:#b91c1c;white-space:nowrap">⚠️ fuera de corte</span>':'')):'<span class="muted">—</span>';}},
         {k:'franja',t:'Franja',sort:function(s){return s.franja_preferida||'';},r:function(s){return s.franja_preferida?('<span style="white-space:nowrap">'+esc(_franjaLbl(s.franja_preferida))+'</span>'):'<span class="muted">—</span>';}},
         {k:'plan',t:'Plan internet',sort:function(s){return s.planes?s.planes.nombre:(s.plan_texto||'');},r:function(s){return esc(s.planes?s.planes.nombre:(s.plan_texto||'—'));}},
         {k:'tv',t:'TV',sort:function(s){return s.tv_online?1:0;},r:function(s){return s.tv_online?'✓':'—';}},
@@ -1396,7 +1405,7 @@
       function pintaSol(q){ q=(q||'').toLowerCase().trim(); var toks=q.split(/\s+/).filter(Boolean);
         var rs=toks.length? d.filter(function(s){ var hay=((s.nombre||'')+' '+(s.apellido||'')+' '+(s.empresa||'')+' '+(s.doc_numero||'')+' '+(s.telefono||'')+' '+(s.barrio||'')+' '+(s.planes?s.planes.nombre:(s.plan_texto||''))).toLowerCase(); return toks.every(function(t){return hay.indexOf(t)>=0;}); }) : d;
         // Coordinadas = el cliente ya eligió día (y franja) → se muestran arriba, ordenadas por día, para asignarlas primero
-        var coord=rs.filter(function(s){return !!s.dia_preferido;}).sort(function(a,b){ var k=(a.dia_preferido<b.dia_preferido?-1:(a.dia_preferido>b.dia_preferido?1:0)); return k||((a.franja_preferida||'')<(b.franja_preferida||'')?-1:1); });
+        var coord=rs.filter(function(s){return !!s.dia_preferido;}).sort(function(a,b){ var ra=_solRiesgo(a)?0:1, rb=_solRiesgo(b)?0:1; if(ra!==rb) return ra-rb; var k=(a.dia_preferido<b.dia_preferido?-1:(a.dia_preferido>b.dia_preferido?1:0)); return k||((a.franja_preferida||'')<(b.franja_preferida||'')?-1:1); });
         var resto=rs.filter(function(s){return !s.dia_preferido;});
         cont.innerHTML='<h3 style="margin:6px 0 6px">📅 Coordinadas por el cliente <span class="muted" style="font-weight:400">('+coord.length+') — ya eligieron día y franja, conviene convertir/asignar estas primero</span></h3><div id="sol-coord"></div>'
           +'<h3 style="margin:22px 0 6px">📋 Sin día/hora pedido <span class="muted" style="font-weight:400">('+resto.length+')</span></h3><div id="sol-resto"></div>';
@@ -1457,6 +1466,15 @@
     var aviso=s.ya_es_cliente?'<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px;margin-top:8px;font-size:13px">⚠️ El solicitante dice que YA es cliente'+(s.numero_cliente_existente?(' (N° '+esc(s.numero_cliente_existente)+')'):'')+'. Verificá antes de crear uno nuevo.</div>':'';
     var h='<h2>'+(nuevo?'➕ Nueva alta (carga manual)':'Solicitud de '+esc(s.nombre||'')+' '+esc(s.apellido||''))+'</h2>'
       +'<p class="muted">'+(nuevo?'Cargá los datos del cliente. La ubicación GPS es opcional.':(esc(fmtFechaHora(s.created_at))+' · origen: '+esc(s.origen||'—')+(s.plan_texto?(' · pidió: '+esc(s.plan_texto)):'')))+'</p>'+aviso+'<div id="fs-dnicheck"></div>'
+      +(nuevo?'':'<div style="background:#eef4ff;border:1px solid #c7dbff;border-radius:10px;padding:10px 12px;margin:8px 0">'
+          +'<div style="font-weight:800;color:#1e40af;margin-bottom:7px">📅 Visita coordinada por el cliente</div>'
+          +(_solRiesgo(s)?'<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:7px 9px;margin-bottom:8px;font-size:12.5px;font-weight:600">⚠️ Fuera de corte: el día pedido ya no llega. Coordiná otro día con el cliente antes de convertir.</div>':'')
+          +'<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">'
+            +'<div><label class="l">Día de la visita</label><input type="date" id="fs-dia" value="'+esc(s.dia_preferido||'')+'"></div>'
+            +'<div><label class="l">Franja</label><select id="fs-franja"><option value="">—</option><option value="mañana"'+(s.franja_preferida==='mañana'?' selected':'')+'>🌅 Mañana (8-12)</option><option value="tarde"'+(s.franja_preferida==='tarde'?' selected':'')+'>🌇 Tarde (12-15)</option></select></div>'
+          +'</div>'
+          +'<div class="muted" style="font-size:11.5px;margin-top:6px">Lo que eligió el cliente. Podés corregirlo antes de convertir — la OT nace agendada para este día/franja.</div>'
+        +'</div>')
       +'<div class="fsgrid">'
       +'<div><label class="l">Nombre</label>'+inp('nombre',s.nombre)+'</div>'
       +'<div><label class="l">Apellido</label>'+inp('apellido',s.apellido)+'</div>'
@@ -1492,6 +1510,9 @@
         email:v('email')||null,calle:v('calle'),numero:v('numero'),piso:v('piso')||null,depto:v('depto')||null,
         barrio:v('barrio')||null,empresa:v('empresa')||null,observaciones:v('obs')||null,tv_online:v('tv'),pack_futbol:v('fut') };
       var pid=document.getElementById('fs-plan').value; o.plan_id=pid?Number(pid):null;
+      var diaEl=document.getElementById('fs-dia'), frEl=document.getElementById('fs-franja');
+      if(diaEl) o.dia_preferido=diaEl.value||null;
+      if(frEl) o.franja_preferida=frEl.value||null;
       o.domicilio_full=[o.calle,o.numero,o.piso?('Piso/Lote '+o.piso):'',o.depto?('Casa/Depto '+o.depto):'',o.barrio].filter(Boolean).join(' ');
       return o;
     }
