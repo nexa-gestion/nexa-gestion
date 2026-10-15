@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.32';
+  var VER='v3.33';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3695,6 +3695,7 @@
         +'<select id="dg-contacto"><option value="">—</option><option value="contactado"'+(o.gestion_contacto==='contactado'?' selected':'')+'>✅ Sí, hablé con el cliente</option><option value="sin_respuesta"'+(o.gestion_contacto==='sin_respuesta'?' selected':'')+'>📵 No contesta / no se pudo</option></select>'
         +'<label class="l" style="margin-top:8px">¿Qué coordinaste? / Nota</label><textarea id="dg-obs" style="width:100%;min-height:52px" placeholder="Ej: pasa el técnico el jueves a retirar · o: dice que se mudó y dejó el equipo...">'+esc(o.gestion_obs||'')+'</textarea>'
         +'<label class="l" style="margin-top:8px">📞 Teléfono extra para el técnico <span class="muted">(si el del sistema no sirve)</span></label><input id="dg-tel" value="'+esc(o.telefono_contacto||'')+'" placeholder="otro número de contacto">'
+        +'<label class="l" style="margin-top:8px">📍 Corregir / cargar ubicación <span class="muted">'+((c.lat!=null&&c.lng!=null)?'(ya tiene · pegá una nueva para corregir)':'(sin ubicación · pegala acá)')+'</span></label><input id="dg-ubic" placeholder="Link de Google Maps o: -27.40, -55.97">'
         +(o.gestion_at?('<div class="muted" style="font-size:11.5px;margin-top:6px">Última gestión registrada: '+esc(fmtFechaHora(o.gestion_at))+'</div>'):'')
         +'<button class="btn btn-pri" id="dg-save" style="margin-top:10px">💾 Guardar gestión</button>'
       +'</div>';
@@ -3726,9 +3727,15 @@
       var cont=(document.getElementById('dg-contacto')||{}).value||null;
       var obs=((document.getElementById('dg-obs')||{}).value||'').trim()||null;
       var tel=((document.getElementById('dg-tel')||{}).value||'').trim()||null;
+      // Ubicación nueva (link de Maps o "lat, lng") → se guarda en el CLIENTE para que el técnico la use
+      var ubicRaw=((document.getElementById('dg-ubic')||{}).value||'').trim(), ll=null;
+      if(ubicRaw){ var m=ubicRaw.match(/-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/); if(m){ var p=m[0].split(/\s*,\s*/); var la=parseFloat(p[0]),ln=parseFloat(p[1]); if(la>=-90&&la<=90&&ln>=-180&&ln<=180) ll={lat:la,lng:ln}; }
+        if(!ll){ toast('No pude leer la ubicación. Pegá un link de Maps o "lat, lng".'); return; } }
       g('dg-save').disabled=true;
-      sbPatch('desconexiones?id=eq.'+id,{ gestion_contacto:cont, gestion_obs:obs, telefono_contacto:tel, gestion_at:new Date().toISOString(), gestion_por:USER.id })
-        .then(function(){ logAct('Gestión con el cliente'+(cont==='contactado'?' (contactado)':cont==='sin_respuesta'?' (no contesta)':''),{entidad:'DESCONEXION',entidad_id:id,detalle:(obs||'')}); cerrarModal(); toast('📋 Gestión guardada'); vDesconexiones(); })
+      var jobs=[ sbPatch('desconexiones?id=eq.'+id,{ gestion_contacto:cont, gestion_obs:obs, telefono_contacto:tel, gestion_at:new Date().toISOString(), gestion_por:USER.id }) ];
+      if(ll && o.clientes && o.clientes.id) jobs.push(sbPatch('clientes?id=eq.'+o.clientes.id,{ lat:ll.lat, lng:ll.lng, geo_origen:'ADMIN' }));
+      Promise.all(jobs)
+        .then(function(){ logAct('Gestión con el cliente'+(cont==='contactado'?' (contactado)':cont==='sin_respuesta'?' (no contesta)':'')+(ll?' · ubicación corregida':''),{entidad:'DESCONEXION',entidad_id:id,detalle:(obs||'')}); cerrarModal(); toast('📋 Gestión guardada'+(ll?' · 📍 ubicación actualizada':'')); vDesconexiones(); })
         .catch(function(){ g('dg-save').disabled=false; toast('⚠️ No se pudo guardar (¿corriste el SQL de los campos nuevos?)'); });
     });
     // Baja directa: el equipo ya no está (cliente se mudó / lo tiró) → NO va el técnico, pero igual pasa por
