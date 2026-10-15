@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.19';
+  var VER='v3.20';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -520,12 +520,13 @@
       sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&area=eq.INTERNET&cuadrilla_id=not.is.null&select=id,numero,estado,fecha_agendada,cuadrilla_id&limit=3000'),
       sbCount('ordenes_trabajo?estado=eq.FINALIZADA&isp_datos_cargado_at=is.null&tipo=in.(INSTALACION,REPARACION,RECONEXION)&select=id').catch(function(){return 0;}),
       sbCount('isp_tickets?estado_nexa=eq.nuevo&select=id').catch(function(){return 0;}),
-      sbCount('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&select=id').catch(function(){return 0;})
+      sbCount('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&select=id').catch(function(){return 0;}),
+      sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&solicitud_id=not.is.null&fecha_agendada=not.is.null&select=id').catch(function(){return 0;})
     ]).then(function(c){
       var pend=Array.isArray(c[0])?c[0]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0;
+      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0, coordN=c[10]||0;
       var openA=c[6]||[]; var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var huer=openA.filter(function(o){ return !_act[o.cuadrilla_id]; });
       var sinCoord=openA.filter(function(o){ return _act[o.cuadrilla_id] && !o.fecha_agendada; });
@@ -547,6 +548,7 @@
           +dkpi(finHoy,'Finalizadas hoy','cerradas por el técnico hoy','green','')
           +dkpi(aValidar,'A validar','cierres del técnico','cyan','val')
           +dkpi(sinCoord.length,'Sin coordinar','asignadas sin fecha','amber','ot|ASIGNADA')
+          +dkpi(coordN,'Coordinadas','por el cliente · ya con día/franja','blue','ot|PENDIENTE')
         +'</div>'
         +(huer.length?'<div class="ocard" style="border-left:4px solid #dc2626;background:#fef2f2;cursor:pointer" id="huer-card">⚠️ <b>'+huer.length+' OT</b> sigue'+(huer.length===1?'':'n')+' asignada'+(huer.length===1?'':'s')+' a cuadrillas <b>desactivadas</b> ('+huer.map(function(o){return 'N° '+esc(o.numero);}).join(', ')+'). Reasignalas o devolvelas al pool. <span style="color:#2563eb">Ver órdenes →</span></div>':'')
         // ===== OPERACIÓN POR DÍA (navegable) — Internet + Servicios =====
@@ -1562,7 +1564,7 @@
     {k:'prioridad',t:'Prioridad',ord:function(o){return _PRIO_ORD[o.prioridad]!=null?_PRIO_ORD[o.prioridad]:1;},def:false,r:function(o){return esc(o.prioridad||'');}},
     {k:'agendada',t:'Agendada',ord:function(o){return o.fecha_agendada||'';},r:function(o){return esc(fmtFecha(o.fecha_agendada));}},
     {k:'creada',t:'Creada',ord:function(o){return o.created_at||'';},def:false,r:function(o){return esc(fmtFecha(o.created_at));}},
-    {k:'estado',t:'Estado',ord:function(o){return o.estado||'';},r:function(o){ var falta=(o.estado==='PENDIENTE'&&o.clientes&&!o.clientes.codigo_ispcube); return pill(o.estado)+(falta?' <span class="pill p-bloqueado" title="Falta cargar el cliente en ISPcube — no se puede asignar todavía">⚠️ falta ISP</span>':''); }}
+    {k:'estado',t:'Estado',ord:function(o){return o.estado||'';},r:function(o){ var falta=(o.estado==='PENDIENTE'&&o.clientes&&!o.clientes.codigo_ispcube); var coord=(o.solicitud_id&&o.fecha_agendada&&o.estado!=='FINALIZADA'&&o.estado!=='CANCELADA'); return pill(o.estado)+(coord?' <span class="pill" style="background:#eef4ff;color:#1e40af;white-space:nowrap" title="Día/franja coordinados con el cliente en la solicitud">📅 coordinada</span>':'')+(falta?' <span class="pill p-bloqueado" title="Falta cargar el cliente en ISPcube — no se puede asignar todavía">⚠️ falta ISP</span>':''); }}
   ];
   // ¿La OT se puede asignar? (no, si el cliente todavía no está en ISPcube)
   function _otAsignable(o){ return !(o && o.clientes && !o.clientes.codigo_ispcube); }
@@ -1598,7 +1600,7 @@
   }
   function cargarOT(){
     var cont=document.getElementById('ot-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
-    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,created_at,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,doc_numero,nombre,apellido,telefono,domicilio_full,barrio,tv_online,pack_futbol),cuadrillas(nombre)&area=eq.INTERNET';
+    var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,hora_agendada,created_at,solicitud_id,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,doc_numero,nombre,apellido,telefono,domicilio_full,barrio,tv_online,pack_futbol),cuadrillas(nombre)&area=eq.INTERNET';
     if(otState.estado) base+='&estado=eq.'+otState.estado;
     if(otState.tipo) base+='&tipo=eq.'+otState.tipo;
     base+='&order=id.asc';   // orden estable para paginar (el cliente re-ordena según la columna elegida)
