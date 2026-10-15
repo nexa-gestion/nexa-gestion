@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.29';
+  var VER='v3.30';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1350,11 +1350,16 @@
   }
   function _crearOTdesdeSolicitud(cliId,s){
     var esCambio = (s.tipo_solicitud==='cambio_plan');
-    var ot={ cliente_id:cliId,solicitud_id:s.id,tipo:(esCambio?'CAMBIO_PLAN':'INSTALACION'),estado:'PENDIENTE',prioridad:'NORMAL',plan_id:s.plan_id||null,descripcion:(esCambio?'Cambio de plan (desde solicitud)':'Instalación nueva (desde solicitud)'),created_by:USER.id };
-    if(s.dia_preferido) ot.fecha_agendada=s.dia_preferido;                       // el día que pidió el cliente → la OT nace coordinada para ese día
-    if(s.franja_preferida) ot.hora_agendada=_franjaHora(s.franja_preferida);     // mañana/tarde → hora
-    return sbPost('ordenes_trabajo',ot)
-      .then(function(r){ if(!Array.isArray(r)||!r.length) throw new Error('No se pudo crear la OT'); return sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'convertida',cliente_id:cliId,gestionado_por:USER.id,gestionado_at:new Date().toISOString() }); });
+    var _marcarConvertida=function(){ return sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'convertida',cliente_id:cliId,gestionado_por:USER.id,gestionado_at:new Date().toISOString() }); };
+    // IDEMPOTENTE: si esta solicitud YA generó una OT (ej. una conversión que cortó en el último paso por un
+    // parpadeo de red), NO se crea otra → solo se marca convertida. Así un reintento nunca duplica la OT.
+    return sbGet('ordenes_trabajo?solicitud_id=eq.'+s.id+'&select=id&limit=1').then(function(ex){
+      if(Array.isArray(ex)&&ex.length) return _marcarConvertida();
+      var ot={ cliente_id:cliId,solicitud_id:s.id,tipo:(esCambio?'CAMBIO_PLAN':'INSTALACION'),estado:'PENDIENTE',prioridad:'NORMAL',plan_id:s.plan_id||null,descripcion:(esCambio?'Cambio de plan (desde solicitud)':'Instalación nueva (desde solicitud)'),created_by:USER.id };
+      if(s.dia_preferido) ot.fecha_agendada=s.dia_preferido;                       // el día que pidió el cliente → la OT nace coordinada para ese día
+      if(s.franja_preferida) ot.hora_agendada=_franjaHora(s.franja_preferida);     // mañana/tarde → hora
+      return sbPost('ordenes_trabajo',ot).then(function(r){ if(!Array.isArray(r)||!r.length) throw new Error('No se pudo crear la OT'); return _marcarConvertida(); });
+    });
   }
   function convertirSolicitud(s){
     var cli={ nombre:s.nombre,apellido:s.apellido||null,tipo_doc:'DNI',doc_numero:s.doc_numero||null,telefono:s.telefono,telefono_alt:s.telefono_alt||null,
