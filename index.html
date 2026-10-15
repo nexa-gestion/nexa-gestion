@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.24';
+  var VER='v3.25';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1787,7 +1787,7 @@
     });
   }
   function detalleOT(id){
-    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,telefono_alt,email,empresa,observaciones,condicion_fiscal,razon_social,localidad,deuda,estado,domicilio_full,barrio,lat,lng,caja_nap,puerto,precinto,portal_password,tv_online,pack_futbol,plan_id,tecnologia,planes(nombre,tecnologia)),cuadrillas(nombre),motivos_ot(nombre)&limit=1').then(function(d){
+    sbGet('ordenes_trabajo?id=eq.'+id+'&select=*,clientes(id,numero_cliente,codigo_ispcube,doc_numero,tipo_doc,nombre,apellido,telefono,telefono_alt,email,empresa,observaciones,condicion_fiscal,razon_social,localidad,deuda,estado,domicilio_full,barrio,lat,lng,caja_nap,puerto,precinto,portal_password,tv_online,pack_futbol,plan_id,tecnologia,planes(nombre,tecnologia)),cuadrillas(nombre),motivos_ot(nombre),solicitudes_alta(dia_preferido,franja_preferida)&limit=1').then(function(d){
       var o=d[0]; if(!o)return;
       function fr(k,v){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+esc(v||'—')+'</span></div>'; }
       function frHtml(k,vh){ return '<div class="ficha-row"><span class="k">'+k+'</span><span class="v">'+vh+'</span></div>'; }
@@ -1801,7 +1801,9 @@
       var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')):'(obra de red)';
       var nums=o.clientes?('N° Nexa '+o.clientes.numero_cliente+(o.clientes.codigo_ispcube?(' · Cód. ISPcube '+o.clientes.codigo_ispcube):' · sin cargar en ISPcube')):'';
       var oTel=o.clientes?o.clientes.telefono:'', oDom=_domLimpio(o.clientes?o.clientes.domicilio_full:'');
+      var _sa=o.solicitudes_alta, _coordBanner=(_sa&&_sa.dia_preferido)?('<div style="background:#eef4ff;border:1px solid #c7dbff;border-radius:10px;padding:9px 12px;margin:2px 0 10px;color:#1e40af;font-size:13.5px">📅 <b>Coordinado por el cliente:</b> pidió '+esc(fmtFecha(_sa.dia_preferido))+(_sa.franja_preferida?(' · '+esc(_franjaLbl(_sa.franja_preferida))):'')+' <span class="muted" style="font-size:12px">(lo eligió al completar la solicitud · agendá la OT para esa fecha)</span></div>'):'';
       modal('<h2>OT N° '+esc(o.numero)+' · '+esc(o.tipo)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+pill(o.estado)+' · prioridad '+esc(o.prioridad)+(oTel?waLink(oTel,cli,o.tipo,oDom,'Coordinar visita'):'')+'</p>'
+        +_coordBanner
         +'<div class="fichagrid">'+fr('Cliente',cli)+(nums?fr('N° de cliente',nums):'')+(o.clientes?fr('DNI',(o.clientes.tipo_doc||'DNI')+' '+(o.clientes.doc_numero||'—')):'')+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(oTel||'—')+' '+waLink(oTel,cli,o.tipo,oDom)+'</span></div>'+(o.clientes?fr('📧 Email',o.clientes.email):'')+(o.clientes&&o.clientes.telefono_alt?fr('Tel. alternativo',o.clientes.telefono_alt):'')+fr('Domicilio',oDom)+fr('Barrio',o.clientes?o.clientes.barrio:'')
         +(o.clientes?'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(o.clientes.lat,o.clientes.lng)+'</span></div>':'')
         +(o.clientes?fr('Conexión','Caja '+(o.clientes.caja_nap||'—')+' · Puerto '+(o.clientes.puerto||'—')+' · Precinto '+(o.clientes.precinto||'—')):'')
@@ -1815,7 +1817,7 @@
           +'<div><label class="l">Tipo de OT</label><select id="ot-tipo-edit">'+opt(OT_TIPOS,o.tipo)+'</select></div>'
           +'<div><label class="l">Prioridad</label><select id="ot-prio-edit">'+opt(['BAJA','NORMAL','ALTA','URGENTE'],o.prioridad)+'</select></div>'
           +'<div><label class="l">Asignar a cuadrilla</label><select id="ot-cuad-edit">'+cuadOpts+'</select></div>'
-          +'<div><label class="l">📅 Fecha y hora coordinada</label><div style="display:flex;gap:6px"><input type="date" id="ot-fecha-edit" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):'')+'" style="flex:1"><input type="time" id="ot-hora-edit" value="'+(o.hora_agendada?esc(String(o.hora_agendada).substring(0,5)):'')+'" style="width:92px" title="Hora coordinada con el cliente"></div></div>'
+          +'<div><label class="l">📅 Fecha y hora coordinada'+((_sa&&_sa.dia_preferido&&!o.fecha_agendada)?' <span class="muted" style="font-weight:400">· sugerida por el cliente</span>':'')+'</label><div style="display:flex;gap:6px"><input type="date" id="ot-fecha-edit" value="'+(o.fecha_agendada?esc(String(o.fecha_agendada).substring(0,10)):(_sa&&_sa.dia_preferido?esc(String(_sa.dia_preferido).substring(0,10)):''))+'" style="flex:1"><input type="time" id="ot-hora-edit" value="'+(o.hora_agendada?esc(String(o.hora_agendada).substring(0,5)):(_sa&&_sa.franja_preferida?_franjaHora(_sa.franja_preferida):''))+'" style="width:92px" title="Hora coordinada con el cliente"></div></div>'
           +'<div><label class="l">Cambiar estado</label><select id="ot-est">'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],o.estado)+'</select></div>'
           +(o.clientes?'<div style="grid-column:1/-1"><label class="l">🔢 Código ISPcube del cliente <span class="muted">(cargalo y desaparece «falta ISP»; recién ahí se puede asignar)</span></label><input id="ot-isp-edit" value="'+esc(o.clientes.codigo_ispcube||'')+'" placeholder="ej: 006408"'+(o.clientes.codigo_ispcube?'':' style="border-color:#f59e0b;background:#fffbeb"')+'></div>':'')
           +(o.clientes?'<div style="grid-column:1/-1"><label class="l">📡 Plan contratado del cliente <span class="muted">(lo maneja ISPcube · para corregir un plan nuevo, editalo en la Solicitud antes de convertir)</span></label><div style="padding:9px;border:1px solid var(--bord);border-radius:8px;background:#f8fafc">'+esc(o.clientes.planes?(o.clientes.planes.nombre+(o.clientes.planes.tecnologia?(' · '+o.clientes.planes.tecnologia):'')):'— sin plan —')+'</div></div>':'')
