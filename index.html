@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.20';
+  var VER='v3.21';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1470,7 +1470,6 @@
       +'<p class="muted">'+(nuevo?'Cargá los datos del cliente. La ubicación GPS es opcional.':(esc(fmtFechaHora(s.created_at))+' · origen: '+esc(s.origen||'—')+(s.plan_texto?(' · pidió: '+esc(s.plan_texto)):'')))+'</p>'+aviso+'<div id="fs-dnicheck"></div>'
       +(nuevo?'':'<div style="background:#eef4ff;border:1px solid #c7dbff;border-radius:10px;padding:10px 12px;margin:8px 0">'
           +'<div style="font-weight:800;color:#1e40af;margin-bottom:7px">📅 Visita coordinada por el cliente</div>'
-          +(_solRiesgo(s)?'<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:7px 9px;margin-bottom:8px;font-size:12.5px;font-weight:600">⚠️ Fuera de corte: el día pedido ya no llega. Coordiná otro día con el cliente antes de convertir.</div>':'')
           +'<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">'
             +'<div><label class="l">Día de la visita</label><input type="date" id="fs-dia" value="'+esc(s.dia_preferido||'')+'"></div>'
             +'<div><label class="l">Franja</label><select id="fs-franja"><option value="">—</option><option value="mañana"'+(s.franja_preferida==='mañana'?' selected':'')+'>🌅 Mañana (8-12)</option><option value="tarde"'+(s.franja_preferida==='tarde'?' selected':'')+'>🌇 Tarde (12-15)</option></select></div>'
