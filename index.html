@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.28';
+  var VER='v3.29';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -4312,7 +4312,7 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
       {k:'libres',t:'Libres',sort:function(o){return o.libres;},r:function(o){return '<b style="color:#15803d">'+o.libres+'</b>';}},
       {k:'ocup',t:'Ocupación',sort:function(o){return o.ocup;},r:function(o){ var p=Math.round(o.ocup*100), w=Math.min(100,p); return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;max-width:120px;background:#eef2f7;border-radius:6px;height:14px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:'+_ocColor(o.ocup)+'"></div></div><b>'+p+'%</b></div>'; }}
     ];
-    gridRender(cont,cols,rows,{key:'oc-'+_ocVista});
+    gridRender(cont,cols,rows,{key:'oc-'+_ocVista,onRow:function(o){ _ocFocusBarrio(String(o.zona).split(' · ')[0]); }});
   }
   function _ocFull(){
     var m=document.getElementById('oc-map'); if(!m)return;
