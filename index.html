@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.30';
+  var VER='v3.31';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3658,6 +3658,24 @@
         +'<div>'+(deuda>0?('💲 Deuda <b style="color:#991b1b">$'+deuda.toLocaleString('es-AR')+'</b>'):'💲 Sin deuda')+' · origen: '+esc(_dxOrigen(o.origen))+'</div>'
         +((c.lat!=null&&c.lng!=null)?('<div style="margin-top:4px"><a class="btn btn-2" target="_blank" style="padding:3px 10px;font-size:12px;width:auto;display:inline-block" href="https://www.google.com/maps?q='+c.lat+','+c.lng+'">🗺️ Ver en el mapa</a></div>'):'')
       +'</div>';
+    // ── GESTIÓN ADMINISTRATIVA (contacto + registro) — para las que todavía no hizo el técnico ──
+    if(o.estado==='PENDIENTE'||o.estado==='ASIGNADA'){
+      var _tel=c.telefono||'';
+      h+='<div class="card" style="margin-top:10px;background:#f0f9ff;border:1px solid #bae6fd">'
+        +'<div style="font-weight:800;color:#0369a1;margin-bottom:8px">📋 Gestión con el cliente</div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+          +(_tel?waLink(_tel,cli,'DESCONEXION',c.domicilio_full,'WhatsApp'):'')
+          +(_tel?('<a class="btn btn-2" href="tel:'+esc(_tel.replace(/[^\d+]/g,''))+'" style="padding:6px 11px;text-decoration:none;white-space:nowrap">📞 Llamar</a>'):'<span class="muted" style="font-size:13px">sin teléfono cargado</span>')
+        +'</div>'
+        +'<label class="l">¿Hubo comunicación?</label>'
+        +'<select id="dg-contacto"><option value="">—</option><option value="contactado"'+(o.gestion_contacto==='contactado'?' selected':'')+'>✅ Sí, hablé con el cliente</option><option value="sin_respuesta"'+(o.gestion_contacto==='sin_respuesta'?' selected':'')+'>📵 No contesta / no se pudo</option></select>'
+        +'<label class="l" style="margin-top:8px">¿Qué coordinaste? / Nota</label><textarea id="dg-obs" style="width:100%;min-height:52px" placeholder="Ej: pasa el técnico el jueves a retirar · o: dice que se mudó y dejó el equipo...">'+esc(o.gestion_obs||'')+'</textarea>'
+        +'<label class="l" style="margin-top:8px">📞 Teléfono extra para el técnico <span class="muted">(si el del sistema no sirve)</span></label><input id="dg-tel" value="'+esc(o.telefono_contacto||'')+'" placeholder="otro número de contacto">'
+        +(o.gestion_at?('<div class="muted" style="font-size:11.5px;margin-top:6px">Última gestión registrada: '+esc(fmtFechaHora(o.gestion_at))+'</div>'):'')
+        +'<button class="btn btn-pri" id="dg-save" style="margin-top:10px">💾 Guardar gestión</button>'
+      +'</div>';
+    }
+    else if(o.gestion_obs||o.telefono_contacto){ h+='<div class="muted" style="margin-top:8px;font-size:13px">📋 Gestión: '+esc(o.gestion_obs||'—')+(o.telefono_contacto?(' · 📞 extra '+esc(o.telefono_contacto)):'')+'</div>'; }
     if(o.estado==='PENDIENTE_ADMIN'){
       var rec=(o.recupero_equipo===true)?('✅ Equipo recuperado'+(o.equipo_serial?(' · serial '+esc(o.equipo_serial)):'')):(o.recupero_equipo===false?'⚠️ Sin recupero de equipo':'—');
       h+='<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:13px"><b>Corte del técnico</b> '+(o.corte_at?('· '+fmtFechaHora(o.corte_at)):'')+'<br>'+rec+(o.obs_tecnico?('<br><span class="muted">🗣️ '+esc(o.obs_tecnico)+'</span>'):'')+'</div>';
@@ -3665,8 +3683,8 @@
     if(o.estado==='ASIGNADA') h+='<div class="muted" style="margin-top:8px">🔧 Asignada a <b>'+esc(_cuadNombre(o.cuadrilla_id)||'—')+'</b>'+(o.fecha_agendada?(' · 📅 '+fmtFecha(o.fecha_agendada)):'')+'</div>';
     if(o.resolucion) h+='<div class="muted" style="margin-top:8px">📝 '+esc(o.resolucion)+'</div>';
     var btns='';
-    if(o.estado==='PENDIENTE'){ btns=_bx('btn btn-ok','d-asig','📍 Asignar a cuadrilla')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
-    else if(o.estado==='ASIGNADA'){ btns=_bx('btn btn-ok','d-reasig','🔄 Reasignar cuadrilla')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    if(o.estado==='PENDIENTE'){ btns=_bx('btn btn-ok','d-asig','📍 Derivar al técnico (asignar)')+_bx('btn btn-2','d-bajadir','🏠 Baja directa (equipo ya no está)')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else if(o.estado==='ASIGNADA'){ btns=_bx('btn btn-ok','d-reasig','🔄 Reasignar cuadrilla')+_bx('btn btn-2','d-bajadir','🏠 Baja directa (equipo ya no está)')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
     else if(o.estado==='PENDIENTE_ADMIN'){
       var bDep=o.deposito_hecho?('<div style="color:#166534;font-size:13px">✅ Depósito: '+(o.equipo_recibido?'equipo recibido':'no se devolvió')+'</div>'):_bx('btn btn-2','d-dep','📦 Depósito: registrar el equipo');
       var bSop=o.soporte_hecho?'<div style="color:#166534;font-size:13px">✅ Soporte: conexión eliminada</div>':(o.deposito_hecho?_bx('btn btn-2','d-sop','☐ Soporte: eliminé la conexión en ISPcube'):'<div class="muted" style="font-size:13px">🔒 Soporte — esperá al depósito</div>');
@@ -3679,6 +3697,26 @@
     function run(body,msg,act){ sbPatch('desconexiones?id=eq.'+id,body).then(function(){ if(act) logAct(act,{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); toast(msg); vDesconexiones(); }); }
     var g=function(x){return document.getElementById(x)||document.querySelector('#ov [data-id="'+x+'"]');};
     g('d-x').addEventListener('click',cerrarModal);
+    // Guardar la gestión con el cliente (contacto + nota + teléfono extra)
+    if(g('dg-save')) g('dg-save').addEventListener('click',function(){
+      var cont=(document.getElementById('dg-contacto')||{}).value||null;
+      var obs=((document.getElementById('dg-obs')||{}).value||'').trim()||null;
+      var tel=((document.getElementById('dg-tel')||{}).value||'').trim()||null;
+      g('dg-save').disabled=true;
+      sbPatch('desconexiones?id=eq.'+id,{ gestion_contacto:cont, gestion_obs:obs, telefono_contacto:tel, gestion_at:new Date().toISOString(), gestion_por:USER.id })
+        .then(function(){ logAct('Gestión con el cliente'+(cont==='contactado'?' (contactado)':cont==='sin_respuesta'?' (no contesta)':''),{entidad:'DESCONEXION',entidad_id:id,detalle:(obs||'')}); cerrarModal(); toast('📋 Gestión guardada'); vDesconexiones(); })
+        .catch(function(){ g('dg-save').disabled=false; toast('⚠️ No se pudo guardar (¿corriste el SQL de los campos nuevos?)'); });
+    });
+    // Baja directa: el equipo ya no está (cliente se mudó / lo tiró) → NO va el técnico, pero igual pasa por
+    // soporte/comercial para cerrar en ISPcube, con todo el registro de lo que pasó.
+    if(g('d-bajadir')) g('d-bajadir').addEventListener('click',function(){
+      var obs=((document.getElementById('dg-obs')||{}).value||'').trim();
+      if(!obs){ obs=prompt('¿Qué pasó? (queda registrado · ej: el cliente se mudó y dejó/tiró el equipo)','')||''; if(!obs.trim()){ toast('Escribí qué pasó para dejar el registro.'); return; } obs=obs.trim(); }
+      if(!confirm('Baja directa (sin técnico): el equipo ya no está.\nLa desconexión pasa a soporte/comercial para cerrarla en ISPcube, con el registro.\n¿Confirmás?')) return;
+      run({ estado:'PENDIENTE_ADMIN', recupero_equipo:false, corte_at:new Date().toISOString(), cerrado_por:USER.id,
+            gestion_obs:obs, gestion_at:new Date().toISOString(), gestion_por:USER.id,
+            obs_tecnico:'BAJA DIRECTA (admin · sin visita): '+obs }, '🏠 Baja directa registrada — pasa a soporte/comercial', 'Baja directa (equipo ya no está)');
+    });
     if(g('d-asig')) g('d-asig').addEventListener('click',function(){ cerrarModal(); _dxAsignar(id); });
     if(g('d-reasig')) g('d-reasig').addEventListener('click',function(){ cerrarModal(); _dxReasignar(id); });
     if(g('d-rev')) g('d-rev').addEventListener('click',function(){ var n=prompt('¿Por qué la dejás pendiente de resolver? (opcional)','')||null; run({estado:'EN_REVISION',resolucion:n,resuelto_at:new Date().toISOString(),resuelto_por:USER.id},'⏸️ Pendiente de resolver','Desconexión a revisión'); });

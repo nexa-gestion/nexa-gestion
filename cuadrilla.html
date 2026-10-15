@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.48</title>
+<title>Nexa · Técnico — v0.49</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.48';
+  var VER='v0.49';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -951,7 +951,7 @@
     if(desconState.list) renderDescon(); else cargarDescon();
   }
   function cargarDescon(){
-    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
+    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,gestion_obs,telefono_contacto,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       desconState.list=d; renderDescon();
       _dxOrdenarGPS(true);   // intento automático de ordenar por cercanía (no bloquea la lista)
@@ -1010,6 +1010,7 @@
     else { var _dias=(_cc===0?7:3); _compSec=(_cc===1?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12.5px;color:#92400e">⚠️ Este cliente <b>ya tuvo un compromiso de pago y no cumplió</b>. Este sería el <b>ÚLTIMO</b> (3 días).</div>':'')+'<button class="btn btn-2" id="co-comp" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">🤝 Compromiso de pago ('+_dias+' días) — no cortar</button>'; }
     app.innerHTML=topBar('Cortar N° '+c.numero_cliente, nom)+'<div class="wrap">'
       +'<div class="card"><div class="muted" style="font-size:13px">Registrás el corte y la baja pasa a <b>pendiente administrativo</b> (soporte y comercial la cierran en ISPcube).</div></div>'
+      +((CORTE.dx&&(CORTE.dx.gestion_obs||CORTE.dx.telefono_contacto))?('<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd"><div class="label" style="color:#0369a1">📋 Nota del administrativo</div>'+(CORTE.dx.gestion_obs?('<div style="font-size:13.5px;margin-top:3px">'+esc(CORTE.dx.gestion_obs)+'</div>'):'')+(CORTE.dx.telefono_contacto?('<div style="margin-top:7px">📞 Tel. extra para coordinar: <a href="tel:'+esc(String(CORTE.dx.telefono_contacto).replace(/[^\d+]/g,''))+'" style="font-weight:700">'+esc(CORTE.dx.telefono_contacto)+'</a></div>'):'')+'</div>'):'')
       +'<div class="card"><div class="label">📡 Conexión</div>'+fila('Caja (NAP)',c.caja_nap)+fila('Puerto',c.puerto)+fila('Precinto',c.precinto)+'</div>'
       +'<div class="card"><div class="label">¿Se recuperó el equipo?</div><div style="display:flex;gap:8px;margin-top:4px"><button class="btn '+(CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-si">Sí</button><button class="btn '+(CORTE.recupero?'btn-2':'btn-ok')+'" id="co-rec-no">No</button></div></div>'
       +'<div class="card"><div class="label">Equipo retirado (serial / MAC)</div><input id="co-serial" placeholder="Serial o MAC del equipo"></div>'
