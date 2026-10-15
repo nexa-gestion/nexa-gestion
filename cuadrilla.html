@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.50</title>
+<title>Nexa · Técnico — v0.51</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.50';
+  var VER='v0.51';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -1000,14 +1000,15 @@
   }
 
   // ════════ CORTE / DESCONEXIÓN ════════
-  var CORTE=null;
-  function vCortar(o){ var c=(o&&o.clientes)?o.clientes:o; CORTE={ dx:(o&&o.id?o:null), c:c, fotos:[], recupero:true }; renderCortar(); }
+  var CORTE=null, DESC_MAX_INT=3;
+  function vCortar(o){ var c=(o&&o.clientes)?o.clientes:o; CORTE={ dx:(o&&o.id?o:null), c:c, fotos:[], recupero:true };
+    sbGet('config_comercial?id=eq.1&select=desc_max_intentos').then(function(d){ var v=(d&&d[0]&&d[0].desc_max_intentos); if(v>0) DESC_MAX_INT=v; }).catch(function(){}).then(renderCortar); }
   function renderCorteFotos(){ if(!CORTE.fotos.length) return '<span class="muted">Sin fotos.</span>'; return '<div style="display:flex;flex-wrap:wrap;gap:8px">'+CORTE.fotos.map(function(f,i){return '<div style="position:relative"><img src="'+f.preview+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px"><button class="btn cofoto-del" data-i="'+i+'" style="position:absolute;top:-7px;right:-7px;width:22px;height:22px;padding:0;background:var(--rojo);color:#fff;border-radius:50%;line-height:1">×</button><div style="font-size:10px;text-align:center;color:'+(f.url?'var(--verde)':'var(--ambar)')+'">'+(f.url?'✓':'…')+'</div></div>';}).join('')+'</div>'; }
   var MOTIVOS_FALLA=['No había nadie','No lo entregan / se niegan','Pidió pasar otro día','No encontré el domicilio','Otro'];
   function renderCortar(){
     var c=CORTE.c, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
     var _ic=(CORTE.dx&&CORTE.dx.intentos_count)||0;
-    var _intAviso=(_ic>0?('<div class="card" style="background:#fffbeb;border:1px solid #fde68a"><div style="font-weight:800;color:#92400e">⚠️ Ya hubo '+_ic+' intento'+(_ic>1?'s':'')+' de retiro</div>'+((CORTE.dx&&CORTE.dx.intentos_obs)?('<div class="muted" style="font-size:12px;white-space:pre-line;margin-top:4px">'+esc(CORTE.dx.intentos_obs)+'</div>'):'')+'<div class="muted" style="font-size:12px;margin-top:4px">Al 3er intento la baja pasa a <b>Imposibles</b> y sale del listado.</div></div>'):'');
+    var _intAviso=(_ic>0?('<div class="card" style="background:#fffbeb;border:1px solid #fde68a"><div style="font-weight:800;color:#92400e">⚠️ Ya hubo '+_ic+' intento'+(_ic>1?'s':'')+' de retiro</div>'+((CORTE.dx&&CORTE.dx.intentos_obs)?('<div class="muted" style="font-size:12px;white-space:pre-line;margin-top:4px">'+esc(CORTE.dx.intentos_obs)+'</div>'):'')+'<div class="muted" style="font-size:12px;margin-top:4px">Al llegar a '+DESC_MAX_INT+' intentos la baja pasa a <b>Imposibles</b> y sale del listado.</div></div>'):'');
     var _noPudoSec='<button class="btn btn-2" id="co-nopudo" style="margin-top:10px;border-color:#d97706;color:#92400e">✗ No se pudo retirar (registrar intento)</button>'
       +'<div id="co-nopudo-box" style="display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;margin-top:8px">'
         +'<div class="label" style="color:#92400e">Motivo del intento fallido</div>'
@@ -1076,14 +1077,13 @@
   }
   // El técnico fue al domicilio y NO pudo retirar (no había nadie, no lo entregan, pidió otro día, no encontró).
   // Registra el intento con el motivo. Al 3er intento la baja pasa a IMPOSIBLE y sale del PWA (la ve el admin aparte).
-  var MAX_INTENTOS=3;
   function intentoFallido(){
     var c=CORTE.c, err=document.getElementById('co-err'); err.textContent='';
     var dxId=CORTE.dx&&CORTE.dx.id;
     if(!dxId){ err.textContent='Este corte no tiene orden asociada; no se puede registrar el intento.'; return; }
     var mot=document.getElementById('co-nopudo-mot').value, det=document.getElementById('co-nopudo-obs').value.trim();
-    var prev=(CORTE.dx.intentos_count||0), n=prev+1, ultimo=(n>=MAX_INTENTOS);
-    if(!confirm('Registrar intento '+n+' de '+MAX_INTENTOS+': «'+mot+'».'+(ultimo?' Con este 3er intento la desconexión pasa a IMPOSIBLES y sale del listado.':'')+' ¿Confirmás?')) return;
+    var prev=(CORTE.dx.intentos_count||0), n=prev+1, ultimo=(n>=DESC_MAX_INT);
+    if(!confirm('Registrar intento '+n+' de '+DESC_MAX_INT+': «'+mot+'».'+(ultimo?' Con este intento la desconexión pasa a IMPOSIBLES y sale del listado.':'')+' ¿Confirmás?')) return;
     var btn=document.getElementById('co-nopudo-ok'); if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
     var ahora=new Date().toISOString();
     var hoy=new Date().toLocaleDateString('es-AR');
@@ -1095,8 +1095,8 @@
       if(ultimo){ cuerpo.estado='IMPOSIBLE'; cuerpo.resolucion='🚫 Imposible de retirar — '+n+' intentos'; cuerpo.resuelto_at=ahora; cuerpo.cerrado_por=CUAD.id; }
       if(g){ cuerpo.lat=g.lat; cuerpo.lng=g.lng; }
       sbPatch('desconexiones?id=eq.'+dxId,cuerpo).then(function(){
-        sbPost('actividad_log',{ accion:(ultimo?'🚫 Desconexión IMPOSIBLE ('+n+' intentos)':'✗ Intento de retiro fallido ('+n+'/'+MAX_INTENTOS+')'), entidad:'DESCONEXION', entidad_id:dxId, detalle:'Cliente N° '+(c.numero_cliente||'')+' — '+mot+(det?(': '+det):''), cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre }).catch(function(){});
-        toast(ultimo?('🚫 3er intento — pasó a Imposibles'):('✗ Intento '+n+' registrado'));
+        sbPost('actividad_log',{ accion:(ultimo?'🚫 Desconexión IMPOSIBLE ('+n+' intentos)':'✗ Intento de retiro fallido ('+n+'/'+DESC_MAX_INT+')'), entidad:'DESCONEXION', entidad_id:dxId, detalle:'Cliente N° '+(c.numero_cliente||'')+' — '+mot+(det?(': '+det):''), cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre }).catch(function(){});
+        toast(ultimo?('🚫 '+n+' intentos — pasó a Imposibles'):('✗ Intento '+n+' registrado'));
         if(ultimo&&desconState.list) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);});
         else { CORTE.dx.intentos_count=n; CORTE.dx.intentos_obs=obsAcum; }
         CORTE=null; vDescon();

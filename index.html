@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.34';
+  var VER='v3.35';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3505,7 +3505,8 @@
           +'<button class="btn btn-2" id="dx-fclear" title="Limpiar filtros">✖</button>'
           +'<button class="btn '+(st.mapa?'btn-pri':'btn-2')+'" id="dx-mapbtn" title="Ver los cortes en el mapa">🗺️ Mapa</button>'
           +'<button class="btn btn-2" id="dx-refrescar" title="Re-procesa altas/bajas automáticas (esto es lo que tarda)">🔄 Actualizar</button>'
-          +'<button class="btn btn-2" id="dx-csv">⬇️ Exportar CSV</button></div>'
+          +'<button class="btn btn-2" id="dx-csv">⬇️ Exportar CSV</button>'
+          +'<button class="btn btn-2" id="dx-cfgint" title="Cuántos intentos fallidos del técnico antes de pasar a Imposibles">⚙️ Intentos</button></div>'
           +'<div id="dx-mapinfo" class="muted" style="font-size:12px;margin:2px 0 6px;display:'+(st.mapa?'block':'none')+'"></div>'
           +'<div id="dx-mapa" style="display:'+(st.mapa?'block':'none')+';height:520px;border:1px solid var(--bord);border-radius:12px;overflow:hidden;margin-bottom:8px"></div>'
           +'<div id="dx-tabla"'+(st.mapa?' style="display:none"':'')+'></div></div>';
@@ -3522,6 +3523,7 @@
         var _fh=document.getElementById('dx-fhasta'); if(_fh) _fh.addEventListener('change',function(){ st.fhasta=this.value; _dxPinta(); });
         var _fcl=document.getElementById('dx-fclear'); if(_fcl) _fcl.addEventListener('click',function(){ st.fcuad='';st.festado='';st.fdesde='';st.fhasta='';st.origen='';st.q='';st.fbarrio='';st.fresultado='';st.frec=''; _render(); });
         document.getElementById('dx-csv').addEventListener('click',_dxCSV);
+        var cib=document.getElementById('dx-cfgint'); if(cib) cib.addEventListener('click',_dxCfgIntentos);
         var rb=document.getElementById('dx-refrescar'); if(rb) rb.addEventListener('click',function(){ window._dxMaintDone=false; vDesconexiones(); });
         _dxWire();
         _dxPinta();
@@ -3654,6 +3656,24 @@
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='desconexiones_'+window._dxState.ver+'.csv'; document.body.appendChild(a); a.click(); a.remove();
     toast('CSV exportado ('+rows.length+' filas)');
   }
+  // Config del umbral de intentos antes de "Imposible" (guardado en config_comercial.desc_max_intentos)
+  function _dxCfgIntentos(){
+    sbGet('config_comercial?id=eq.1&select=desc_max_intentos').then(function(d){
+      var cur=(Array.isArray(d)&&d[0]&&d[0].desc_max_intentos)||3;
+      modal('<h2>⚙️ Intentos antes de "Imposible"</h2>'
+        +'<p class="muted">Cuántas visitas fallidas puede registrar el técnico antes de que la desconexión pase sola a <b>🚫 Imposibles</b> y salga de su listado.</p>'
+        +'<label class="l">Cantidad de intentos</label><input id="ci-n" type="number" min="1" max="10" value="'+cur+'" style="width:120px">'
+        +'<div id="ci-err" style="color:var(--rojo);font-size:12px;min-height:14px"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ok" id="ci-go">Guardar</button><button class="btn btn-2" id="ci-x">Cancelar</button></div>');
+      document.getElementById('ci-x').addEventListener('click',cerrarModal);
+      document.getElementById('ci-go').addEventListener('click',function(){
+        var n=parseInt(document.getElementById('ci-n').value,10);
+        if(!(n>=1&&n<=10)){ document.getElementById('ci-err').textContent='Poné un número entre 1 y 10.'; return; }
+        var b=this; b.disabled=true; b.textContent='Guardando…';
+        sbPatch('config_comercial?id=eq.1',{desc_max_intentos:n,updated_at:new Date().toISOString()}).then(function(){ logAct('Cambió umbral de intentos de desconexión a '+n,{entidad:'CONFIG'}); cerrarModal(); toast('⚙️ Ahora pasan a Imposibles a los '+n+' intentos'); }).catch(function(){ b.disabled=false; b.textContent='Guardar'; document.getElementById('ci-err').textContent='No se pudo guardar (¿corriste el SQL?).'; });
+      });
+    }).catch(function(){ toast('No se pudo leer la config.'); });
+  }
   function _dxWire(){
     var w=document.getElementById('dx-wrap'); if(!w) return;
     w.addEventListener('click',function(e){
@@ -3714,15 +3734,15 @@
     }
     if(o.resolucion) h+='<div class="muted" style="margin-top:8px">📝 '+esc(o.resolucion)+'</div>';
     var btns='';
-    if(o.estado==='PENDIENTE'){ btns=_bx('btn btn-ok','d-asig','📍 Derivar al técnico (asignar)')+_bx('btn btn-2','d-bajadir','🏠 Baja directa (equipo ya no está)')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
-    else if(o.estado==='ASIGNADA'){ btns=_bx('btn btn-ok','d-reasig','🔄 Reasignar cuadrilla')+_bx('btn btn-2','d-bajadir','🏠 Baja directa (equipo ya no está)')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    if(o.estado==='PENDIENTE'){ btns=_bx('btn btn-ok','d-asig','📍 Derivar al técnico (asignar)')+_bx('btn btn-2','d-bajadir','🏠 Baja directa (equipo ya no está)')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-imposible','🚫 Marcar imposible')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else if(o.estado==='ASIGNADA'){ btns=_bx('btn btn-ok','d-reasig','🔄 Reasignar cuadrilla')+_bx('btn btn-2','d-bajadir','🏠 Baja directa (equipo ya no está)')+_bx('btn btn-2','d-rev','⏸️ Pendiente de resolver')+_bx('btn btn-2','d-imposible','🚫 Marcar imposible')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
     else if(o.estado==='PENDIENTE_ADMIN'){
       var bDep=o.deposito_hecho?('<div style="color:#166534;font-size:13px">✅ Depósito: '+(o.equipo_recibido?'equipo recibido':'no se devolvió')+'</div>'):_bx('btn btn-2','d-dep','📦 Depósito: registrar el equipo');
       var bSop=o.soporte_hecho?'<div style="color:#166534;font-size:13px">✅ Soporte: conexión eliminada</div>':(o.deposito_hecho?_bx('btn btn-2','d-sop','☐ Soporte: eliminé la conexión en ISPcube'):'<div class="muted" style="font-size:13px">🔒 Soporte — esperá al depósito</div>');
       var bCom=o.comercial_hecho?'<div style="color:#166534;font-size:13px">✅ Comercial: cliente eliminado</div>':(o.soporte_hecho?_bx('btn btn-2','d-com','☐ Comercial: nota de crédito + eliminé cliente'):'<div class="muted" style="font-size:13px">🔒 Comercial — esperá a soporte</div>');
       btns=bDep+bSop+bCom+_bx('btn btn-2','d-can','✗ Cancelar baja');
     }
-    else if(o.estado==='EN_REVISION'){ btns=_bx('btn btn-ok','d-volv','↩️ Volver a pendientes')+_bx('btn btn-2','d-anul','🟢 Pagó / sigue con servicio')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else if(o.estado==='EN_REVISION'){ btns=_bx('btn btn-ok','d-volv','↩️ Volver a pendientes')+_bx('btn btn-2','d-anul','🟢 Pagó / sigue con servicio')+_bx('btn btn-2','d-imposible','🚫 Marcar imposible')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
     else if(o.estado==='IMPOSIBLE'){ btns=_bx('btn btn-ok','d-reintentar','↩️ Reactivar (que vuelvan a intentar)')+_bx('btn btn-2','d-bajadir','🏠 Baja directa (equipo ya no está)')+_bx('btn btn-2','d-anul','🟢 Pagó / sigue con servicio')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
     else { btns=_bx('btn btn-2','d-volv','↩️ Reabrir (a pendientes)'); }
     modal(h+'<div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">'+btns+'</div><div style="margin-top:10px"><button class="btn btn-2" id="d-x">Cerrar</button></div>');
@@ -3761,6 +3781,7 @@
     if(g('d-can')) g('d-can').addEventListener('click',function(){ if(!confirm('¿Cancelar esta baja?')) return; run({estado:'CANCELADA',resolucion:'Cancelada por el admin',resuelto_at:new Date().toISOString()},'Cancelada','Canceló desconexión'); });
     if(g('d-volv')) g('d-volv').addEventListener('click',function(){ run({estado:'PENDIENTE',cuadrilla_id:null,fecha_agendada:null,asignada_at:null,resolucion:null,resuelto_at:null},'↩️ Vuelta a pendientes','Reabrió desconexión'); });
     if(g('d-reintentar')) g('d-reintentar').addEventListener('click',function(){ if(!confirm('Reactivar esta desconexión: vuelve a PENDIENTES y el técnico puede intentar de nuevo (se reinicia el contador de intentos). ¿Confirmás?')) return; run({estado:'PENDIENTE',cuadrilla_id:null,fecha_agendada:null,asignada_at:null,resolucion:null,resuelto_at:null,intentos_count:0},'↩️ Reactivada — vuelve a pendientes','Reactivó desconexión imposible'); });
+    if(g('d-imposible')) g('d-imposible').addEventListener('click',function(){ var mot=prompt('Marcar como IMPOSIBLE de retirar. ¿Motivo? (queda registrado · ej: no se encuentra el domicilio, cliente desaparecido…)','')||''; if(!mot.trim()){ toast('Escribí el motivo.'); return; } mot=mot.trim(); var ahora=new Date().toISOString(); var nota='• '+new Date().toLocaleDateString('es-AR')+' — Marcada imposible por el admin: '+mot; var obsPrev=((o.intentos_obs||'').trim()); run({estado:'IMPOSIBLE',intentos_obs:(obsPrev?(obsPrev+'\n'):'')+nota,ultimo_intento_at:ahora,resolucion:'🚫 Imposible de retirar (admin) — '+mot,resuelto_at:ahora,resuelto_por:USER.id},'🚫 Marcada como imposible','Marcó desconexión imposible'); });
     if(g('d-anul')) g('d-anul').addEventListener('click',function(){ run({estado:'ANULADA_PAGO',resolucion:'El cliente pagó / sigue con servicio',resuelto_at:new Date().toISOString(),resuelto_por:USER.id},'🟢 Anulada — el cliente sigue','Anuló desconexión (pagó)'); });
     if(g('d-sop')) g('d-sop').addEventListener('click',function(){ g('d-sop').disabled=true; sbPatch('desconexiones?id=eq.'+id+'&select=*',{soporte_hecho:true,soporte_at:new Date().toISOString(),soporte_por:USER.id}).then(function(r){ logAct('Soporte: eliminó conexión ISPcube',{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); _dxQuizaFinalizar(Array.isArray(r)?r[0]:null); }); });
     if(g('d-com')) g('d-com').addEventListener('click',function(){ cerrarModal(); _dxComercial(id); });
