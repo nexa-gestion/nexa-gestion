@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.31';
+  var VER='v3.32';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3499,6 +3499,7 @@
           +'<select id="dx-fbarrio"><option value="">Todos los barrios</option>'+_barOpts+'</select>'
           +'<select id="dx-fcuad"><option value="">Todas las cuadrillas</option>'+(REF.cuadrillas||[]).map(function(c){return '<option value="'+c.id+'"'+(String(st.fcuad||'')===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('')+'</select>'
           +(st.ver==='cerradas'?('<select id="dx-festado"><option value="">Todos los cierres</option>'+[['FINALIZADO','✅ Finalizada'],['ANULADA_PAGO','🟢 Pagó'],['CANCELADA','⛔ Cancelada / ISP']].map(function(e){return '<option value="'+e[0]+'"'+(st.festado===e[0]?' selected':'')+'>'+e[1]+'</option>';}).join('')+'</select>'):'')
+          +((st.ver==='cerradas'||st.ver==='PENDIENTE_ADMIN')?('<select id="dx-fresultado"><option value="">Todos los resultados</option>'+[['tecnico','✂️ Cortó el técnico'],['baja_directa','🏠 Baja directa (admin)'],['anulada','🟢 Pagó / sigue'],['cancelada','⛔ Cancelada'],['revision','⏸️ No se pudo / revisión']].map(function(e){return '<option value="'+e[0]+'"'+(st.fresultado===e[0]?' selected':'')+'>'+e[1]+'</option>';}).join('')+'</select>'+'<select id="dx-frec"><option value="">Recupero: todos</option><option value="si"'+(st.frec==='si'?' selected':'')+'>📦 Con equipo</option><option value="no"'+(st.frec==='no'?' selected':'')+'>🚫 Sin equipo</option></select>'):'')
           +'<input type="date" id="dx-fdesde" value="'+esc(st.fdesde||'')+'" title="Fecha de trabajo — desde" style="width:140px">'
           +'<input type="date" id="dx-fhasta" value="'+esc(st.fhasta||'')+'" title="Fecha de trabajo — hasta" style="width:140px">'
           +'<button class="btn btn-2" id="dx-fclear" title="Limpiar filtros">✖</button>'
@@ -3515,9 +3516,11 @@
         document.getElementById('dx-mapbtn').addEventListener('click',function(){ st.mapa=!st.mapa; document.getElementById('dx-mapa').style.display=st.mapa?'block':'none'; document.getElementById('dx-mapinfo').style.display=st.mapa?'block':'none'; document.getElementById('dx-tabla').style.display=st.mapa?'none':''; this.className='btn '+(st.mapa?'btn-pri':'btn-2'); if(st.mapa) _dxRenderMapa(); });
         var _fc=document.getElementById('dx-fcuad'); if(_fc) _fc.addEventListener('change',function(){ st.fcuad=this.value; _dxPinta(); });
         var _fe=document.getElementById('dx-festado'); if(_fe) _fe.addEventListener('change',function(){ st.festado=this.value; _dxPinta(); });
+        var _fr=document.getElementById('dx-fresultado'); if(_fr) _fr.addEventListener('change',function(){ st.fresultado=this.value; _dxPinta(); });
+        var _frc=document.getElementById('dx-frec'); if(_frc) _frc.addEventListener('change',function(){ st.frec=this.value; _dxPinta(); });
         var _fd=document.getElementById('dx-fdesde'); if(_fd) _fd.addEventListener('change',function(){ st.fdesde=this.value; _dxPinta(); });
         var _fh=document.getElementById('dx-fhasta'); if(_fh) _fh.addEventListener('change',function(){ st.fhasta=this.value; _dxPinta(); });
-        var _fcl=document.getElementById('dx-fclear'); if(_fcl) _fcl.addEventListener('click',function(){ st.fcuad='';st.festado='';st.fdesde='';st.fhasta='';st.origen='';st.q='';st.fbarrio=''; _render(); });
+        var _fcl=document.getElementById('dx-fclear'); if(_fcl) _fcl.addEventListener('click',function(){ st.fcuad='';st.festado='';st.fdesde='';st.fhasta='';st.origen='';st.q='';st.fbarrio='';st.fresultado='';st.frec=''; _render(); });
         document.getElementById('dx-csv').addEventListener('click',_dxCSV);
         var rb=document.getElementById('dx-refrescar'); if(rb) rb.addEventListener('click',function(){ window._dxMaintDone=false; vDesconexiones(); });
         _dxWire();
@@ -3543,6 +3546,9 @@
       if(st.fbarrio && ((o.clientes&&o.clientes.barrio)||'(sin barrio)')!==st.fbarrio) return false;
       if(st.fcuad && String((o.cuadrilla_id||o.compromiso_por)||'')!==String(st.fcuad)) return false;
       if(st.ver==='cerradas' && st.festado && o.estado!==st.festado) return false;
+      if(st.fresultado && _dxResultado(o).cat!==st.fresultado) return false;
+      if(st.frec==='si' && o.recupero_equipo!==true) return false;
+      if(st.frec==='no' && o.recupero_equipo!==false) return false;
       if(st.fdesde || st.fhasta){ var f=_dxFechaAR(o.corte_at||o.finalizado_at||o.resuelto_at||o.created_at); if(st.fdesde && (!f || f<st.fdesde)) return false; if(st.fhasta && (!f || f>st.fhasta)) return false; }
       if(!q) return true;
       var c=o.clientes||{}, hay=((c.numero_cliente||'')+' '+(c.doc_numero||'')+' '+(c.codigo_ispcube||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.domicilio_full||'')+' '+(c.precinto||'')+' '+(c.caja_nap||'')+' '+(c.puerto||'')+' '+(c.telefono||'')).toLowerCase();
@@ -3556,6 +3562,21 @@
     if(o.estado==='CANCELADA') return '<span style="font-size:12px">'+(auto?'⛔ Baja por ISP <span class="muted">(sistema)</span>':'⛔ Cancelada <span class="muted">(admin)</span>')+'</span>';
     if(o.estado==='FINALIZADO') return '<span style="font-size:12px;color:#166534">✅ Finalizada</span>';
     return '<span class="muted" style="font-size:12px">'+esc(_dxEstadoTxt(o.estado))+'</span>';
+  }
+  // Clasifica CÓMO se resolvió cada desconexión (para el registro + filtros)
+  function _dxResultado(o){
+    if(/^BAJA DIRECTA/i.test(o.obs_tecnico||'')) return {cat:'baja_directa',lbl:'🏠 Baja directa (admin · sin visita)'};
+    if(o.estado==='ANULADA_PAGO') return {cat:'anulada',lbl:'🟢 Pagó / sigue'};
+    if(o.estado==='CANCELADA') return {cat:'cancelada',lbl:'⛔ Cancelada'};
+    if(o.estado==='EN_REVISION') return {cat:'revision',lbl:'⏸️ No se pudo / en revisión'};
+    if(o.corte_at) return {cat:'tecnico',lbl:'✂️ Cortó el técnico'+(o.recupero_equipo===true?' · equipo recuperado':o.recupero_equipo===false?' · sin recupero':'')};
+    return {cat:o.estado,lbl:_dxEstadoTxt(o.estado)};
+  }
+  function _dxQuien(o){
+    if(/^BAJA DIRECTA/i.test(o.obs_tecnico||'')) return 'Administrativo';
+    if(o.corte_at && o.cuadrilla_id) return '🔧 '+(_cuadNombre(o.cuadrilla_id)||('Cuad '+o.cuadrilla_id));
+    if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA'||o.estado==='EN_REVISION') return /autom|fuera del sistema|eliminad|ispcube|rehabilit/i.test(o.resolucion||'')?'Sistema':'Administrativo';
+    return '—';
   }
   // fecha en hora local AR (los timestamps son UTC) para los filtros por fecha
   function _dxFechaAR(iso){ if(!iso) return ''; try{ return new Date(new Date(iso).getTime()-10800000).toISOString().substring(0,10); }catch(e){ return String(iso).substring(0,10); } }
@@ -3615,7 +3636,10 @@
       {k:'cuad',t:'Cuadrilla',sort:function(o){var ci=o.cuadrilla_id||o.compromiso_por;return (_cuadNombre(ci)||'').toLowerCase();},r:function(o){var ci=o.cuadrilla_id||o.compromiso_por;return ci?('<span style="font-size:12px;white-space:nowrap">🔧 '+esc(_cuadNombre(ci)||('Cuad '+ci))+'</span>'):'<span class="muted">—</span>';}},
       {k:'fwork',t:'Fecha trabajo',sort:function(o){return o.corte_at||'';},r:function(o){return o.corte_at?('<span style="font-size:12px;white-space:nowrap">'+esc(fmtFecha(o.corte_at))+'</span>'):'<span class="muted">—</span>';}}
     ];
-    if(window._dxState.ver==='cerradas') cols.push({k:'cierre',t:'Cómo cerró',sort:function(o){return o.estado||'';},r:_dxCierre});
+    if(window._dxState.ver==='cerradas'||window._dxState.ver==='PENDIENTE_ADMIN'){
+      cols.push({k:'resultado',t:'Resultado',sort:function(o){return _dxResultado(o).cat;},r:function(o){return '<span style="font-size:12px">'+_dxResultado(o).lbl+'</span>';}});
+      cols.push({k:'quien',t:'Quién',sort:function(o){return _dxQuien(o);},r:function(o){return '<span style="font-size:12px">'+esc(_dxQuien(o))+'</span>';}});
+    }
     cols.push({k:'info',t:'Detalle',sort:null,r:_dxInfo});
     cols.push({k:'acc',t:'Acciones',sort:null,fixed:true,r:_dxAcc});
     gridRender(cont,cols,rows,{key:'dx',note:rows.length+' de '+_dxData.length+' desconexión(es) · tocá una fila para ver el detalle',onRow:function(o){ _dxDetalle(o); }});
