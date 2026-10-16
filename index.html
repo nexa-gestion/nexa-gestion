@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.44';
+  var VER='v3.45';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -482,6 +482,7 @@
     else if(v==='nav'){ navTo(p[1]); }
     else if(v==='nuevaOT'){ navTo('ordenes'); setTimeout(function(){ if(typeof nuevaOT==='function') nuevaOT(); },60); }
     else if(v==='isp'){ clState={ q:'', estado:'', empresa:'', barrio:'', pend:true, page:0, size:50, total:0, orderBy:'numero_cliente', orderDir:'desc', sel:{}, cols:null }; navTo('clientes'); }
+    else if(v==='cx'){ _cxLista(p[1]); }
   }
   var view=document.getElementById('view');
   function loading(){ view.innerHTML='<div class="center"><div class="spin"></div></div>'; }
@@ -1117,22 +1118,59 @@
   var _clStats=null;
   function cargarStatsCl(){
     var cont=document.getElementById('cl-stats'); if(!cont) return;
-    function render(c){ cont.innerHTML=dkpi(c[0],'Clientes','total','blue','')+dkpi(c[1],'Activos','','green','cl|estado=activo')+dkpi(c[2],'Bloqueados','','red','cl|estado=bloqueado')+dkpi(c[3],'Baja','','gray','cl|estado=baja')+dkpi(c[4],'Desconectados','','amber','cl|estado=desconectado')
-      +dkpi(c[5],'Fibra activos','FTTH','green','cl|estado=activo|tec=FTTH')+dkpi(c[6],'Fibra bloqueados','FTTH','red','cl|estado=bloqueado|tec=FTTH')
-      +dkpi(c[7],'Wireless activos','inalámbrico','cyan','cl|estado=activo|tec=INALAMBRICO')+dkpi(c[8],'Wireless bloqueados','inalámbrico','cyan','cl|estado=bloqueado|tec=INALAMBRICO')
-      +dkpi(c[9],'TV activas','cliente activo + TV','green','cl|estado=activo|tv=1')+dkpi(c[10],'TV bloqueadas','cliente bloq. + TV','red','cl|estado=bloqueado|tv=1')+dkpi(c[11],'TV total','planes de TV','amber','cl|tv=1');
-      Array.prototype.forEach.call(cont.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); }); }
+    // c = [ftthCobra, ftthGratis, ftthBloq, wlCobra, wlGratis, wlBloq, tvCobra, tvGratis, tvBloq]
+    function render(c){
+      var intCobra=c[0]+c[3], intGratis=c[1]+c[4], intBloq=c[2]+c[5], intAct=intCobra+intGratis, tvAct=c[6]+c[7];
+      cont.innerHTML=
+         dkpi(intAct,'Internet activas','conexiones que andan','blue','')
+        +dkpi(intCobra,'💰 Cobramos','FTTH '+c[0]+' · WL '+c[3],'green','cx|int_cobra')
+        +dkpi(intGratis,'🆓 Gratis','FTTH '+c[1]+' · WL '+c[4],'amber','cx|int_gratis')
+        +dkpi(intBloq,'⛔ Bloqueadas','FTTH '+c[2]+' · WL '+c[5],'red','cx|int_bloq')
+        +dkpi(c[0],'FTTH cobra','fibra','green','cx|ftth_cobra')+dkpi(c[1],'FTTH gratis','fibra','amber','cx|ftth_gratis')
+        +dkpi(c[3],'Wireless cobra','inalámbrico','cyan','cx|wl_cobra')+dkpi(c[4],'Wireless gratis','inalámbrico','amber','cx|wl_gratis')
+        +dkpi(tvAct,'📺 TV activas','cuentas de TV','green','cx|tv_act')+dkpi(c[7],'📺 TV gratis','cuentas de TV','amber','cx|tv_gratis')+dkpi(c[8],'📺 TV bloqueadas','cuentas de TV','red','cx|tv_bloq');
+      Array.prototype.forEach.call(cont.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
+    }
     if(_clStats){ render(_clStats); return; }
-    Promise.all([ sbCount('clientes?estado=neq.eliminado&select=id'), sbCount('clientes?estado=eq.activo&select=id'), sbCount('clientes?estado=eq.bloqueado&select=id'), sbCount('clientes?estado=eq.baja&select=id'), sbCount('clientes?estado=eq.desconectado&select=id'),
-      sbCount('clientes?estado=eq.activo&tecnologia=eq.FTTH&select=id'), sbCount('clientes?estado=eq.bloqueado&tecnologia=eq.FTTH&select=id'),
-      sbCount('clientes?estado=eq.activo&tecnologia=eq.INALAMBRICO&select=id'), sbCount('clientes?estado=eq.bloqueado&tecnologia=eq.INALAMBRICO&select=id'),
-      sbCount('clientes?estado=eq.activo&tv_online=is.true&select=id'), sbCount('clientes?estado=eq.bloqueado&tv_online=is.true&select=id'), sbCount('clientes?estado=neq.eliminado&tv_online=is.true&select=id')
-    ]).then(function(c){ _clStats=c; render(c); });
+    var q=function(f){ return sbCount('conexiones?'+f+'&select=id'); };
+    Promise.all([
+      q('tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.activo&gratis=is.false'), q('tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.activo&gratis=is.true'), q('tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.bloqueado'),
+      q('tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.activo&gratis=is.false'), q('tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.activo&gratis=is.true'), q('tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.bloqueado'),
+      q('tipo=eq.tv&estado=eq.activo&gratis=is.false'), q('tipo=eq.tv&estado=eq.activo&gratis=is.true'), q('tipo=eq.tv&estado=eq.bloqueado')
+    ]).then(function(c){ _clStats=c; render(c); }).catch(function(){ cont.innerHTML='<div class="muted" style="padding:10px">No se pudo cargar (¿corriste el SQL de conexiones + el sync?).</div>'; });
+  }
+  // Despliega abajo la lista de conexiones de la tarjeta clickeada
+  function _cxLista(key){
+    var M={
+      int_cobra:['tipo=eq.internet&estado=eq.activo&gratis=is.false','💰 Internet que cobramos'],
+      int_gratis:['tipo=eq.internet&estado=eq.activo&gratis=is.true','🆓 Internet gratis'],
+      int_bloq:['tipo=eq.internet&estado=eq.bloqueado','⛔ Internet bloqueado'],
+      ftth_cobra:['tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.activo&gratis=is.false','💰 FTTH que cobramos'],
+      ftth_gratis:['tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.activo&gratis=is.true','🆓 FTTH gratis'],
+      wl_cobra:['tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.activo&gratis=is.false','💰 Wireless que cobramos'],
+      wl_gratis:['tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.activo&gratis=is.true','🆓 Wireless gratis'],
+      tv_act:['tipo=eq.tv&estado=eq.activo','📺 TV activas'],
+      tv_gratis:['tipo=eq.tv&estado=eq.activo&gratis=is.true','📺 TV gratis'],
+      tv_bloq:['tipo=eq.tv&estado=eq.bloqueado','📺 TV bloqueadas']
+    };
+    var m=M[key]; if(!m) return;
+    var cont=document.getElementById('cl-cxlista'); if(!cont) return;
+    cont.style.display='block'; cont.innerHTML='<div class="center"><div class="spin"></div></div>'; cont.scrollIntoView({behavior:'smooth',block:'nearest'});
+    sbGet('conexiones?'+m[0]+'&select=plan_nombre,tecnologia,estado,gratis,precio,clientes(numero_cliente,nombre,apellido,barrio,telefono)&limit=3000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var h='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">'+m[1]+' · '+d.length+' conexión(es)</div><button class="btn btn-2 btn-sm" id="cx-cerrar">✖ Cerrar</button></div>'
+        +'<div style="overflow:auto;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:4px">N°</th><th>Cliente</th><th>Barrio</th><th>Plan</th><th>Tec</th><th>Estado</th><th>$</th></tr></thead><tbody>'
+        +d.map(function(x){var c=x.clientes||{};return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px">'+esc(c.numero_cliente||'')+'</td><td>'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+'</td><td>'+esc(c.barrio||'—')+'</td><td>'+esc(x.plan_nombre||'')+'</td><td>'+esc(x.tecnologia||'—')+'</td><td>'+esc(x.estado||'')+'</td><td>'+(x.gratis?'🆓 gratis':('$'+Math.round(Number(x.precio||0)).toLocaleString('es-AR')))+'</td></tr>';}).join('')
+        +'</tbody></table></div></div>';
+      cont.innerHTML=h;
+      var cx=document.getElementById('cx-cerrar'); if(cx) cx.addEventListener('click',function(){ cont.style.display='none'; cont.innerHTML=''; });
+    }).catch(function(){ cont.innerHTML='<div class="card muted">No se pudo cargar la lista.</div>'; });
   }
   function vClientes(){
     view.innerHTML =
       '<h1>Clientes</h1><p class="sub">Base completa de Nexa.</p>'
       +'<div id="cl-stats" class="dkpis" style="margin-bottom:14px"></div>'
+      +'<div id="cl-cxlista" style="display:none;margin-bottom:14px"></div>'
       +'<div class="toolbar">'
       +'<input id="cl-q" placeholder="Buscar nombre, DNI, N° cliente, ISP, precinto, caja, teléfono…" value="'+esc(clState.q)+'" style="min-width:260px">'
       +'<select id="cl-estado"><option value="">Todos los estados</option>'+opt(['activo','bloqueado','baja','suspendido','moroso','prospecto','eliminado'],clState.estado)+'</select>'
