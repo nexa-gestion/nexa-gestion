@@ -457,7 +457,7 @@ def generar_desconexiones_pendientes():
         yaset = set()
         for i in range(0, len(cand_ids), 150):
             part = ",".join(str(x) for x in cand_ids[i:i+150])
-            r = sb_get("desconexiones?cliente_id=in.(%s)&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO)&select=cliente_id&limit=2000" % part)
+            r = sb_get("desconexiones?cliente_id=in.(%s)&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO,COMPROMISO_PAGO,IMPOSIBLE,MIGRACION_508)&select=cliente_id&limit=2000" % part)
             for x in (r or []): yaset.add(x["cliente_id"])
     except Exception as e:
         print("WARN generar_desconexiones:", e); return 0
