@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.45';
+  var VER='v3.46';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1118,25 +1118,40 @@
   var _clStats=null;
   function cargarStatsCl(){
     var cont=document.getElementById('cl-stats'); if(!cont) return;
-    // c = [ftthCobra, ftthGratis, ftthBloq, wlCobra, wlGratis, wlBloq, tvCobra, tvGratis, tvBloq]
+    // c = [0 ftthCobra,1 ftthGratis,2 ftthBloq,3 wlCobra,4 wlGratis,5 wlBloq,6 tvCobra,7 tvGratis,8 tvBloq, 9 cliAct,10 cliTot,11 cliBloq]
     function render(c){
-      var intCobra=c[0]+c[3], intGratis=c[1]+c[4], intBloq=c[2]+c[5], intAct=intCobra+intGratis, tvAct=c[6]+c[7];
-      cont.innerHTML=
-         dkpi(intAct,'Internet activas','conexiones que andan','blue','')
-        +dkpi(intCobra,'💰 Cobramos','FTTH '+c[0]+' · WL '+c[3],'green','cx|int_cobra')
-        +dkpi(intGratis,'🆓 Gratis','FTTH '+c[1]+' · WL '+c[4],'amber','cx|int_gratis')
-        +dkpi(intBloq,'⛔ Bloqueadas','FTTH '+c[2]+' · WL '+c[5],'red','cx|int_bloq')
-        +dkpi(c[0],'FTTH cobra','fibra','green','cx|ftth_cobra')+dkpi(c[1],'FTTH gratis','fibra','amber','cx|ftth_gratis')
-        +dkpi(c[3],'Wireless cobra','inalámbrico','cyan','cx|wl_cobra')+dkpi(c[4],'Wireless gratis','inalámbrico','amber','cx|wl_gratis')
-        +dkpi(tvAct,'📺 TV activas','cuentas de TV','green','cx|tv_act')+dkpi(c[7],'📺 TV gratis','cuentas de TV','amber','cx|tv_gratis')+dkpi(c[8],'📺 TV bloqueadas','cuentas de TV','red','cx|tv_bloq');
-      Array.prototype.forEach.call(cont.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
+      var intCobra=c[0]+c[3], intGratis=c[1]+c[4], intBloq=c[2]+c[5], intAct=intCobra+intGratis;
+      var ftthTot=c[0]+c[1]+c[2], wlTot=c[3]+c[4]+c[5], tvAct=c[6]+c[7], tvTot=tvAct+c[8];
+      var N=function(x){return Number(x||0).toLocaleString('es-AR');};
+      var hero=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:175px;background:#fff;border:1px solid var(--bord);border-radius:14px;padding:15px 18px;box-shadow:var(--card-shadow)"><div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px">'+ico+' '+lab+'</div><div style="font-size:38px;font-weight:800;color:'+col+';line-height:1.05;margin:3px 0">'+N(val)+'</div><div style="font-size:12.5px;color:#94a3b8">'+sub+'</div></div>'; };
+      var bar=function(segs){ var tot=segs.reduce(function(a,s){return a+s[0];},0)||1; return '<div style="display:flex;height:28px;border-radius:8px;overflow:hidden;border:1px solid var(--bord);background:#f1f5f9">'+segs.map(function(s){ return s[0]>0?'<div class="cxseg" data-cx="'+s[2]+'" title="'+s[3]+': '+s[0]+'" style="flex:'+s[0]+';background:'+s[1]+';cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12.5px;min-width:0">'+(s[0]/tot>0.07?N(s[0]):'')+'</div>':'';}).join('')+'</div>'; };
+      var leg=function(items){ return '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:13px">'+items.map(function(i){return '<span class="cxseg" data-cx="'+i[2]+'" style="cursor:pointer;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:'+i[1]+';margin-right:5px"></span><b>'+N(i[0])+'</b> '+i[3]+'</span>';}).join('')+'</div>'; };
+      var card=function(inner){ return '<div style="background:#fff;border:1px solid var(--bord);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:var(--card-shadow)">'+inner+'</div>'; };
+      var h='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
+        +hero('👥','Clientes',c[9],N(c[10])+' en total · '+N(c[11])+' bloqueados','#2563eb')
+        +hero('💰','Facturando',intCobra,'conexiones de internet que cobramos','#16a34a')
+        +hero('📡','Conexiones activas',intAct,'andando · '+N(intBloq)+' bloqueadas','#0891b2')
+        +'</div>';
+      h+=card('<div style="font-weight:800;margin-bottom:9px">🌐 Internet · '+N(intAct)+' activas <span style="color:#94a3b8;font-weight:500;font-size:13px">(tocá una parte para ver la lista)</span></div>'
+        +bar([[intCobra,'#16a34a','int_cobra','Cobramos'],[intGratis,'#f59e0b','int_gratis','Gratis'],[intBloq,'#dc2626','int_bloq','Bloqueadas']])
+        +leg([[intCobra,'#16a34a','int_cobra','💰 cobramos'],[intGratis,'#f59e0b','int_gratis','🆓 gratis'],[intBloq,'#dc2626','int_bloq','⛔ bloqueadas']])
+        +'<div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:14px">'
+          +'<div style="flex:1;min-width:210px"><div style="color:#475569;margin-bottom:5px;font-size:13px"><b>Fibra (FTTH)</b> · '+N(ftthTot)+'</div>'+bar([[c[0],'#16a34a','ftth_cobra','cobra'],[c[1],'#f59e0b','ftth_gratis','gratis'],[c[2],'#dc2626','ftth_bloq','bloq']])+'</div>'
+          +'<div style="flex:1;min-width:210px"><div style="color:#475569;margin-bottom:5px;font-size:13px"><b>Wireless</b> · '+N(wlTot)+'</div>'+bar([[c[3],'#0891b2','wl_cobra','cobra'],[c[4],'#f59e0b','wl_gratis','gratis'],[c[5],'#dc2626','wl_bloq','bloq']])+'</div>'
+        +'</div>');
+      h+=card('<div style="font-weight:800;margin-bottom:9px">📺 TV · '+N(tvTot)+' cuentas</div>'
+        +bar([[c[6],'#16a34a','tv_act','Activas (cobra)'],[c[7],'#f59e0b','tv_gratis','Gratis'],[c[8],'#dc2626','tv_bloq','Bloqueadas']])
+        +leg([[tvAct,'#16a34a','tv_act','📺 activas'],[c[7],'#f59e0b','tv_gratis','🆓 gratis'],[c[8],'#dc2626','tv_bloq','⛔ bloqueadas']]));
+      cont.innerHTML=h;
+      Array.prototype.forEach.call(cont.querySelectorAll('[data-cx]'),function(el){ el.addEventListener('click',function(){ _cxLista(el.getAttribute('data-cx')); }); });
     }
     if(_clStats){ render(_clStats); return; }
     var q=function(f){ return sbCount('conexiones?'+f+'&select=id'); };
     Promise.all([
       q('tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.activo&gratis=is.false'), q('tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.activo&gratis=is.true'), q('tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.bloqueado'),
       q('tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.activo&gratis=is.false'), q('tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.activo&gratis=is.true'), q('tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.bloqueado'),
-      q('tipo=eq.tv&estado=eq.activo&gratis=is.false'), q('tipo=eq.tv&estado=eq.activo&gratis=is.true'), q('tipo=eq.tv&estado=eq.bloqueado')
+      q('tipo=eq.tv&estado=eq.activo&gratis=is.false'), q('tipo=eq.tv&estado=eq.activo&gratis=is.true'), q('tipo=eq.tv&estado=eq.bloqueado'),
+      sbCount('clientes?estado=eq.activo&select=id'), sbCount('clientes?estado=neq.eliminado&select=id'), sbCount('clientes?estado=eq.bloqueado&select=id')
     ]).then(function(c){ _clStats=c; render(c); }).catch(function(){ cont.innerHTML='<div class="muted" style="padding:10px">No se pudo cargar (¿corriste el SQL de conexiones + el sync?).</div>'; });
   }
   // Despliega abajo la lista de conexiones de la tarjeta clickeada
@@ -1156,20 +1171,25 @@
     var m=M[key]; if(!m) return;
     var cont=document.getElementById('cl-cxlista'); if(!cont) return;
     cont.style.display='block'; cont.innerHTML='<div class="center"><div class="spin"></div></div>'; cont.scrollIntoView({behavior:'smooth',block:'nearest'});
-    sbGet('conexiones?'+m[0]+'&select=plan_nombre,tecnologia,estado,gratis,precio,clientes(numero_cliente,nombre,apellido,barrio,telefono)&limit=3000').then(function(d){
-      d=Array.isArray(d)?d:[];
-      var h='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">'+m[1]+' · '+d.length+' conexión(es)</div><button class="btn btn-2 btn-sm" id="cx-cerrar">✖ Cerrar</button></div>'
-        +'<div style="overflow:auto;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:4px">N°</th><th>Cliente</th><th>Barrio</th><th>Plan</th><th>Tec</th><th>Estado</th><th>$</th></tr></thead><tbody>'
-        +d.map(function(x){var c=x.clientes||{};return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px">'+esc(c.numero_cliente||'')+'</td><td>'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+'</td><td>'+esc(c.barrio||'—')+'</td><td>'+esc(x.plan_nombre||'')+'</td><td>'+esc(x.tecnologia||'—')+'</td><td>'+esc(x.estado||'')+'</td><td>'+(x.gratis?'🆓 gratis':('$'+Math.round(Number(x.precio||0)).toLocaleString('es-AR')))+'</td></tr>';}).join('')
+    sbGetAll('conexiones?'+m[0]+'&select=plan_nombre,tecnologia,estado,gratis,precio,clientes(numero_cliente,nombre,apellido,barrio,telefono)&order=cliente_id.asc').then(function(d){
+      d=Array.isArray(d)?d:[]; var TOPE=500, muestra=d.slice(0,TOPE);
+      var h='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">'+m[1]+' · '+d.length.toLocaleString('es-AR')+' conexión(es)'+(d.length>TOPE?(' <span class="muted" style="font-weight:400">· se ven las primeras '+TOPE+'</span>'):'')+'</div><div style="display:flex;gap:6px"><button class="btn btn-2 btn-sm" id="cx-csv">⬇️ Excel</button><button class="btn btn-2 btn-sm" id="cx-cerrar">✖ Cerrar</button></div></div>'
+        +'<div style="overflow:auto;max-height:460px;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b;position:sticky;top:0;background:#fff"><th style="padding:4px">N°</th><th>Cliente</th><th>Barrio</th><th>Plan</th><th>Tec</th><th>Estado</th><th>$</th></tr></thead><tbody>'
+        +muestra.map(function(x){var c=x.clientes||{};return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px">'+esc(c.numero_cliente||'')+'</td><td>'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+'</td><td>'+esc(c.barrio||'—')+'</td><td>'+esc(x.plan_nombre||'')+'</td><td>'+esc(x.tecnologia||'—')+'</td><td>'+esc(x.estado||'')+'</td><td>'+(x.gratis?'🆓 gratis':('$'+Math.round(Number(x.precio||0)).toLocaleString('es-AR')))+'</td></tr>';}).join('')
         +'</tbody></table></div></div>';
       cont.innerHTML=h;
       var cx=document.getElementById('cx-cerrar'); if(cx) cx.addEventListener('click',function(){ cont.style.display='none'; cont.innerHTML=''; });
+      var cv=document.getElementById('cx-csv'); if(cv) cv.addEventListener('click',function(){
+        var head=['N','Cliente','Barrio','Plan','Tecnologia','Estado','Precio','Gratis'];
+        var lines=[head.join(';')].concat(d.map(function(x){var c=x.clientes||{};return [c.numero_cliente||'',((c.nombre||'')+' '+(c.apellido||'')).trim(),c.barrio||'',x.plan_nombre||'',x.tecnologia||'',x.estado||'',Math.round(Number(x.precio||0)),(x.gratis?'SI':'')].map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(';');}));
+        var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='conexiones_'+key+'.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+d.length+' filas)');
+      });
     }).catch(function(){ cont.innerHTML='<div class="card muted">No se pudo cargar la lista.</div>'; });
   }
   function vClientes(){
     view.innerHTML =
       '<h1>Clientes</h1><p class="sub">Base completa de Nexa.</p>'
-      +'<div id="cl-stats" class="dkpis" style="margin-bottom:14px"></div>'
+      +'<div id="cl-stats" style="margin-bottom:14px"></div>'
       +'<div id="cl-cxlista" style="display:none;margin-bottom:14px"></div>'
       +'<div class="toolbar">'
       +'<input id="cl-q" placeholder="Buscar nombre, DNI, N° cliente, ISP, precinto, caja, teléfono…" value="'+esc(clState.q)+'" style="min-width:260px">'
