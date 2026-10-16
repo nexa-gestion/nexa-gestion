@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.38';
+  var VER='v3.39';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3343,14 +3343,15 @@
   function _dxEstadoTxt(e){ return {ANULADA_PAGO:'🟢 Anulada (pagó / sigue)',CANCELADA:'⛔ Cancelada',EN_REVISION:'⏸️ En revisión',FINALIZADO:'✅ Finalizada',MIGRACION_508:'📋 Migración 508'}[e]||e; }
   // Auto-genera órdenes PENDIENTE para los clientes a dar de baja (baja ISPcube + bloqueado +30d) que no tengan ya una
   // ¿qué clientes (de una lista) YA tienen una desconexión que bloquea regenerar otra?
-  // Bloquean: abiertas (PEND/ASIG/PEND_ADMIN) + en revisión + finalizada. NO bloquean: ANULADA_PAGO / CANCELADA
-  // (así el moroso que pagó y volvió a caer en mora vuelve a la cola). Chequea SOLO los candidatos (no toda la tabla).
+  // Bloquean: abiertas (PEND/ASIG/PEND_ADMIN) + en revisión + finalizada + compromiso + imposible + migración 508.
+  // NO bloquean: ANULADA_PAGO / CANCELADA (así el moroso que pagó y volvió a caer en mora vuelve a la cola).
+  // Chequea SOLO los candidatos (no toda la tabla).
   function _dxBloqueados(ids, done){
     var ya={}, i=0;
     (function chunk(){
       if(i>=ids.length){ done(ya); return; }
       var part=ids.slice(i,i+150); i+=150;
-      sbGet('desconexiones?cliente_id=in.('+part.join(',')+')&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO)&select=cliente_id&limit=2000')
+      sbGet('desconexiones?cliente_id=in.('+part.join(',')+')&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO,COMPROMISO_PAGO,IMPOSIBLE,MIGRACION_508)&select=cliente_id&limit=2000')
         .then(function(d){ (Array.isArray(d)?d:[]).forEach(function(x){ ya[x.cliente_id]=1; }); chunk(); })
         .catch(function(){ chunk(); });
     })();
@@ -3443,7 +3444,7 @@
         ids.forEach(function(cs){ var cid=Number(cs), ot=porCli[cs], dxs=dxPorCli[cid]||[];
           var body={estado:'PENDIENTE_ADMIN',corte_at:ot.fin_tec_at||new Date().toISOString(),cuadrilla_id:(ot.cuadrilla_id||null),obs_tecnico:'Corte/retiro hecho por OT N° '+ot.numero,compromiso_vence:null};
           var abierta=dxs.filter(function(x){return x.estado==='PENDIENTE'||x.estado==='ASIGNADA';})[0];
-          var enFlujoOResuelta=dxs.some(function(x){return ['PENDIENTE_ADMIN','EN_REVISION','FINALIZADO','CANCELADA','ANULADA_PAGO'].indexOf(x.estado)>=0;});
+          var enFlujoOResuelta=dxs.some(function(x){return ['PENDIENTE_ADMIN','EN_REVISION','FINALIZADO','CANCELADA','ANULADA_PAGO','COMPROMISO_PAGO','IMPOSIBLE','MIGRACION_508'].indexOf(x.estado)>=0;});
           if(abierta){ acciones.push(sbPatch('desconexiones?id=eq.'+abierta.id,body).catch(function(){})); nAvanz++; }
           else if(!enFlujoOResuelta){ creates.push(Object.assign({cliente_id:cid,origen:'baja_isp',created_by:USER.id},body)); }
         });
