@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.35';
+  var VER='v3.36';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3333,14 +3333,14 @@
   // Ciclo: PENDIENTE → ASIGNADA → (técnico corta/recupera) PENDIENTE_ADMIN → (soporte + comercial) FINALIZADO
   function _dxEsAdmin(){ return USER && (USER.rol==='administrativo'||USER.rol==='gerencial'||USER.rol==='superadmin'); }
   function _dxBadge(){ sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&select=id&limit=5000').then(function(d){ var n=Array.isArray(d)?d.length:0, b=document.getElementById('nav-dx-badge'); if(b){ if(n>0){ b.textContent=n; b.style.display=''; } else b.style.display='none'; } }).catch(function(){}); }
-  var DX_TABS=[['PENDIENTE','⏳ Pendientes'],['ASIGNADA','📍 Asignadas'],['PENDIENTE_ADMIN','📝 Pendiente admin'],['compromiso','🤝 Compromisos'],['EN_REVISION','⏸️ En revisión'],['IMPOSIBLE','🚫 Imposibles'],['cerradas','✅ Cerradas'],['cand','➕ Candidatos']];
+  var DX_TABS=[['PENDIENTE','⏳ Pendientes'],['ASIGNADA','📍 Asignadas'],['PENDIENTE_ADMIN','📝 Pendiente admin'],['compromiso','🤝 Compromisos'],['EN_REVISION','⏸️ En revisión'],['IMPOSIBLE','🚫 Imposibles'],['MIGRACION_508','📋 Migración 508'],['cerradas','✅ Cerradas'],['cand','➕ Candidatos']];
   function _dxDiasRest(iso){ if(!iso) return null; return Math.ceil((Date.parse(iso)-Date.now())/86400000); }
   function _dxTabs(){ var v=window._dxState.ver; return '<div class="toolbar">'+DX_TABS.map(function(t){return '<button class="btn '+(v===t[0]?'btn-pri':'btn-2')+' dx-tab" data-ver="'+t[0]+'">'+t[1]+'</button>';}).join('')+'</div>'; }
   function _dxOrigen(o){ return {manual:'✋ manual',baja_isp:'⬇️ baja ISPcube',bloqueado_30d:'⛔ bloqueado +30d'}[o]||o||''; }
   // Días reales bloqueado (hoy − bloqueado_desde). null si no hay dato.
   function _diasBloq(iso){ if(!iso) return null; var ms=Date.now()-new Date(iso).getTime(); var d=Math.floor(ms/86400000); return d>=0?d:0; }
   function _diasBloqTxt(c){ if(!c) return ''; var d=_diasBloq(c.bloqueado_desde); if(d==null) return ''; return '⛔ bloqueado hace <b>'+d+'</b> día'+(d===1?'':'s'); }
-  function _dxEstadoTxt(e){ return {ANULADA_PAGO:'🟢 Anulada (pagó / sigue)',CANCELADA:'⛔ Cancelada',EN_REVISION:'⏸️ En revisión',FINALIZADO:'✅ Finalizada'}[e]||e; }
+  function _dxEstadoTxt(e){ return {ANULADA_PAGO:'🟢 Anulada (pagó / sigue)',CANCELADA:'⛔ Cancelada',EN_REVISION:'⏸️ En revisión',FINALIZADO:'✅ Finalizada',MIGRACION_508:'📋 Migración 508'}[e]||e; }
   // Auto-genera órdenes PENDIENTE para los clientes a dar de baja (baja ISPcube + bloqueado +30d) que no tengan ya una
   // ¿qué clientes (de una lista) YA tienen una desconexión que bloquea regenerar otra?
   // Bloquean: abiertas (PEND/ASIG/PEND_ADMIN) + en revisión + finalizada. NO bloquean: ANULADA_PAGO / CANCELADA
@@ -3599,7 +3599,7 @@
     if(o.estado==='COMPROMISO_PAGO') return _bx('btn btn-2 dx-comp-pool',o.id,'↩️ Al pool')+_bx('btn btn-ok dx-comp-pago',o.id,'✅ Pagó')+_bx('btn btn-2 dx-comp-otro',o.id,'🤝 Otro')+_bx('btn btn-2 dx-ver',o.id,'👁️');
     return _bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
   }
-  function _dxColor(o){ return {PENDIENTE:'#d97706',ASIGNADA:'#2563eb',PENDIENTE_ADMIN:'#7c3aed',COMPROMISO_PAGO:'#16a34a',EN_REVISION:'#0891b2'}[o.estado]||'#64748b'; }
+  function _dxColor(o){ return {PENDIENTE:'#d97706',ASIGNADA:'#2563eb',PENDIENTE_ADMIN:'#7c3aed',COMPROMISO_PAGO:'#16a34a',EN_REVISION:'#0891b2',MIGRACION_508:'#64748b'}[o.estado]||'#64748b'; }
   function _dxRenderMapa(){
     var cont=document.getElementById('dx-mapa'); if(!cont) return;
     ensureLeaflet(function(){
@@ -3744,6 +3744,7 @@
     }
     else if(o.estado==='EN_REVISION'){ btns=_bx('btn btn-ok','d-volv','↩️ Volver a pendientes')+_bx('btn btn-2','d-anul','🟢 Pagó / sigue con servicio')+_bx('btn btn-2','d-imposible','🚫 Marcar imposible')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
     else if(o.estado==='IMPOSIBLE'){ btns=_bx('btn btn-ok','d-reintentar','↩️ Reactivar (que vuelvan a intentar)')+_bx('btn btn-2','d-bajadir','🏠 Baja directa (equipo ya no está)')+_bx('btn btn-2','d-anul','🟢 Pagó / sigue con servicio')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
+    else if(o.estado==='MIGRACION_508'){ btns=_bx('btn btn-ok','d-volv','↩️ Reactivar — voy a recuperar el equipo')+_bx('btn btn-2','d-anul','🟢 Pagó / sigue con servicio')+_bx('btn btn-2','d-can','✗ Cancelar baja'); }
     else { btns=_bx('btn btn-2','d-volv','↩️ Reabrir (a pendientes)'); }
     modal(h+'<div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">'+btns+'</div><div style="margin-top:10px"><button class="btn btn-2" id="d-x">Cerrar</button></div>');
     function run(body,msg,act){ sbPatch('desconexiones?id=eq.'+id,body).then(function(){ if(act) logAct(act,{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); toast(msg); vDesconexiones(); }); }
