@@ -262,18 +262,21 @@ def pull_tickets(token, isp=None):
     print(f"🎫 Tickets ISPcube: {len(nuevos)} nuevos importados (de {len(rows)} creados por cliente; {huerfanos} huérfanos salteados)")
 
 def close_tickets(token):
-    # Cierra en ISPcube los tickets cuya OT en Nexa ya quedó FINALIZADA (cierra el círculo).
-    # SEGURO: lee el ticket actual y lo reescribe con estado=Cerrado (3) preservando los demás campos.
+    # Cierra en ISPcube (estado=Cerrado, 3) los tickets que en Nexa ya terminaron su ciclo:
+    #   - convertido + OT FINALIZADA (trabajo hecho)
+    #   - gestionado (resuelto por el admin/soporte sin OT)
+    #   - archivado (viejo, limpiado a mano)
+    # SEGURO: lee el ticket actual y lo reescribe preservando los demás campos.
     H = {"api-key": APIKEY, "client-id": CLIENTID, "login-type": "api",
          "username": USER, "Authorization": "Bearer " + token}
     try:
-        conv = sb_get("isp_tickets?estado_nexa=eq.convertido&ot_id=not.is.null&isp_cerrado_at=is.null"
-                      "&select=id,ticket_id,ot_id&limit=2000")
+        conv  = sb_get("isp_tickets?estado_nexa=eq.convertido&ot_id=not.is.null&isp_cerrado_at=is.null"
+                       "&select=id,ticket_id,ot_id&limit=2000") or []
+        otros = sb_get("isp_tickets?estado_nexa=in.(gestionado,archivado)&isp_cerrado_at=is.null"
+                       "&select=id,ticket_id,estado_nexa&limit=5000") or []
     except Exception as e:
         print("WARN close_tickets sb_get:", e); return
-    if not conv:
-        print("🎫 Tickets a cerrar en ISPcube: 0"); return
-    # ¿cuáles de esas OT están FINALIZADA?
+    # ¿cuáles OT de los convertidos están FINALIZADA?
     ids = [str(t["ot_id"]) for t in conv if t.get("ot_id")]
     fin = set()
     for i in range(0, len(ids), 100):
@@ -281,9 +284,18 @@ def close_tickets(token):
             r = sb_get("ordenes_trabajo?id=in.(%s)&estado=eq.FINALIZADA&select=id" % ",".join(ids[i:i+100]))
             for o in r: fin.add(o["id"])
         except Exception: pass
-    cerrados = 0
+    # arma la lista final (ticket, nota)
+    pendientes = []
     for t in conv:
-        if t["ot_id"] not in fin: continue
+        if t["ot_id"] in fin:
+            pendientes.append((t, "Resuelto — trabajo finalizado (Nexa, OT #%s)" % t["ot_id"]))
+    for t in otros:
+        nota = "Gestionado por Nexa" if t.get("estado_nexa") == "gestionado" else "Cerrado por antigüedad (Nexa)"
+        pendientes.append((t, nota))
+    if not pendientes:
+        print("🎫 Tickets a cerrar en ISPcube: 0"); return
+    cerrados = 0
+    for t, nota in pendientes:
         if DRY: cerrados += 1; continue
         try:
             cur = json.load(_req(BASE + "/tickets?ticket_id=" + str(t["ticket_id"]), headers=H))
@@ -301,7 +313,7 @@ def close_tickets(token):
             "visit_date": cur.get("visit_date"),
             "visit_time_start": cur.get("visit_time_start"),
             "visit_time_end": cur.get("visit_time_end"),
-            "new_item_content": "Resuelto — trabajo finalizado (Nexa, OT #%s)" % t["ot_id"],
+            "new_item_content": nota,
         }
         try:
             _req(BASE + "/ticket/" + str(t["ticket_id"]), body, "PUT", H)
