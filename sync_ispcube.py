@@ -625,11 +625,25 @@ def main():
     #     descubrir si ISPcube trae contador de facturas. Se saca este bloque después.
     if not DRY and log_id:
         try:
-            ref = next((x for x in isp if str(x.get("code") or "").strip().lstrip("0") == "32"), None)
-            blk = [x for x in isp if x.get("status") == "blocked"][:2]
-            probe = {"ref32": ref, "blocked": blk}
-            sb_patch("sync_log?id=eq." + str(log_id), {"detalle": json.dumps(probe, default=str)})
-            print("🔎 sonda: objeto ISPcube guardado en sync_log.detalle")
+            def _find(pred):
+                return next((x for x in isp if pred(x)), None)
+            def _slim(x):
+                if not x: return None
+                return {"code": x.get("code"), "free": x.get("free"), "status": x.get("status"),
+                        "block": x.get("block"), "business": (x.get("business") or {}).get("name"),
+                        "conns": [{"conntype": c.get("conntype"), "plan_name": (c.get("plan") or {}).get("name"),
+                                   "plan_tv": (c.get("plan") or {}).get("tv"), "plan_price": (c.get("plan") or {}).get("price"),
+                                   "ftthbox_id": c.get("ftthbox_id"), "ap_name": c.get("ap_name"),
+                                   "block_date": c.get("block_date"), "delete_date": c.get("delete_date")}
+                                  for c in (x.get("connections") or [])]}
+            probe = {
+                "free":  _slim(_find(lambda x: x.get("free") in (1, True, "1"))),
+                "tv":    _slim(_find(lambda x: any((c.get("plan") or {}).get("tv") in (1, True, "1") for c in (x.get("connections") or [])))),
+                "wifi":  _slim(_find(lambda x: any(c.get("ap_name") for c in (x.get("connections") or [])))),
+                "multi": _slim(_find(lambda x: len(x.get("connections") or []) > 1)),
+            }
+            sb_patch("sync_log?id=eq." + str(log_id), {"detalle": json.dumps(probe, default=str)[:50000]})
+            print("🔎 sonda v2: ejemplos free/tv/wifi/multi en sync_log.detalle")
         except Exception as e:
             print("WARN sonda (ignoro):", e)
     portmap = isp_ftthboxes(token)
