@@ -600,6 +600,55 @@ def cerrar_desconexiones_por_retiro():
         except Exception as e: print(f"  ERROR crear desconexion retiro lote {i}: {e}")
     return n
 
+def sync_conexiones(isp, nexa):
+    # Reconstruye la tabla 'conexiones' desde connections[] de ISPcube (un cliente puede tener varias)
+    # y marca clientes.gratis (= free de ISPcube). Clasifica cada conexión en internet (FTTH/WIRELESS) o tv.
+    # Upsert por conn_id_isp; las que ya no vienen de ISPcube se marcan estado='eliminado'.
+    ahora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    filas, gratis_ids, nogratis_ids = [], [], []
+    for c in isp:
+        code = _ncode(c.get("code"))
+        cur = nexa.get(code)
+        if not cur or cur.get("id") is None: continue
+        cid = cur["id"]
+        free = c.get("free") in (1, True, "1")
+        (gratis_ids if free else nogratis_ids).append(cid)
+        cli_blocked = (c.get("status") == "blocked")
+        for cn in (c.get("connections") or []):
+            if cn.get("delete_date") or cn.get("id") is None: continue
+            plan = cn.get("plan") or {}
+            pname = plan.get("name") or ""
+            ct = (cn.get("conntype") or "").lower()
+            pu = pname.upper()
+            if ct == "nc" or "TV" in pu or "FUTBOL" in pu:
+                tipo, tec = "tv", None
+            else:
+                tipo = "internet"
+                if "FTTH" in pu or ct == "pppoe": tec = "FTTH"
+                elif ("WIRELESS" in pu) or ("WIFI" in pu) or ("INALAMB" in pu) or ct == "dhcp": tec = "WIRELESS"
+                else: tec = None
+            estado = "bloqueado" if (cn.get("block_date") or cli_blocked) else "activo"
+            filas.append({"conn_id_isp": cn.get("id"), "cliente_id": cid, "codigo_ispcube": code,
+                          "tipo": tipo, "tecnologia": tec, "plan_nombre": pname,
+                          "precio": _f(plan.get("price")), "gratis": free, "estado": estado, "updated_at": ahora})
+    if DRY:
+        print(f"🔌 Conexiones (DRY): {len(filas)} · gratis {len(gratis_ids)}"); return
+    Hup = {"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY,
+           "Prefer": "resolution=merge-duplicates,return=minimal"}
+    ok = 0
+    for i in range(0, len(filas), 200):
+        try: _req(SB_URL + "/rest/v1/conexiones?on_conflict=conn_id_isp", filas[i:i+200], "POST", Hup); ok += len(filas[i:i+200])
+        except Exception as e: print(f"  ERROR upsert conexiones lote {i}: {e}")
+    try: sb_patch("conexiones?updated_at=lt." + ahora + "&estado=neq.eliminado", {"estado": "eliminado"})
+    except Exception as e: print("  WARN marcar conexiones eliminadas:", e)
+    # clientes.gratis: solo los que cambiaron
+    for grupo, val, flt in ((gratis_ids, True, "false"), (nogratis_ids, False, "true")):
+        for i in range(0, len(grupo), 150):
+            part = ",".join(str(x) for x in grupo[i:i+150])
+            try: sb_patch("clientes?id=in.(%s)&gratis=is.%s" % (part, flt), {"gratis": val})
+            except Exception as e: print(f"  WARN marcar gratis: {e}")
+    print(f"🔌 Conexiones sincronizadas: {ok} · clientes gratis: {len(gratis_ids)}")
+
 def main():
     t0 = time.time()
     # MODO DIAGNÓSTICO: DIAG=001906 -> imprime todos los campos de ese cliente
@@ -774,6 +823,8 @@ def main():
     cerradas_retiro = cerrar_desconexiones_por_retiro()
     generadas = generar_desconexiones_pendientes()
     anuladas = anular_desconexiones_rehabilitados()
+    try: sync_conexiones(isp, nexa)
+    except Exception as e: print("WARN sync_conexiones:", e)
     geoch = geolocalizar_chacras()
 
     print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados, {generadas} desconexiones generadas, {anuladas} anuladas, {limpiadas} cerradas por eliminado, {cerradas_retiro} cerradas por retiro, {geoch} ubicados por chacra. {round(time.time()-t0)}s")
