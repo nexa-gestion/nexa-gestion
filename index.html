@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.42';
+  var VER='v3.43';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1317,20 +1317,48 @@
     });
   }
   // Historial de servicios del cliente: todas sus OTs (las finalizadas muestran fotos/cierre al tocarlas)
+  function _interIcono(tipo){ return {compromiso:'🤝',soporte:'🛠️',nota:'📝',ticket:'🎫',baja:'📉'}[tipo]||'•'; }
   function cargarHistCliente(cliId){
     var cont=document.getElementById('f-hist'); if(!cont) return;
     cont.innerHTML='<div class="muted" style="font-size:13px">Cargando historial…</div>';
-    sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,created_at,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100').then(function(d){
-      d=Array.isArray(d)?d:[];
+    Promise.all([
+      sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,created_at,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100'),
+      sbGet('interacciones_cliente?cliente_id=eq.'+cliId+'&select=*&order=created_at.desc&limit=100').catch(function(){return [];})
+    ]).then(function(r){
+      var d=Array.isArray(r[0])?r[0]:[], inter=Array.isArray(r[1])?r[1]:[];
+      // ── Gestiones e historial (interacciones) ──
+      var h='<div style="border-top:2px solid #e2e8f0;padding-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;color:#6d28d9">📋 Gestiones e historial <span class="muted" style="font-weight:400;font-size:13px">('+inter.length+')</span></h3><button class="btn btn-2 btn-sm" id="f-nota">➕ Agregar nota</button></div>';
+      if(inter.length){ h+='<div style="margin-top:6px">'+inter.map(function(it){ return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9"><div style="font-size:11px;color:#94a3b8;width:76px;flex-shrink:0">'+esc(fmtFecha(it.created_at))+'</div><div style="flex:1"><b style="font-size:13px">'+_interIcono(it.tipo)+' '+esc(it.titulo||it.tipo||'')+'</b><div style="font-size:13px;color:#475569">'+esc(it.detalle||'')+'</div></div></div>'; }).join('')+'</div>'; }
+      else { h+='<div class="muted" style="font-size:13px;margin-top:4px">Sin gestiones registradas. Las notas de tickets, compromisos y soporte van a aparecer acá.</div>'; }
+      h+='</div>';
+      // ── Historial de servicios (OTs) ──
       var hechos=d.filter(function(o){return o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO';}).length;
-      var h='<div style="border-top:2px solid #e2e8f0;padding-top:10px"><h3 style="margin:0 0 6px;color:var(--azul)">🧰 Historial de servicios <span class="muted" style="font-weight:400;font-size:13px">('+d.length+' OT · '+hechos+' con cierre)</span></h3>';
-      if(!d.length){ cont.innerHTML=h+'<div class="muted">Este cliente todavía no tiene órdenes.</div></div>'; return; }
-      h+='<table style="width:100%"><thead><tr><th>Fecha</th><th>N° OT</th><th>Tipo</th><th>Trabajo</th><th>Cuadrilla</th><th>Estado</th></tr></thead><tbody>';
-      d.forEach(function(o){ var f=o.fin_tec_at||o.fecha_agendada||o.created_at; var cerr=(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO');
-        h+='<tr data-ot="'+o.id+'" style="cursor:pointer"><td class="muted">'+esc(fmtFecha(f))+'</td><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(o.tipos_trabajo?o.tipos_trabajo.nombre:'—')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+pill(o.estado)+(cerr?' 📷':'')+'</td></tr>'; });
-      h+='</tbody></table><div class="muted" style="font-size:12px;margin-top:4px">Tocá un servicio para ver el cierre (fotos, materiales, datos de la visita).</div></div>';
+      h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:var(--azul)">🧰 Historial de servicios <span class="muted" style="font-weight:400;font-size:13px">('+d.length+' OT · '+hechos+' con cierre)</span></h3>';
+      if(!d.length){ h+='<div class="muted">Este cliente todavía no tiene órdenes.</div></div>'; }
+      else {
+        h+='<table style="width:100%"><thead><tr><th>Fecha</th><th>N° OT</th><th>Tipo</th><th>Trabajo</th><th>Cuadrilla</th><th>Estado</th></tr></thead><tbody>';
+        d.forEach(function(o){ var f=o.fin_tec_at||o.fecha_agendada||o.created_at; var cerr=(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO');
+          h+='<tr data-ot="'+o.id+'" style="cursor:pointer"><td class="muted">'+esc(fmtFecha(f))+'</td><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(o.tipos_trabajo?o.tipos_trabajo.nombre:'—')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+pill(o.estado)+(cerr?' 📷':'')+'</td></tr>'; });
+        h+='</tbody></table><div class="muted" style="font-size:12px;margin-top:4px">Tocá un servicio para ver el cierre (fotos, materiales, datos de la visita).</div></div>';
+      }
       cont.innerHTML=h;
+      var fn=document.getElementById('f-nota'); if(fn) fn.addEventListener('click',function(){ _cliNota(cliId); });
       Array.prototype.forEach.call(cont.querySelectorAll('tr[data-ot]'),function(tr){ tr.addEventListener('click',function(){ cerrarModal(); detalleOT(tr.getAttribute('data-ot')); }); });
+    });
+  }
+  // Agregar una nota/gestión manual al historial del cliente
+  function _cliNota(cliId){
+    modal('<h2>➕ Agregar nota al historial</h2>'
+      +'<label class="l">Tipo</label><select id="cn-tipo">'+[['nota','📝 Nota / gestión'],['compromiso','🤝 Compromiso de pago'],['soporte','🛠️ Soporte resuelto']].map(function(e){return '<option value="'+e[0]+'">'+e[1]+'</option>';}).join('')+'</select>'
+      +'<label class="l">Detalle</label><textarea id="cn-det" placeholder="Qué se habló o se hizo con el cliente"></textarea>'
+      +'<div id="cn-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ok" id="cn-go">Guardar</button><button class="btn btn-2" id="cn-x">Cancelar</button></div>');
+    document.getElementById('cn-x').addEventListener('click',function(){ fichaCliente(cliId); });
+    document.getElementById('cn-go').addEventListener('click',function(){
+      var det=document.getElementById('cn-det').value.trim(); if(!det){ document.getElementById('cn-err').textContent='Escribí el detalle.'; return; }
+      var tipo=document.getElementById('cn-tipo').value, titulo={nota:'📝 Nota',compromiso:'🤝 Compromiso de pago',soporte:'🛠️ Soporte resuelto'}[tipo]||'Nota';
+      var btn=this; btn.disabled=true;
+      sbPost('interacciones_cliente',{cliente_id:Number(cliId),tipo:tipo,titulo:titulo,detalle:det,creado_por:USER.id}).then(function(r){ if(!Array.isArray(r)||!r.length) throw 0; logAct('Nota al cliente',{entidad:'CLIENTE',entidad_id:cliId,detalle:titulo+' — '+det}); toast('📝 Nota agregada'); fichaCliente(cliId); }).catch(function(){ btn.disabled=false; document.getElementById('cn-err').textContent='No se pudo guardar (¿corriste el SQL de interacciones?).'; });
     });
   }
 
@@ -3274,7 +3302,7 @@
           +(t.detalle?'<div style="font-size:13px;background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:8px 10px;margin-top:4px">🗣️ '+esc(t.detalle)+'</div>':'')
           +(t.domicilio?'<div class="muted" style="font-size:12px;margin-top:4px">📍 '+esc(t.domicilio)+'</div>':'')+'</div>'
           +'<div style="display:flex;flex-direction:column;gap:6px;min-width:160px">'
-            +(cl?('<button class="btn btn-ok tk-gen" data-id="'+t.id+'" data-cli="'+cl.id+'" data-tipo="'+(TIPO[t.categoria_id]||'OTRO')+'">🛠️ Generar OT</button>'):'<span class="muted" style="font-size:12px;text-align:center">Cargá el cliente en Nexa para generar la OT</span>')
+            +(cl?('<button class="btn btn-ok tk-gen" data-id="'+t.id+'" data-cli="'+cl.id+'" data-tipo="'+(TIPO[t.categoria_id]||'OTRO')+'">🛠️ Generar OT</button><button class="btn btn-2 tk-gest" data-id="'+t.id+'" data-cli="'+cl.id+'" style="border-color:#7c3aed;color:#6d28d9">✍️ Gestionar (sin OT)</button>'):'<span class="muted" style="font-size:12px;text-align:center">Cargá el cliente en Nexa para generar la OT</span>')
             +'<button class="btn btn-2 tk-desc" data-id="'+t.id+'">Descartar</button></div>'
           +'</div></div>';
       }).join('')+'</div>';
@@ -3287,8 +3315,36 @@
             .then(function(){ logAct('Generó OT desde ticket ISPcube',{entidad:'OT',detalle:'Ticket #'+t.ticket_id+' · '+(t.categoria||'')}); toast('✅ OT generada — ya está en Órdenes'); vTickets(); })
             .catch(function(){ g.disabled=false; g.textContent='🛠️ Generar OT'; toast('No se pudo generar la OT.'); }); return; }
         var d=e.target.closest('.tk-desc'); if(d){ if(d.getAttribute('data-ok')!=='1'){ d.setAttribute('data-ok','1'); d.textContent='¿Descartar?'; return; } var id2=d.getAttribute('data-id'); sbPatch('isp_tickets?id=eq.'+id2,{estado_nexa:'descartado'}).then(function(){ logAct('Descartó ticket ISPcube',{entidad:'OT',entidad_id:id2}); toast('Descartado'); vTickets(); }); return; }
+        var gs=e.target.closest('.tk-gest'); if(gs){ var tg=tks.filter(function(x){return String(x.id)===String(gs.getAttribute('data-id'));})[0]; if(tg) _tkGestionar(tg,gs.getAttribute('data-cli')); return; }
       });
     }).catch(function(){ view.innerHTML='<h1>🎫 Tickets de ISPcube</h1><div class="center" style="color:var(--rojo)">No se pudo cargar. ¿Corriste el SQL v29? Los tickets se importan en cada sync de ISPcube.</div>'; });
+  }
+
+  // Gestionar un ticket SIN generar OT: el admin/soporte registra qué hizo → queda en el historial del
+  // cliente (interacciones_cliente) y el ticket se cierra en Nexa (estado_nexa='gestionado').
+  function _tkGestionar(t,cliId){
+    modal('<h2>✍️ Gestionar ticket #'+esc(t.ticket_id||'')+'</h2>'
+      +'<div class="muted" style="margin-top:-6px">'+esc(t.cliente_nombre||'')+(t.categoria?(' · '+esc(t.categoria)):'')+'</div>'
+      +(t.detalle?('<div style="background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:13px">🗣️ '+esc(t.detalle)+'</div>'):'')
+      +'<label class="l">Tipo de gestión</label><select id="tg-tipo">'+[['compromiso','🤝 Compromiso de pago'],['soporte','🛠️ Resuelto por soporte (desde la central)'],['nota','📝 Nota / gestión administrativa']].map(function(e){return '<option value="'+e[0]+'">'+e[1]+'</option>';}).join('')+'</select>'
+      +'<label class="l">¿Qué se hizo? <span class="muted">(queda en el historial del cliente)</span></label><textarea id="tg-det" placeholder="Ej: se le generó compromiso de pago hasta el 30 · se le cambió la clave del WiFi desde la central · se verificó la conexión, estaba OK"></textarea>'
+      +'<div id="tg-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:6px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ok" id="tg-go">Guardar y cerrar ticket</button><button class="btn btn-2" id="tg-x">Cancelar</button></div>');
+    document.getElementById('tg-x').addEventListener('click',cerrarModal);
+    document.getElementById('tg-go').addEventListener('click',function(){
+      var det=document.getElementById('tg-det').value.trim(); if(!det){ document.getElementById('tg-err').textContent='Escribí qué se hizo.'; return; }
+      var tipo=document.getElementById('tg-tipo').value;
+      var titulo={compromiso:'🤝 Compromiso de pago',soporte:'🛠️ Soporte resuelto (central)',nota:'📝 Gestión administrativa'}[tipo]||'Gestión';
+      titulo+=' · ticket #'+(t.ticket_id||'');
+      var btn=this; btn.disabled=true; btn.textContent='Guardando…';
+      sbPost('interacciones_cliente',{cliente_id:Number(cliId),tipo:tipo,titulo:titulo,detalle:det,ticket_id:t.id,creado_por:USER.id}).then(function(r){
+        if(!Array.isArray(r)||!r.length) throw 0;
+        return sbPatch('isp_tickets?id=eq.'+t.id,{estado_nexa:'gestionado'});
+      }).then(function(){
+        logAct('Gestionó ticket ISPcube (sin OT)',{entidad:'OT',detalle:'Ticket #'+(t.ticket_id||'')+' · '+titulo+' — '+det});
+        cerrarModal(); toast('✍️ Gestión guardada · ticket cerrado'); vTickets();
+      }).catch(function(){ btn.disabled=false; btn.textContent='Guardar y cerrar ticket'; document.getElementById('tg-err').textContent='No se pudo guardar (¿corriste el SQL de interacciones?).'; });
+    });
   }
 
   // ══════════ CARGAR EN ISPcube ══════════ (datos de conexión de OT validadas, para cargar a mano y marcar "ya cargado")
