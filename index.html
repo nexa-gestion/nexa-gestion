@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.46';
+  var VER='v3.47';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1136,8 +1136,8 @@
         +bar([[intCobra,'#16a34a','int_cobra','Cobramos'],[intGratis,'#f59e0b','int_gratis','Gratis'],[intBloq,'#dc2626','int_bloq','Bloqueadas']])
         +leg([[intCobra,'#16a34a','int_cobra','💰 cobramos'],[intGratis,'#f59e0b','int_gratis','🆓 gratis'],[intBloq,'#dc2626','int_bloq','⛔ bloqueadas']])
         +'<div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:14px">'
-          +'<div style="flex:1;min-width:210px"><div style="color:#475569;margin-bottom:5px;font-size:13px"><b>Fibra (FTTH)</b> · '+N(ftthTot)+'</div>'+bar([[c[0],'#16a34a','ftth_cobra','cobra'],[c[1],'#f59e0b','ftth_gratis','gratis'],[c[2],'#dc2626','ftth_bloq','bloq']])+'</div>'
-          +'<div style="flex:1;min-width:210px"><div style="color:#475569;margin-bottom:5px;font-size:13px"><b>Wireless</b> · '+N(wlTot)+'</div>'+bar([[c[3],'#0891b2','wl_cobra','cobra'],[c[4],'#f59e0b','wl_gratis','gratis'],[c[5],'#dc2626','wl_bloq','bloq']])+'</div>'
+          +'<div style="flex:1;min-width:230px"><div style="color:#475569;margin-bottom:5px;font-size:13px"><b>Fibra (FTTH)</b> · '+N(ftthTot)+'</div>'+bar([[c[0],'#16a34a','ftth_cobra','cobra'],[c[1],'#f59e0b','ftth_gratis','gratis'],[c[2],'#dc2626','ftth_bloq','bloq']])+leg([[c[0],'#16a34a','ftth_cobra','cobra'],[c[1],'#f59e0b','ftth_gratis','gratis'],[c[2],'#dc2626','ftth_bloq','bloq']])+'</div>'
+          +'<div style="flex:1;min-width:230px"><div style="color:#475569;margin-bottom:5px;font-size:13px"><b>Wireless</b> · '+N(wlTot)+'</div>'+bar([[c[3],'#0891b2','wl_cobra','cobra'],[c[4],'#f59e0b','wl_gratis','gratis'],[c[5],'#dc2626','wl_bloq','bloq']])+leg([[c[3],'#0891b2','wl_cobra','cobra'],[c[4],'#f59e0b','wl_gratis','gratis'],[c[5],'#dc2626','wl_bloq','bloq']])+'</div>'
         +'</div>');
       h+=card('<div style="font-weight:800;margin-bottom:9px">📺 TV · '+N(tvTot)+' cuentas</div>'
         +bar([[c[6],'#16a34a','tv_act','Activas (cobra)'],[c[7],'#f59e0b','tv_gratis','Gratis'],[c[8],'#dc2626','tv_bloq','Bloqueadas']])
