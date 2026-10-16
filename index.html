@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.37';
+  var VER='v3.38';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3674,9 +3674,9 @@
   }
   function _dxCSV(){
     var rows=_dxFiltrados();
-    var head=['N°','Cod ISP','Cliente','Barrio','Deuda','Origen','Estado','Cuadrilla','Fecha trabajo','Domicilio','Detalle'];
+    var head=['N°','Cod ISP','Cliente','Barrio','Deuda','Origen','Días bloqueado','Intentos retiro','Estado','Cuadrilla','Fecha trabajo','Domicilio','Detalle'];
     var lines=[head.join(';')];
-    rows.forEach(function(o){ var c=o.clientes||{}; var fila=[c.numero_cliente||'',c.codigo_ispcube||'',((c.nombre||'')+' '+(c.apellido||'')).trim(),c.barrio||'',Number(c.deuda||0),_dxOrigen(o.origen),o.estado,_cuadNombre(o.cuadrilla_id)||'',(o.corte_at?fmtFecha(o.corte_at):''),c.domicilio_full||'',(o.resolucion||'')];
+    rows.forEach(function(o){ var c=o.clientes||{}; var db=_diasBloq(c.bloqueado_desde); var fila=[c.numero_cliente||'',c.codigo_ispcube||'',((c.nombre||'')+' '+(c.apellido||'')).trim(),c.barrio||'',Number(c.deuda||0),_dxOrigen(o.origen),(db==null?'':db),(o.intentos_count||0),o.estado,_cuadNombre(o.cuadrilla_id)||'',(o.corte_at?fmtFecha(o.corte_at):''),c.domicilio_full||'',(o.resolucion||'')];
       lines.push(fila.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(';')); });
     var blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='desconexiones_'+window._dxState.ver+'.csv'; document.body.appendChild(a); a.click(); a.remove();
