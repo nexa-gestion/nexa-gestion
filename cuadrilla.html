@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.51</title>
+<title>Nexa · Técnico — v0.52</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.51';
+  var VER='v0.52';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -983,7 +983,11 @@
     var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
     var dist=(o._dist!=null&&o._dist<1e8)?('<span class="badge-tt">'+(o._dist<1?(Math.round(o._dist*1000)+' m'):(o._dist.toFixed(1)+' km'))+'</span>'):'';
     var sinUbic=(c.lat==null||c.lng==null)?'<span class="badge-tt" style="background:#fee2e2;color:#991b1b">sin ubicación</span>':'';
-    return '<div class="ot cli-card" data-id="'+o.id+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+' '+sinUbic+'</div></div>'
+    // Semáforo por intentos de retiro: verde (0) · amarillo (1) · naranja (2)
+    var ic=o.intentos_count||0;
+    var semCol=(ic>=2?'#f97316':(ic===1?'#eab308':'#16a34a'));
+    var semBadge=(ic>0?('<span class="badge-tt" style="background:'+(ic>=2?'#ffedd5':'#fef9c3')+';color:'+(ic>=2?'#9a3412':'#854d0e')+'">✗ '+ic+' intento'+(ic>1?'s':'')+'</span>'):'');
+    return '<div class="ot cli-card" data-id="'+o.id+'" style="border-left:5px solid '+semCol+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+' '+semBadge+' '+sinUbic+'</div></div>'
       +'<div class="cli">'+esc(nom)+'</div>'+(c.domicilio_full?'<div class="dir">📍 '+esc(c.domicilio_full)+'</div>':'')+(c.barrio?'<div class="dir">'+esc(c.barrio)+'</div>':'')
       +'<div class="dir" style="margin-top:4px">📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
       +'<div class="acc">'+((c.lat!=null||c.domicilio_full)?'<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(c)+'">🚗 Ir</a>':'')

@@ -245,7 +245,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.36';
+  var VER='v3.37';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3600,6 +3600,25 @@
     return _bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
   }
   function _dxColor(o){ return {PENDIENTE:'#d97706',ASIGNADA:'#2563eb',PENDIENTE_ADMIN:'#7c3aed',COMPROMISO_PAGO:'#16a34a',EN_REVISION:'#0891b2',MIGRACION_508:'#64748b'}[o.estado]||'#64748b'; }
+  // Color del marker en el mapa: semáforo por intentos de retiro. Gris = 508 (no retirar).
+  function _dxMapColor(o){
+    if(o.estado==='MIGRACION_508') return '#94a3b8';         // gris: no retirar
+    if(o.estado==='IMPOSIBLE') return '#dc2626';             // rojo: agotado
+    var n=o.intentos_count||0;
+    return n>=3?'#dc2626':(n===2?'#f97316':(n===1?'#eab308':'#16a34a')); // 0 verde,1 amarillo,2 naranja,3+ rojo
+  }
+  function _dxMapPinta(o,m,rn,pts){
+    var c=o.clientes||{};
+    var la=(o.lat!=null?o.lat:c.lat), lo=(o.lng!=null?o.lng:c.lng);
+    if(la==null||lo==null) return false;
+    var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', deu=Number(c.deuda||0);
+    var ic=o.intentos_count||0;
+    L.circleMarker([la,lo],{renderer:rn,radius:7,color:'#fff',weight:2,fillColor:_dxMapColor(o),fillOpacity:.95})
+      .bindPopup('<b>N° '+esc(c.numero_cliente||'')+' · '+esc(nom)+'</b>'+(c.barrio?('<br>📍 '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(_dxOrigen(o.origen))+' · '+esc(_dxEstadoTxt(o.estado))+(ic>0?(' · ✗ '+ic+' intento'+(ic>1?'s':'')):'')+(deu>0?(' · <span style="color:#991b1b;font-weight:700">$'+deu.toLocaleString('es-AR')+'</span>'):'')+(c.bloqueado_desde?('<br>'+_diasBloqTxt(c)):'')+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
+      .bindTooltip(esc(nom)+(c.barrio?(' · '+esc(c.barrio)):'')).addTo(m);
+    if(pts) pts.push([la,lo]);
+    return true;
+  }
   function _dxRenderMapa(){
     var cont=document.getElementById('dx-mapa'); if(!cont) return;
     ensureLeaflet(function(){
@@ -3607,19 +3626,26 @@
       var m=L.map(cont).setView([-27.40,-55.92],12); window._dxMap=m;
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
       var rn=L.canvas(), pts=[], sin=0;
-      _dxFiltrados().forEach(function(o){ var c=o.clientes||{};
-        // Prioridad: GPS del corte del técnico (o.lat/o.lng) manda sobre la geo del cliente
-        var la=(o.lat!=null?o.lat:c.lat), lo=(o.lng!=null?o.lng:c.lng);
-        if(la==null||lo==null){ sin++; return; }
-        var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', deu=Number(c.deuda||0);
-        L.circleMarker([la,lo],{renderer:rn,radius:7,color:'#fff',weight:2,fillColor:_dxColor(o),fillOpacity:.95})
-          .bindPopup('<b>N° '+esc(c.numero_cliente||'')+' · '+esc(nom)+'</b>'+(c.barrio?('<br>📍 '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(_dxOrigen(o.origen))+' · '+esc(o.estado)+(deu>0?(' · <span style="color:#991b1b;font-weight:700">$'+deu.toLocaleString('es-AR')+'</span>'):'')+(c.bloqueado_desde?('<br>'+_diasBloqTxt(c)):'')+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
-          .bindTooltip(esc(nom)+(c.barrio?(' · '+esc(c.barrio)):'')).addTo(m);
-        pts.push([la,lo]);
-      });
-      if(pts.length){ try{ m.fitBounds(pts,{padding:[30,30],maxZoom:15}); }catch(e){} }
-      var info=document.getElementById('dx-mapinfo'); if(info) info.textContent='📍 '+pts.length+' corte(s) en el mapa'+(sin?(' · '+sin+' sin ubicación GPS'):'')+(window._dxState.fbarrio?(' · barrio: '+window._dxState.fbarrio):'');
-      setTimeout(function(){ try{ m.invalidateSize(); }catch(e){} },200);
+      _dxFiltrados().forEach(function(o){ if(!_dxMapPinta(o,m,rn,pts)) sin++; });
+      // Capa gris del 508 (no retirar) — toggle. Solo si NO estás ya en la pestaña 508.
+      var ver508=(window._dxState.ver508 && window._dxState.ver!=='MIGRACION_508'), n508=0;
+      var _finish=function(){
+        if(pts.length){ try{ m.fitBounds(pts,{padding:[30,30],maxZoom:15}); }catch(e){} }
+        var info=document.getElementById('dx-mapinfo');
+        if(info) info.innerHTML='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px">'
+          +'<b>📍 '+(pts.length-n508)+' corte(s)</b>'+(sin?(' · '+sin+' sin GPS'):'')
+          +'<span style="color:#16a34a">🟢 a retirar</span><span style="color:#eab308">🟡 1 intento</span><span style="color:#f97316">🟠 2</span><span style="color:#dc2626">🔴 imposible</span>'
+          +(window._dxState.ver!=='MIGRACION_508'?('<label style="margin-left:auto;cursor:pointer"><input type="checkbox" id="dx-ver508" '+(window._dxState.ver508?'checked':'')+'> <span style="color:#64748b">⚫ Ver 508 (no retirar)'+(n508?(' · '+n508):'')+'</span></label>'):'')
+          +'</div>';
+        var cb=document.getElementById('dx-ver508'); if(cb) cb.addEventListener('change',function(){ window._dxState.ver508=this.checked; _dxRenderMapa(); });
+        setTimeout(function(){ try{ m.invalidateSize(); }catch(e){} },200);
+      };
+      if(ver508){
+        var q508=window._dx508cache;
+        var paint508=function(arr){ arr.forEach(function(o){ if(_dxMapPinta(o,m,rn,pts)) n508++; }); _finish(); };
+        if(q508){ paint508(q508); }
+        else sbGet('desconexiones?estado=eq.MIGRACION_508&select=id,estado,intentos_count,lat,lng,origen,clientes(numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,deuda,lat,lng,bloqueado_desde)&limit=2000').then(function(d){ window._dx508cache=Array.isArray(d)?d:[]; paint508(window._dx508cache); }).catch(_finish);
+      } else { _finish(); }
     });
   }
   function _dxPinta(){
