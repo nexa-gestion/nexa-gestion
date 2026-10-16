@@ -219,6 +219,7 @@
       <a data-v="manoobra">🧰 Tipos de trabajo</a>
       <a data-v="cuentastv">📺 Cuentas TV</a>
       <a data-v="desconexiones">🔌 Desconexiones <span class="nbadge" id="nav-dx-badge" style="display:none">0</span></a>
+      <a data-v="bajas">📉 Bajas y Retención</a>
       <a data-v="ispcargar">📤 Cargar en ISPcube</a>
       <a data-v="precios">💲 Precios</a>
       <a data-v="vendedores">🧑‍💼 Vendedores</a>
@@ -245,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.40';
+  var VER='v3.41';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -464,7 +465,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -3336,7 +3337,7 @@
   var DX_TABS=[['PENDIENTE','⏳ Pendientes'],['ASIGNADA','📍 Asignadas'],['PENDIENTE_ADMIN','📝 Pendiente admin'],['compromiso','🤝 Compromisos'],['EN_REVISION','⏸️ En revisión'],['IMPOSIBLE','🚫 Imposibles'],['MIGRACION_508','📋 Migración 508'],['cerradas','✅ Cerradas'],['cand','➕ Candidatos']];
   function _dxDiasRest(iso){ if(!iso) return null; return Math.ceil((Date.parse(iso)-Date.now())/86400000); }
   function _dxTabs(){ var v=window._dxState.ver; return '<div class="toolbar">'+DX_TABS.map(function(t){return '<button class="btn '+(v===t[0]?'btn-pri':'btn-2')+' dx-tab" data-ver="'+t[0]+'">'+t[1]+'</button>';}).join('')+'</div>'; }
-  function _dxOrigen(o){ return {manual:'✋ manual',baja_isp:'⬇️ baja ISPcube',bloqueado_30d:'⛔ bloqueado +30d'}[o]||o||''; }
+  function _dxOrigen(o){ return {manual:'✋ manual',baja_isp:'⬇️ baja ISPcube',bloqueado_30d:'⛔ bloqueado +30d',voluntaria:'🙋 baja voluntaria'}[o]||o||''; }
   // Días reales bloqueado (hoy − bloqueado_desde). null si no hay dato.
   function _diasBloq(iso){ if(!iso) return null; var ms=Date.now()-new Date(iso).getTime(); var d=Math.floor(ms/86400000); return d>=0?d:0; }
   function _diasBloqTxt(c){ if(!c) return ''; var d=_diasBloq(c.bloqueado_desde); if(d==null) return ''; return '⛔ bloqueado hace <b>'+d+'</b> día'+(d===1?'':'s'); }
@@ -6851,6 +6852,194 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
   }
   function opt(arr,sel){ return arr.map(function(x){return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>';}).join(''); }
   function _modalEsc(e){ if(e.key==='Escape'||e.keyCode===27) cerrarModal(); }
+  // ════════════════ MÓDULO BAJAS Y RETENCIÓN ════════════════
+  // Captura el MOTIVO de la baja + flujo de retención + análisis. Al confirmar la baja genera
+  // el retiro de equipo (desconexión origen 'voluntaria'). Catálogo de motivos editable.
+  var _bjState={ tab:'solic', fmotivo:'', festado:'', frec:'' }, _BJMOT=[];
+  function _bjCargarMotivos(cb){ sbGet('motivos_baja?select=*&order=orden.asc').then(function(d){ _BJMOT=Array.isArray(d)?d:[]; cb&&cb(); }).catch(function(){ _BJMOT=[]; cb&&cb(); }); }
+  function _bjEvitable(id){ var m=_BJMOT.filter(function(x){return String(x.id)===String(id);})[0]; return m?m.evitable:null; }
+  function _bjEstTxt(e){ return {pendiente:'⏳ Pendiente',en_retencion:'🔁 En retención',retenido:'🟢 Retenido',baja_confirmada:'✓ Baja confirmada',desestimada:'✗ Desestimada'}[e]||e; }
+  function _bjEstCol(e){ return {pendiente:'#d97706',en_retencion:'#0891b2',retenido:'#16a34a',baja_confirmada:'#7c3aed',desestimada:'#64748b'}[e]||'#64748b'; }
+  function vBajas(){
+    if(!_dxEsAdmin()){ view.innerHTML='<h1>📉 Bajas y Retención</h1><div class="center">Solo para administrativo, gerencial o superadmin.</div>'; return; }
+    loading();
+    _bjCargarMotivos(function(){
+      var t=_bjState.tab, tabs=[['solic','📋 Solicitudes'],['analisis','📊 Análisis'],['motivos','⚙️ Motivos']];
+      view.innerHTML='<h1>📉 Bajas y Retención</h1><p class="sub">Registrá por qué se va cada cliente, retené a los recuperables y estudiá las causas. La baja confirmada genera el retiro de equipo.</p>'
+        +'<div class="toolbar" style="gap:6px"><button class="btn btn-ok" id="bj-nueva">➕ Registrar baja</button>'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' bj-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="bj-body"></div>';
+      document.getElementById('bj-nueva').addEventListener('click',function(){ _bjNueva(); });
+      Array.prototype.forEach.call(view.querySelectorAll('.bj-tab'),function(b){ b.addEventListener('click',function(){ _bjState.tab=b.getAttribute('data-t'); vBajas(); }); });
+      if(t==='analisis') _bjAnalisis(); else if(t==='motivos') _bjMotivos(); else _bjSolic();
+    });
+  }
+  function _bjCard(o){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    return '<div class="ot bj-row" data-id="'+o.id+'" style="border-left:5px solid '+_bjEstCol(o.estado)+'">'
+      +'<div class="h"><div><span class="num">N° '+esc(c.numero_cliente||'')+'</span> '+esc(nom)+(o.recuperable?' <span class="badge-tt" style="background:#dcfce7;color:#166534">recuperable</span>':'')+'</div><div style="font-size:12px;color:'+_bjEstCol(o.estado)+';font-weight:700">'+_bjEstTxt(o.estado)+'</div></div>'
+      +'<div class="dir">📉 '+esc(o.motivo_nombre||'(sin motivo)')+(c.barrio?(' · '+esc(c.barrio)):'')+' · '+esc(fmtFecha(o.created_at))+'</div>'
+      +(o.descripcion?('<div class="dir" style="color:#475569;font-style:italic">“'+esc(o.descripcion)+'”</div>'):'')
+      +'<div class="acc"><button class="btn btn-2 btn-sm bj-gest" data-id="'+o.id+'">🔧 Gestionar</button></div></div>';
+  }
+  function _bjWireFiltros(){
+    var m=document.getElementById('bj-fmot'); if(m) m.addEventListener('change',function(){ _bjState.fmotivo=this.value; _bjSolic(); });
+    var e=document.getElementById('bj-fest'); if(e) e.addEventListener('change',function(){ _bjState.festado=this.value; _bjSolic(); });
+    var r=document.getElementById('bj-frec'); if(r) r.addEventListener('change',function(){ _bjState.frec=this.value; _bjSolic(); });
+  }
+  function _bjSolic(){
+    var b=document.getElementById('bj-body'); if(!b) return; b.innerHTML='<div class="center"><div class="spin"></div></div>';
+    var st=_bjState, f=[];
+    if(st.festado) f.push('estado=eq.'+st.festado);
+    if(st.fmotivo) f.push('motivo_id=eq.'+st.fmotivo);
+    if(st.frec==='si') f.push('recuperable=is.true'); else if(st.frec==='no') f.push('recuperable=is.false');
+    sbGet('solicitudes_baja?select=*,clientes(numero_cliente,nombre,apellido,barrio,telefono,domicilio_full,codigo_ispcube)&order=created_at.desc&limit=2000'+(f.length?('&'+f.join('&')):'')).then(function(d){
+      d=Array.isArray(d)?d:[];
+      var motOpts='<option value="">Todos los motivos</option>'+_BJMOT.map(function(m){return '<option value="'+m.id+'"'+(String(st.fmotivo)===String(m.id)?' selected':'')+'>'+esc(m.nombre)+'</option>';}).join('');
+      var estOpts='<option value="">Todos los estados</option>'+[['pendiente','⏳ Pendiente'],['en_retencion','🔁 En retención'],['retenido','🟢 Retenido'],['baja_confirmada','✓ Baja confirmada'],['desestimada','✗ Desestimada']].map(function(e){return '<option value="'+e[0]+'"'+(st.festado===e[0]?' selected':'')+'>'+e[1]+'</option>';}).join('');
+      var h='<div class="toolbar"><select id="bj-fmot">'+motOpts+'</select><select id="bj-fest">'+estOpts+'</select><select id="bj-frec"><option value="">Recuperable: todos</option><option value="si"'+(st.frec==='si'?' selected':'')+'>Sí</option><option value="no"'+(st.frec==='no'?' selected':'')+'>No</option></select></div>';
+      if(!d.length){ b.innerHTML=h+'<div class="center" style="padding:24px 0">Sin solicitudes de baja'+(f.length?' con esos filtros':' todavía').toString()+'.</div>'; _bjWireFiltros(); return; }
+      b.innerHTML=h+'<div class="muted" style="margin:6px 0">'+d.length+' solicitud(es)</div>'+d.map(_bjCard).join('');
+      _bjWireFiltros();
+      Array.prototype.forEach.call(b.querySelectorAll('.bj-gest'),function(el){ el.addEventListener('click',function(){ var o=d.filter(function(x){return String(x.id)===el.getAttribute('data-id');})[0]; if(o)_bjGestionar(o); }); });
+    }).catch(function(){ b.innerHTML='<div class="center">No se pudo cargar. ¿Corriste el SQL del módulo (motivos_baja / solicitudes_baja)?</div>'; });
+  }
+  // Registrar una baja: elegir cliente + motivo + descripción + recuperable
+  function _bjNueva(cli){
+    var selId=cli?cli.id:null, selTxt=cli?('N°'+cli.numero_cliente+' · '+((cli.nombre||'')+' '+(cli.apellido||'')).trim()):'';
+    var buscar=cli?('<div class="ficha-row"><span class="k">Cliente</span><span class="v">'+esc(selTxt)+'</span></div>')
+      :'<label class="l">Cliente</label><input id="bj-cli-q" placeholder="🔎 N° cliente, N° ISP o nombre…"><div id="bj-cli-res"></div><div id="bj-cli-sel" class="muted" style="margin-top:6px"></div>';
+    modal('<h2>➕ Registrar baja</h2>'+buscar
+      +'<label class="l">Motivo</label><select id="bj-mot"><option value="">— elegí el motivo —</option>'+_BJMOT.filter(function(m){return m.activo!==false;}).map(function(m){return '<option value="'+m.id+'" data-ev="'+(m.evitable?1:0)+'">'+esc(m.nombre)+'</option>';}).join('')+'</select>'
+      +'<label class="l">¿Qué contó el cliente? (descripción)</label><textarea id="bj-desc" placeholder="Ej: se muda a Corrientes · dice que se le corta seguido a la noche · consiguió más barato en…"></textarea>'
+      +'<label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;font-weight:600"><input type="checkbox" id="bj-rec" style="width:auto"> 🔁 Recuperable (vale la pena intentar retenerlo)</label>'
+      +'<div id="bj-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="bj-go">Registrar</button><button class="btn btn-2" id="bj-x">Cancelar</button></div>');
+    document.getElementById('bj-x').addEventListener('click',cerrarModal);
+    // auto-marcar recuperable según el motivo (evitable)
+    document.getElementById('bj-mot').addEventListener('change',function(){ var ev=this.options[this.selectedIndex].getAttribute('data-ev'); var rc=document.getElementById('bj-rec'); if(rc&&ev!=null) rc.checked=(ev==='1'); });
+    if(!cli){
+      var qi=document.getElementById('bj-cli-q'), tmr;
+      function buscarCli(){ var res=document.getElementById('bj-cli-res'); var q=qi.value.trim().replace(/[(),]/g,' '); if(!q){ res.innerHTML=''; return; }
+        var padded=('000000'+q).slice(-6), esNum=/^\d+$/.test(q), ors=['nombre.ilike.*'+q+'*','apellido.ilike.*'+q+'*']; if(esNum){ ors.push('numero_cliente.eq.'+q); ors.push('codigo_ispcube.eq.'+padded); } else { ors.push('codigo_ispcube.ilike.*'+q+'*'); }
+        sbGet('clientes?or=('+ors.join(',')+')&select=id,numero_cliente,nombre,apellido,codigo_ispcube,barrio,estado&limit=15').then(function(rs){ rs=Array.isArray(rs)?rs:[];
+          res.innerHTML=rs.length?rs.map(function(c){return '<div style="padding:6px;border:1px solid var(--bord);border-radius:8px;margin-top:4px;cursor:pointer" data-cid="'+c.id+'" data-txt="N°'+esc(c.numero_cliente)+' · '+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+'">N°'+esc(c.numero_cliente)+' · '+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+(c.codigo_ispcube?(' <span class="muted">· ISP '+esc(c.codigo_ispcube)+'</span>'):'')+(c.barrio?(' <span class="muted">· '+esc(c.barrio)+'</span>'):'')+'</div>';}).join(''):'<div class="muted" style="font-size:12px;margin-top:4px">Sin resultados.</div>';
+          Array.prototype.forEach.call(res.querySelectorAll('[data-cid]'),function(el){ el.addEventListener('click',function(){ selId=el.getAttribute('data-cid'); document.getElementById('bj-cli-sel').innerHTML='✓ '+el.getAttribute('data-txt'); res.innerHTML=''; }); });
+        });
+      }
+      qi.addEventListener('input',function(){ clearTimeout(tmr); tmr=setTimeout(buscarCli,300); });
+      qi.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); clearTimeout(tmr); buscarCli(); } });
+    }
+    document.getElementById('bj-go').addEventListener('click',function(){
+      var err=document.getElementById('bj-err'); err.textContent='';
+      if(!selId){ err.textContent='Elegí el cliente.'; return; }
+      var motId=document.getElementById('bj-mot').value; if(!motId){ err.textContent='Elegí el motivo.'; return; }
+      var mot=_BJMOT.filter(function(m){return String(m.id)===String(motId);})[0]||{};
+      var desc=document.getElementById('bj-desc').value.trim(), rec=document.getElementById('bj-rec').checked;
+      var btn=this; btn.disabled=true; btn.textContent='Guardando…';
+      sbPost('solicitudes_baja',{cliente_id:Number(selId),motivo_id:Number(motId),motivo_nombre:mot.nombre||'',descripcion:desc||null,recuperable:rec,estado:'pendiente',created_by:USER.id}).then(function(r){
+        if(!Array.isArray(r)||!r.length) throw 0;
+        logAct('Registró solicitud de baja',{entidad:'BAJA',entidad_id:r[0].id,detalle:(mot.nombre||'')+(desc?(' — '+desc):'')});
+        cerrarModal(); toast('📉 Baja registrada'); vBajas();
+      }).catch(function(){ btn.disabled=false; btn.textContent='Registrar'; err.textContent='No se pudo guardar (¿corriste el SQL?).'; });
+    });
+  }
+  // Gestionar: retención y confirmación de baja
+  function _bjGestionar(o){
+    var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim(), id=o.id, _tel=c.telefono||'';
+    var h='<h2>🔧 '+esc(nom||'(cliente)')+'</h2><div class="muted" style="margin-top:-6px">N° '+esc(c.numero_cliente||'')+' · '+_bjEstTxt(o.estado)+'</div>'
+      +'<div style="background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:10px;font-size:13px;margin-top:10px">'
+      +'<div>📉 <b>'+esc(o.motivo_nombre||'—')+'</b></div>'+(o.descripcion?('<div style="margin-top:3px;font-style:italic">“'+esc(o.descripcion)+'”</div>'):'')
+      +'<div style="margin-top:4px">'+(o.recuperable?'🔁 Recuperable':'— No marcado como recuperable')+' · '+esc(fmtFecha(o.created_at))+'</div>'
+      +(c.domicilio_full?('<div style="margin-top:3px">📍 '+esc(c.domicilio_full)+(c.barrio?(' · '+esc(c.barrio)):'')+'</div>'):'')
+      +(o.retencion_obs?('<div style="margin-top:6px;border-top:1px solid var(--bord);padding-top:6px">🔁 Retención: '+esc(o.retencion_obs)+(o.retencion_resultado?(' · <b>'+esc(o.retencion_resultado)+'</b>'):'')+'</div>'):'')
+      +'</div>';
+    if(_tel&&(o.estado==='pendiente'||o.estado==='en_retencion')){
+      h+='<div style="display:flex;gap:6px;margin-top:10px">'+(typeof waLink==='function'?waLink(_tel,nom,'RETENCION',c.domicilio_full,'WhatsApp'):'')+'<a class="btn btn-2" href="tel:'+esc(_tel.replace(/[^\d+]/g,''))+'" style="padding:6px 11px;text-decoration:none">📞 Llamar</a></div>';
+    }
+    if(o.estado==='pendiente'||o.estado==='en_retencion'){
+      h+='<label class="l" style="margin-top:10px">Nota de gestión / retención</label><textarea id="bj-rtobs" placeholder="Qué le ofreciste, qué respondió…">'+esc(o.retencion_obs||'')+'</textarea>';
+    }
+    var btns='';
+    if(o.estado==='pendiente'){ if(o.recuperable) btns+=_bx('btn btn-ok','bj-ret','🔁 En retención (lo voy a intentar)'); btns+=_bx('btn btn-2','bj-conf','✓ Confirmar baja (generar retiro de equipo)')+_bx('btn btn-2','bj-des','✗ Desestimar'); }
+    else if(o.estado==='en_retencion'){ btns=_bx('btn btn-ok','bj-reten','🟢 Se retuvo (sigue de cliente)')+_bx('btn btn-2','bj-conf','✗ No se pudo → confirmar baja'); }
+    else { btns=_bx('btn btn-2','bj-reabrir','↩️ Reabrir'); }
+    modal(h+'<div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">'+btns+'</div><div style="margin-top:10px"><button class="btn btn-2" id="bj-cerrar">Cerrar</button></div>');
+    var g=function(x){return document.getElementById(x);};
+    var obs=function(){ return (g('bj-rtobs')&&g('bj-rtobs').value.trim())||null; };
+    var upd=function(body,msg){ body.updated_at=new Date().toISOString(); sbPatch('solicitudes_baja?id=eq.'+id,body).then(function(){ logAct('Baja: '+msg,{entidad:'BAJA',entidad_id:id,detalle:(o.motivo_nombre||'')}); cerrarModal(); toast(msg); vBajas(); }).catch(function(){ toast('No se pudo guardar.'); }); };
+    g('bj-cerrar').addEventListener('click',cerrarModal);
+    if(g('bj-ret')) g('bj-ret').addEventListener('click',function(){ upd({estado:'en_retencion',retencion_obs:obs(),retencion_por:USER.id,retencion_at:new Date().toISOString()},'🔁 En retención'); });
+    if(g('bj-reten')) g('bj-reten').addEventListener('click',function(){ upd({estado:'retenido',retencion_obs:obs(),retencion_resultado:'recuperado',retencion_por:USER.id,retencion_at:new Date().toISOString()},'🟢 Cliente retenido'); });
+    if(g('bj-des')) g('bj-des').addEventListener('click',function(){ if(!confirm('Desestimar esta solicitud de baja?'))return; upd({estado:'desestimada',retencion_obs:obs()},'✗ Desestimada'); });
+    if(g('bj-reabrir')) g('bj-reabrir').addEventListener('click',function(){ upd({estado:'pendiente',retencion_resultado:null},'↩️ Reabierta'); });
+    if(g('bj-conf')) g('bj-conf').addEventListener('click',function(){ _bjConfirmarBaja(o,obs()); });
+  }
+  // Confirmar la baja → marca la solicitud y genera la desconexión (retiro de equipo) origen 'voluntaria'
+  function _bjConfirmarBaja(o,obsRet){
+    if(!confirm('Confirmar la baja y generar el retiro de equipo para que la cuadrilla lo recupere?')) return;
+    var id=o.id, cid=o.cliente_id, ahora=new Date().toISOString();
+    sbGet('desconexiones?cliente_id=eq.'+cid+'&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&select=id&limit=1').then(function(ex){
+      var tieneDx=Array.isArray(ex)&&ex.length;
+      var go=function(dxId){ sbPatch('solicitudes_baja?id=eq.'+id,{estado:'baja_confirmada',retencion_obs:obsRet,desconexion_id:dxId||null,updated_at:ahora}).then(function(){ logAct('Baja confirmada',{entidad:'BAJA',entidad_id:id,detalle:(o.motivo_nombre||'')}); cerrarModal(); toast('✓ Baja confirmada · retiro de equipo generado'); vBajas(); }).catch(function(){ toast('No se pudo cerrar la baja.'); }); };
+      if(tieneDx){ go(ex[0].id); }   // ya tiene una baja en curso, no duplico
+      else sbPost('desconexiones',{cliente_id:cid,estado:'PENDIENTE',origen:'voluntaria',motivo:(o.motivo_nombre||null),obs_tecnico:'Baja voluntaria'+(o.motivo_nombre?(' — '+o.motivo_nombre):''),created_by:USER.id}).then(function(r){ go(Array.isArray(r)&&r[0]?r[0].id:null); }).catch(function(){ go(null); });
+    }).catch(function(){ toast('No se pudo generar el retiro.'); });
+  }
+  // Tablero de análisis
+  function _bjAnalisis(){
+    var b=document.getElementById('bj-body'); if(!b) return; b.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('solicitudes_baja?select=id,motivo_id,motivo_nombre,estado,recuperable,created_at,clientes(barrio)&limit=5000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(!d.length){ b.innerHTML='<div class="center" style="padding:24px 0">Todavía no hay datos para analizar.</div>'; return; }
+      var total=d.length;
+      var porMot={}, porEst={}, evit=0, inevit=0, recPend=0;
+      d.forEach(function(o){ var mn=o.motivo_nombre||'(sin motivo)'; porMot[mn]=(porMot[mn]||0)+1; porEst[o.estado]=(porEst[o.estado]||0)+1;
+        var ev=_bjEvitable(o.motivo_id); if(ev===true)evit++; else if(ev===false)inevit++;
+        if(o.recuperable && (o.estado==='pendiente'||o.estado==='en_retencion')) recPend++;
+      });
+      var retenidos=porEst['retenido']||0, confirmadas=porEst['baja_confirmada']||0;
+      var motArr=Object.keys(porMot).map(function(k){return [k,porMot[k]];}).sort(function(a,b){return b[1]-a[1];});
+      var maxM=motArr.length?motArr[0][1]:1;
+      var bar=function(n,max,col){ return '<div style="background:#eef2f7;border-radius:6px;height:16px;overflow:hidden;flex:1"><div style="width:'+Math.round(n/max*100)+'%;background:'+col+';height:100%"></div></div>'; };
+      var h='<div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0">'
+        +'<div class="card" style="flex:1;min-width:130px;text-align:center"><div style="font-size:26px;font-weight:800">'+total+'</div><div class="muted">bajas registradas</div></div>'
+        +'<div class="card" style="flex:1;min-width:130px;text-align:center"><div style="font-size:26px;font-weight:800;color:#16a34a">'+retenidos+'</div><div class="muted">retenidos</div></div>'
+        +'<div class="card" style="flex:1;min-width:130px;text-align:center"><div style="font-size:26px;font-weight:800;color:#0891b2">'+recPend+'</div><div class="muted">recuperables sin contactar</div></div>'
+        +'<div class="card" style="flex:1;min-width:130px;text-align:center"><div style="font-size:26px;font-weight:800;color:#d97706">'+(evit+inevit?Math.round(evit/(evit+inevit)*100):0)+'%</div><div class="muted">evitables</div></div>'
+        +'</div>';
+      h+='<div class="card"><div class="label">Motivos de baja</div>'+motArr.map(function(m){return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px"><span style="width:200px;flex-shrink:0">'+esc(m[0])+'</span>'+bar(m[1],maxM,'#2563eb')+'<b style="width:34px;text-align:right">'+m[1]+'</b></div>';}).join('')+'</div>';
+      h+='<div class="card" style="margin-top:10px"><div class="label">Evitables vs inevitables</div><div style="display:flex;gap:8px;align-items:center;margin-top:4px;font-size:13px"><span style="width:200px">🟠 Evitables (se podían retener)</span>'+bar(evit,evit+inevit||1,'#d97706')+'<b style="width:34px;text-align:right">'+evit+'</b></div><div style="display:flex;gap:8px;align-items:center;margin-top:4px;font-size:13px"><span style="width:200px">⚫ Inevitables (mudanza/cierre)</span>'+bar(inevit,evit+inevit||1,'#64748b')+'<b style="width:34px;text-align:right">'+inevit+'</b></div></div>';
+      b.innerHTML=h;
+    }).catch(function(){ b.innerHTML='<div class="center">No se pudo cargar. ¿Corriste el SQL del módulo?</div>'; });
+  }
+  // ABM de motivos (catálogo editable)
+  function _bjMotivos(){
+    var b=document.getElementById('bj-body'); if(!b) return;
+    b.innerHTML='<div style="margin:8px 0"><button class="btn btn-ok" id="bj-mot-nuevo">➕ Nuevo motivo</button></div>'
+      +'<div class="card"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:4px">Motivo</th><th>Grupo</th><th>Evitable</th><th>Activo</th><th></th></tr></thead><tbody>'
+      +_BJMOT.map(function(m){return '<tr style="border-top:1px solid var(--bord)"><td style="padding:6px">'+esc(m.nombre)+'</td><td>'+esc(m.grupo||'—')+'</td><td>'+(m.evitable?'🟠 sí':'⚫ no')+'</td><td>'+(m.activo===false?'<span class="muted">no</span>':'✓')+'</td><td style="text-align:right"><button class="btn btn-2 btn-sm bj-mot-ed" data-id="'+m.id+'">✏️</button></td></tr>';}).join('')
+      +'</tbody></table></div>';
+    document.getElementById('bj-mot-nuevo').addEventListener('click',function(){ _bjMotEdit(null); });
+    Array.prototype.forEach.call(b.querySelectorAll('.bj-mot-ed'),function(el){ el.addEventListener('click',function(){ _bjMotEdit(_BJMOT.filter(function(x){return String(x.id)===el.getAttribute('data-id');})[0]); }); });
+  }
+  function _bjMotEdit(m){
+    m=m||{};
+    modal('<h2>'+(m.id?'Editar':'Nuevo')+' motivo</h2>'
+      +'<label class="l">Nombre</label><input id="bm-nom" value="'+esc(m.nombre||'')+'">'
+      +'<label class="l">Grupo</label><select id="bm-grupo">'+['precio','servicio','atencion','mudanza','competencia','otro'].map(function(g){return '<option value="'+g+'"'+(m.grupo===g?' selected':'')+'>'+g+'</option>';}).join('')+'</select>'
+      +'<label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer"><input type="checkbox" id="bm-ev" style="width:auto"'+(m.evitable!==false?' checked':'')+'> 🟠 Evitable (se podía retener)</label>'
+      +'<label style="display:flex;align-items:center;gap:7px;margin-top:6px;cursor:pointer"><input type="checkbox" id="bm-act" style="width:auto"'+(m.activo!==false?' checked':'')+'> Activo</label>'
+      +'<label class="l">Orden</label><input id="bm-ord" type="number" value="'+(m.orden||0)+'" style="width:90px">'
+      +'<div id="bm-err" style="color:var(--rojo);font-size:12px;min-height:14px"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ok" id="bm-go">Guardar</button><button class="btn btn-2" id="bm-x">Cancelar</button></div>');
+    document.getElementById('bm-x').addEventListener('click',cerrarModal);
+    document.getElementById('bm-go').addEventListener('click',function(){
+      var nom=document.getElementById('bm-nom').value.trim(); if(!nom){ document.getElementById('bm-err').textContent='Poné el nombre.'; return; }
+      var body={nombre:nom,grupo:document.getElementById('bm-grupo').value,evitable:document.getElementById('bm-ev').checked,activo:document.getElementById('bm-act').checked,orden:Number(document.getElementById('bm-ord').value)||0};
+      var btn=this; btn.disabled=true;
+      var req=m.id?sbPatch('motivos_baja?id=eq.'+m.id,body):sbPost('motivos_baja',body);
+      req.then(function(r){ if(!m.id&&(!Array.isArray(r)||!r.length)) throw 0; cerrarModal(); toast('Motivo guardado'); _bjCargarMotivos(function(){ vBajas(); }); }).catch(function(){ btn.disabled=false; document.getElementById('bm-err').textContent='No se pudo guardar.'; });
+    });
+  }
+
   function modal(html,cls){ var prev=document.getElementById('ov'); if(prev) prev.remove(); /* nunca apilar modales */ var d=document.createElement('div'); d.className='ov'; d.id='ov'; d.innerHTML='<div class="modal '+(cls||'')+'">'+html+'</div>'; d.addEventListener('click',function(e){ if(e.target===d)cerrarModal(); }); document.body.appendChild(d); document.addEventListener('keydown',_modalEsc); }
   function cerrarModal(){ var o=document.getElementById('ov'); if(o)o.remove(); document.removeEventListener('keydown',_modalEsc); }
 
