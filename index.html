@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.41';
+  var VER='v3.42';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3747,6 +3747,7 @@
         +'<label class="l" style="margin-top:8px">📍 Corregir / cargar ubicación <span class="muted">'+((c.lat!=null&&c.lng!=null)?'(ya tiene · pegá una nueva para corregir)':'(sin ubicación · pegala acá)')+'</span></label><input id="dg-ubic" placeholder="Link de Google Maps o: -27.40, -55.97">'
         +(o.gestion_at?('<div class="muted" style="font-size:11.5px;margin-top:6px">Última gestión registrada: '+esc(fmtFechaHora(o.gestion_at))+'</div>'):'')
         +'<button class="btn btn-pri" id="dg-save" style="margin-top:10px">💾 Guardar gestión</button>'
+        +'<button class="btn btn-2" id="dg-motbaja" style="margin-top:8px;border-color:#7c3aed;color:#6d28d9">📉 Registrar motivo de baja</button>'
       +'</div>';
     }
     else if(o.gestion_obs||o.telefono_contacto){ h+='<div class="muted" style="margin-top:8px;font-size:13px">📋 Gestión: '+esc(o.gestion_obs||'—')+(o.telefono_contacto?(' · 📞 extra '+esc(o.telefono_contacto)):'')+'</div>'; }
@@ -3780,6 +3781,7 @@
     var g=function(x){return document.getElementById(x)||document.querySelector('#ov [data-id="'+x+'"]');};
     g('d-x').addEventListener('click',cerrarModal);
     // Guardar la gestión con el cliente (contacto + nota + teléfono extra)
+    if(g('dg-motbaja')) g('dg-motbaja').addEventListener('click',function(){ cerrarModal(); _bjDesdeDescon(c); });
     if(g('dg-save')) g('dg-save').addEventListener('click',function(){
       var cont=(document.getElementById('dg-contacto')||{}).value||null;
       var obs=((document.getElementById('dg-obs')||{}).value||'').trim()||null;
@@ -6860,16 +6862,18 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
   function _bjEvitable(id){ var m=_BJMOT.filter(function(x){return String(x.id)===String(id);})[0]; return m?m.evitable:null; }
   function _bjEstTxt(e){ return {pendiente:'⏳ Pendiente',en_retencion:'🔁 En retención',retenido:'🟢 Retenido',baja_confirmada:'✓ Baja confirmada',desestimada:'✗ Desestimada'}[e]||e; }
   function _bjEstCol(e){ return {pendiente:'#d97706',en_retencion:'#0891b2',retenido:'#16a34a',baja_confirmada:'#7c3aed',desestimada:'#64748b'}[e]||'#64748b'; }
+  // Puente: abrir el registro de baja (con motivo) desde otro módulo (ej. Desconexiones), prellenado con el cliente
+  function _bjDesdeDescon(cli){ _bjCargarMotivos(function(){ _bjNueva(cli); }); }
   function vBajas(){
     if(!_dxEsAdmin()){ view.innerHTML='<h1>📉 Bajas y Retención</h1><div class="center">Solo para administrativo, gerencial o superadmin.</div>'; return; }
     loading();
     _bjCargarMotivos(function(){
-      var t=_bjState.tab, tabs=[['solic','📋 Solicitudes'],['analisis','📊 Análisis'],['motivos','⚙️ Motivos']];
+      var t=_bjState.tab, tabs=[['solic','📋 Solicitudes'],['winback','🔁 Recontactar'],['analisis','📊 Análisis'],['motivos','⚙️ Motivos']];
       view.innerHTML='<h1>📉 Bajas y Retención</h1><p class="sub">Registrá por qué se va cada cliente, retené a los recuperables y estudiá las causas. La baja confirmada genera el retiro de equipo.</p>'
         +'<div class="toolbar" style="gap:6px"><button class="btn btn-ok" id="bj-nueva">➕ Registrar baja</button>'+tabs.map(function(x){return '<button class="btn '+(t===x[0]?'btn-pri':'btn-2')+' bj-tab" data-t="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div><div id="bj-body"></div>';
       document.getElementById('bj-nueva').addEventListener('click',function(){ _bjNueva(); });
       Array.prototype.forEach.call(view.querySelectorAll('.bj-tab'),function(b){ b.addEventListener('click',function(){ _bjState.tab=b.getAttribute('data-t'); vBajas(); }); });
-      if(t==='analisis') _bjAnalisis(); else if(t==='motivos') _bjMotivos(); else _bjSolic();
+      if(t==='analisis') _bjAnalisis(); else if(t==='motivos') _bjMotivos(); else if(t==='winback') _bjWinback(); else _bjSolic();
     });
   }
   function _bjCard(o){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
@@ -6996,19 +7000,68 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
         if(o.recuperable && (o.estado==='pendiente'||o.estado==='en_retencion')) recPend++;
       });
       var retenidos=porEst['retenido']||0, confirmadas=porEst['baja_confirmada']||0;
+      var tasaRet=(retenidos+confirmadas)?Math.round(retenidos/(retenidos+confirmadas)*100):0;
+      // tendencia por mes + top barrios
+      var porMes={}, porBarrio={};
+      d.forEach(function(o){ var ym=String(o.created_at||'').slice(0,7); if(ym) porMes[ym]=(porMes[ym]||0)+1; var bz=((o.clientes||{}).barrio||'(sin barrio)'); porBarrio[bz]=(porBarrio[bz]||0)+1; });
       var motArr=Object.keys(porMot).map(function(k){return [k,porMot[k]];}).sort(function(a,b){return b[1]-a[1];});
-      var maxM=motArr.length?motArr[0][1]:1;
+      var barArr=Object.keys(porBarrio).map(function(k){return [k,porBarrio[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+      var mesArr=Object.keys(porMes).sort().slice(-6).map(function(k){return [k,porMes[k]];});
+      var maxM=motArr.length?motArr[0][1]:1, maxB=barArr.length?barArr[0][1]:1, maxMes=mesArr.reduce(function(a,x){return Math.max(a,x[1]);},1);
       var bar=function(n,max,col){ return '<div style="background:#eef2f7;border-radius:6px;height:16px;overflow:hidden;flex:1"><div style="width:'+Math.round(n/max*100)+'%;background:'+col+';height:100%"></div></div>'; };
+      var mesLbl=function(ym){ var mn=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'],p=String(ym).split('-'); return (mn[(+p[1])-1]||p[1])+' '+String(p[0]).slice(2); };
       var h='<div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0">'
-        +'<div class="card" style="flex:1;min-width:130px;text-align:center"><div style="font-size:26px;font-weight:800">'+total+'</div><div class="muted">bajas registradas</div></div>'
-        +'<div class="card" style="flex:1;min-width:130px;text-align:center"><div style="font-size:26px;font-weight:800;color:#16a34a">'+retenidos+'</div><div class="muted">retenidos</div></div>'
-        +'<div class="card" style="flex:1;min-width:130px;text-align:center"><div style="font-size:26px;font-weight:800;color:#0891b2">'+recPend+'</div><div class="muted">recuperables sin contactar</div></div>'
-        +'<div class="card" style="flex:1;min-width:130px;text-align:center"><div style="font-size:26px;font-weight:800;color:#d97706">'+(evit+inevit?Math.round(evit/(evit+inevit)*100):0)+'%</div><div class="muted">evitables</div></div>'
+        +'<div class="card" style="flex:1;min-width:120px;text-align:center"><div style="font-size:26px;font-weight:800">'+total+'</div><div class="muted">bajas</div></div>'
+        +'<div class="card" style="flex:1;min-width:120px;text-align:center"><div style="font-size:26px;font-weight:800;color:#16a34a">'+tasaRet+'%</div><div class="muted">tasa de retención</div></div>'
+        +'<div class="card" style="flex:1;min-width:120px;text-align:center"><div style="font-size:26px;font-weight:800;color:#0891b2">'+recPend+'</div><div class="muted">recuperables sin contactar</div></div>'
+        +'<div class="card" style="flex:1;min-width:120px;text-align:center"><div style="font-size:26px;font-weight:800;color:#d97706">'+(evit+inevit?Math.round(evit/(evit+inevit)*100):0)+'%</div><div class="muted">evitables</div></div>'
         +'</div>';
-      h+='<div class="card"><div class="label">Motivos de baja</div>'+motArr.map(function(m){return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px"><span style="width:200px;flex-shrink:0">'+esc(m[0])+'</span>'+bar(m[1],maxM,'#2563eb')+'<b style="width:34px;text-align:right">'+m[1]+'</b></div>';}).join('')+'</div>';
-      h+='<div class="card" style="margin-top:10px"><div class="label">Evitables vs inevitables</div><div style="display:flex;gap:8px;align-items:center;margin-top:4px;font-size:13px"><span style="width:200px">🟠 Evitables (se podían retener)</span>'+bar(evit,evit+inevit||1,'#d97706')+'<b style="width:34px;text-align:right">'+evit+'</b></div><div style="display:flex;gap:8px;align-items:center;margin-top:4px;font-size:13px"><span style="width:200px">⚫ Inevitables (mudanza/cierre)</span>'+bar(inevit,evit+inevit||1,'#64748b')+'<b style="width:34px;text-align:right">'+inevit+'</b></div></div>';
+      h+='<div class="card"><div class="label">Motivos de baja</div>'+motArr.map(function(m){return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px"><span style="width:210px;flex-shrink:0">'+esc(m[0])+'</span>'+bar(m[1],maxM,'#2563eb')+'<b style="width:34px;text-align:right">'+m[1]+'</b></div>';}).join('')+'</div>';
+      h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">';
+      h+='<div class="card" style="flex:1;min-width:280px"><div class="label">Tendencia por mes</div>'+(mesArr.length?mesArr.map(function(m){return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px"><span style="width:70px;flex-shrink:0">'+mesLbl(m[0])+'</span>'+bar(m[1],maxMes,'#7c3aed')+'<b style="width:30px;text-align:right">'+m[1]+'</b></div>';}).join(''):'<div class="muted">—</div>')+'</div>';
+      h+='<div class="card" style="flex:1;min-width:280px"><div class="label">Barrios con más bajas</div>'+barArr.map(function(m){return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px"><span style="width:140px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span>'+bar(m[1],maxB,'#0891b2')+'<b style="width:30px;text-align:right">'+m[1]+'</b></div>';}).join('')+'</div>';
+      h+='</div>';
+      h+='<div class="card" style="margin-top:10px"><div class="label">Evitables vs inevitables</div><div style="display:flex;gap:8px;align-items:center;margin-top:4px;font-size:13px"><span style="width:210px">🟠 Evitables (se podían retener)</span>'+bar(evit,evit+inevit||1,'#d97706')+'<b style="width:34px;text-align:right">'+evit+'</b></div><div style="display:flex;gap:8px;align-items:center;margin-top:4px;font-size:13px"><span style="width:210px">⚫ Inevitables (mudanza/cierre)</span>'+bar(inevit,evit+inevit||1,'#64748b')+'<b style="width:34px;text-align:right">'+inevit+'</b></div></div>';
       b.innerHTML=h;
     }).catch(function(){ b.innerHTML='<div class="center">No se pudo cargar. ¿Corriste el SQL del módulo?</div>'; });
+  }
+  // Win-back: recontactar a los recuperables que se dieron de baja (pasado un tiempo, zona mejoró, promo)
+  function _bjWinback(){
+    var b=document.getElementById('bj-body'); if(!b) return; b.innerHTML='<div class="center"><div class="spin"></div></div>';
+    sbGet('solicitudes_baja?estado=eq.baja_confirmada&recuperable=is.true&select=*,clientes(numero_cliente,nombre,apellido,barrio,telefono,domicilio_full)&order=created_at.asc&limit=2000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      // los ya recuperados o descartados van al final
+      d.sort(function(a,b2){ var r=function(x){return (x.winback_estado==='recuperado'||x.winback_estado==='descartado')?1:0;}; return r(a)-r(b2); });
+      if(!d.length){ b.innerHTML='<div class="muted" style="padding:16px 0">Acá van a aparecer los clientes <b>recuperables</b> que se dieron de baja, para recontactarlos más adelante (la zona mejoró, hay promo…). Todavía no hay ninguno.</div>'; return; }
+      var hoy=Date.now();
+      b.innerHTML='<div class="muted" style="margin:6px 0">'+d.length+' cliente(s) recuperable(s) dados de baja</div>'+d.map(function(o){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+        var dias=Math.floor((hoy-new Date(o.created_at).getTime())/86400000);
+        var wb=o.winback_estado, col=(wb==='recuperado'?'#16a34a':(wb==='descartado'?'#64748b':(wb==='contactado'?'#0891b2':'#d97706')));
+        var wbTxt={contactado:'📞 contactado',recuperado:'🟢 recuperado',descartado:'⚫ descartado'}[wb]||'⏳ sin contactar';
+        return '<div class="ot" style="border-left:5px solid '+col+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente||'')+'</span> '+esc(nom)+'</div><div style="font-size:12px;color:'+col+';font-weight:700">'+wbTxt+'</div></div>'
+          +'<div class="dir">📉 '+esc(o.motivo_nombre||'')+(c.barrio?(' · '+esc(c.barrio)):'')+' · baja hace <b>'+dias+'</b> día'+(dias===1?'':'s')+'</div>'
+          +(o.winback_obs?('<div class="dir" style="font-style:italic">“'+esc(o.winback_obs)+'”</div>'):'')
+          +'<div class="acc">'+(c.telefono?('<a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+(typeof waNum==='function'?waNum(c.telefono):String(c.telefono).replace(/[^\d]/g,''))+'">💬 WhatsApp</a><a class="btn btn-2 btn-sm" href="tel:'+esc(String(c.telefono).replace(/[^\d+]/g,''))+'">📞</a>'):'')
+          +'<button class="btn btn-2 btn-sm bj-wb" data-id="'+o.id+'">🔁 Gestionar win-back</button></div></div>';
+      }).join('');
+      Array.prototype.forEach.call(b.querySelectorAll('.bj-wb'),function(el){ el.addEventListener('click',function(){ _bjWinbackEdit(d.filter(function(x){return String(x.id)===el.getAttribute('data-id');})[0]); }); });
+    }).catch(function(){ b.innerHTML='<div class="center">No se pudo cargar. ¿Corriste el SQL de la Etapa 2 (campos winback_*)?</div>'; });
+  }
+  function _bjWinbackEdit(o){
+    if(!o) return; var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    modal('<h2>🔁 Win-back · '+esc(nom)+'</h2><div class="muted" style="margin-top:-6px">Se fue por: '+esc(o.motivo_nombre||'—')+'</div>'
+      +'<label class="l">Estado</label><select id="wb-est">'+[['pendiente','⏳ Sin contactar'],['contactado','📞 Contactado'],['recuperado','🟢 Recuperado (vuelve)'],['descartado','⚫ Descartado']].map(function(e){return '<option value="'+e[0]+'"'+((o.winback_estado||'pendiente')===e[0]?' selected':'')+'>'+e[1]+'</option>';}).join('')+'</select>'
+      +'<label class="l">Nota (qué le ofreciste / respondió)</label><textarea id="wb-obs" placeholder="Ej: le ofrecí 3 meses con 30% · dijo que lo piensa">'+esc(o.winback_obs||'')+'</textarea>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ok" id="wb-go">Guardar</button><button class="btn btn-2" id="wb-x">Cancelar</button></div>');
+    document.getElementById('wb-x').addEventListener('click',cerrarModal);
+    document.getElementById('wb-go').addEventListener('click',function(){
+      var est=document.getElementById('wb-est').value, obs=document.getElementById('wb-obs').value.trim();
+      var btn=this; btn.disabled=true;
+      var body={winback_estado:est,winback_obs:obs||null,winback_at:new Date().toISOString(),winback_por:USER.id,updated_at:new Date().toISOString()};
+      // si se recupera, la solicitud queda como 'retenido' (volvió a ser cliente)
+      if(est==='recuperado') body.estado='retenido';
+      sbPatch('solicitudes_baja?id=eq.'+o.id,body).then(function(){ logAct('Win-back: '+est,{entidad:'BAJA',entidad_id:o.id,detalle:(o.motivo_nombre||'')}); cerrarModal(); toast(est==='recuperado'?'🟢 Cliente recuperado!':'Win-back actualizado'); vBajas(); }).catch(function(){ btn.disabled=false; toast('No se pudo guardar (¿SQL Etapa 2?).'); });
+    });
   }
   // ABM de motivos (catálogo editable)
   function _bjMotivos(){
