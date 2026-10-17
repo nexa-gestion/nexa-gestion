@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.53';
+  var VER='v3.54';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2926,7 +2926,7 @@
   }
   function _atrasoTxtAdm(min){ var h=Math.floor(min/60), m=min%60; return 'atrasado '+(h?(h+'h '):'')+m+'min'; }
   function _mesInicioISO(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-01'; }
-  function _infKpi(n,l,col){ return '<div style="flex:1;min-width:120px;background:#fff;border:1px solid var(--bord);border-left:4px solid '+col+';border-radius:12px;padding:12px 14px"><div style="font-size:24px;font-weight:800">'+n+'</div><div class="muted" style="font-size:12px">'+l+'</div></div>'; }
+  function _infKpi(n,l,col,key){ return '<div'+(key?' class="gkcard" data-gk="'+key+'"':'')+' style="flex:1;min-width:120px;background:#fff;border:1px solid var(--bord);border-left:4px solid '+col+';border-radius:12px;padding:12px 14px'+(key?';cursor:pointer':'')+'"><div style="font-size:24px;font-weight:800">'+n+'</div><div class="muted" style="font-size:12px">'+l+(key?' <span style="color:#2563eb;font-weight:600">· ver →</span>':'')+'</div></div>'; }
   // ══════════ GERENCIAL ══════════ (solo gerencia/superadmin: altas/bajas por período)
   var _gMIG='2026-06-10'; // las "altas" anteriores a esta fecha son la migración inicial de ISPcube (09-06, 4499 clientes)
   function vGerencial(){
@@ -3036,15 +3036,47 @@
     ]).then(function(r){
       var altas=r[0],bajas=r[1],altasMes=r[2],activos=r[3],bloq=r[4],baja=r[5],traspasos=r[6],netas=altas-bajas;
       cont.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:12px">'
-        +_infKpi(altas,'Altas en el período','#2563eb')+_infKpi(bajas,'Bajas de clientes','#dc2626')
-        +_infKpi((netas>=0?'+':'')+netas,'Altas netas',netas>=0?'#16a34a':'#d97706')+_infKpi(altasMes,'Altas este mes','#7c3aed')+'</div>'
+        +_infKpi(altas,'Altas en el período','#2563eb','altas')+_infKpi(bajas,'Bajas de clientes','#dc2626','bajas')
+        +_infKpi((netas>=0?'+':'')+netas,'Altas netas',netas>=0?'#16a34a':'#d97706')+_infKpi(altasMes,'Altas este mes','#7c3aed','altasmes')+'</div>'
         +'<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">'
-        +_infKpi(traspasos,'Eliminados ISPcube (traspasos/508)','#64748b')+_infKpi(activos,'Activos hoy','#16a34a')+_infKpi(bloq,'Bloqueados hoy','#d97706')+_infKpi(baja,'En baja hoy','#64748b')+'</div>'
-        +'<div class="muted" style="margin-top:14px;font-size:12px">'+((g.excl&&g.desde<_gMIG)?'⚠️ Se excluyó la migración inicial de ISPcube (09-06, 4499 clientes). ':'')+'<b>Bajas de clientes</b> = dados de baja reales (fecha de baja) — igual que la curva. <b>Eliminados ISPcube</b> = borrados de ISPcube, como el traspaso del 508 (no son bajas comerciales). <b>Altas netas</b> = altas − bajas reales.</div>'
+        +_infKpi(traspasos,'Eliminados ISPcube (traspasos/508)','#64748b','traspasos')+_infKpi(activos,'Activos hoy','#16a34a','activos')+_infKpi(bloq,'Bloqueados hoy','#d97706','bloqueados')+_infKpi(baja,'En baja hoy','#64748b','baja')+'</div>'
+        +'<div id="g-lista" style="display:none;margin-top:12px"></div>'
+        +'<div class="muted" style="margin-top:14px;font-size:12px">'+((g.excl&&g.desde<_gMIG)?'⚠️ Se excluyó la migración inicial de ISPcube (09-06, 4499 clientes). ':'')+'<b>Bajas de clientes</b> = dados de baja reales (fecha de baja) — igual que la curva. <b>Eliminados ISPcube</b> = borrados de ISPcube, como el traspaso del 508 (no son bajas comerciales). <b>Altas netas</b> = altas − bajas reales. <span style="color:#2563eb">Tocá una tarjeta para ver su lista.</span></div>'
         +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-2" id="g-exp-altas">⬇️ Exportar altas (CSV)</button><button class="btn btn-2" id="g-exp-bajas">⬇️ Exportar bajas (CSV)</button></div>';
       document.getElementById('g-exp-altas').addEventListener('click',function(){ _gExport('altas',desdeA,hh,g.hasta); });
       document.getElementById('g-exp-bajas').addEventListener('click',function(){ _gExport('bajas',g.desde,hh,g.hasta); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.gkcard'),function(el){ el.addEventListener('click',function(){ _gLista(el.getAttribute('data-gk')); }); });
     }).catch(function(){ cont.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo calcular.</div>'; });
+  }
+  // Lista desplegable de la tarjeta clickeada del Gerencial
+  function _gLista(key){
+    var g=window._gState, hh=g.hasta+'T23:59:59', f508=(g.excl508)?'&es_508=is.false':'', desdeA=(g.excl&&g.desde<_gMIG)?_gMIG:g.desde;
+    var M={
+      altas:['created_at=gte.'+desdeA+'&created_at=lte.'+hh+'&estado=neq.eliminado'+f508,'Altas en el período','created_at'],
+      altasmes:['created_at=gte.'+((_mesInicioISO()<_gMIG)?_gMIG:_mesInicioISO())+'&estado=neq.eliminado'+f508,'Altas este mes','created_at'],
+      bajas:['fecha_baja=gte.'+g.desde+'&fecha_baja=lte.'+g.hasta+f508,'Bajas de clientes','fecha_baja'],
+      traspasos:['eliminado_isp_at=gte.'+g.desde+'&eliminado_isp_at=lte.'+hh,'Eliminados ISPcube (508)','eliminado_isp_at'],
+      activos:['estado=eq.activo','Activos hoy','fecha_alta'],
+      bloqueados:['estado=eq.bloqueado','Bloqueados hoy','bloqueado_desde'],
+      baja:['estado=eq.baja','En baja hoy','fecha_baja']
+    };
+    var m=M[key]; if(!m) return;
+    var cont=document.getElementById('g-lista'); if(!cont) return;
+    cont.style.display='block'; cont.innerHTML='<div class="center"><div class="spin"></div></div>'; cont.scrollIntoView({behavior:'smooth',block:'nearest'});
+    sbGetAll('clientes?'+m[0]+'&select=numero_cliente,nombre,apellido,barrio,telefono,empresa,estado,planes(nombre),'+m[2]+'&order='+m[2]+'.desc').then(function(d){
+      d=Array.isArray(d)?d:[]; var TOPE=500, muestra=d.slice(0,TOPE);
+      var h='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">'+m[1]+' · '+d.length.toLocaleString('es-AR')+' cliente(s)'+(d.length>TOPE?(' <span class="muted" style="font-weight:400">· se ven los primeros '+TOPE+'</span>'):'')+'</div><div style="display:flex;gap:6px"><button class="btn btn-2 btn-sm" id="gl-csv">⬇️ Excel</button><button class="btn btn-2 btn-sm" id="gl-x">✖ Cerrar</button></div></div>'
+        +'<div style="overflow:auto;max-height:460px;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b;position:sticky;top:0;background:#fff"><th style="padding:4px">N°</th><th>Cliente</th><th>Barrio</th><th>Plan</th><th>Empresa</th><th>Estado</th><th>'+({created_at:'Alta',fecha_baja:'Baja',eliminado_isp_at:'Eliminado',bloqueado_desde:'Bloqueado',fecha_alta:'Alta'}[m[2]]||'Fecha')+'</th></tr></thead><tbody>'
+        +muestra.map(function(c){return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px">'+esc(c.numero_cliente||'')+'</td><td>'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+'</td><td>'+esc(c.barrio||'—')+'</td><td>'+esc((c.planes&&c.planes.nombre)||'—')+'</td><td>'+esc(c.empresa||'—')+'</td><td>'+esc(c.estado||'')+'</td><td>'+esc(c[m[2]]?fmtFecha(c[m[2]]):'—')+'</td></tr>';}).join('')
+        +'</tbody></table></div></div>';
+      cont.innerHTML=h;
+      document.getElementById('gl-x').addEventListener('click',function(){ cont.style.display='none'; cont.innerHTML=''; });
+      document.getElementById('gl-csv').addEventListener('click',function(){
+        var head=['N','Cliente','Barrio','Plan','Empresa','Estado','Fecha'];
+        var lines=[head.join(';')].concat(d.map(function(c){return [c.numero_cliente||'',((c.nombre||'')+' '+(c.apellido||'')).trim(),c.barrio||'',(c.planes&&c.planes.nombre)||'',c.empresa||'',c.estado||'',(c[m[2]]?fmtFecha(c[m[2]]):'')].map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(';');}));
+        var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='gerencial_'+key+'.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+d.length+')');
+      });
+    }).catch(function(){ cont.innerHTML='<div class="card muted">No se pudo cargar la lista.</div>'; });
   }
   function _gExport(tipo,desde,hh,hasta){
     var q=(tipo==='altas')
