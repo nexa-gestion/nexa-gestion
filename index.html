@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.50';
+  var VER='v3.51';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3007,22 +3007,22 @@
     var desdeA=(g.excl && g.desde < _gMIG) ? _gMIG : g.desde;          // altas: excluir la migración
     var mIni=_mesInicioISO(), mDesdeA=(mIni<_gMIG)?_gMIG:mIni, mHH=_hoyISO()+'T23:59:59';
     var f508=(g.excl508)?'&es_508=is.false':'';
-    var bajasOr='or=(and(eliminado_isp_at.gte.'+g.desde+',eliminado_isp_at.lte.'+hh+'),and(fecha_baja.gte.'+g.desde+',fecha_baja.lte.'+g.hasta+'))';
     Promise.all([
       sbCount('clientes?created_at=gte.'+desdeA+'&created_at=lte.'+hh+'&estado=neq.eliminado'+f508+'&select=id'),
-      sbCount('clientes?'+bajasOr+f508+'&select=id'),
+      sbCount('clientes?fecha_baja=gte.'+g.desde+'&fecha_baja=lte.'+g.hasta+f508+'&select=id'),
       sbCount('clientes?created_at=gte.'+mDesdeA+'&created_at=lte.'+mHH+'&estado=neq.eliminado'+f508+'&select=id'),
       sbCount('clientes?estado=eq.activo&select=id'),
       sbCount('clientes?estado=eq.bloqueado&select=id'),
-      sbCount('clientes?estado=eq.baja&select=id')
+      sbCount('clientes?estado=eq.baja&select=id'),
+      sbCount('clientes?eliminado_isp_at=gte.'+g.desde+'&eliminado_isp_at=lte.'+hh+'&select=id')
     ]).then(function(r){
-      var altas=r[0],bajas=r[1],altasMes=r[2],activos=r[3],bloq=r[4],baja=r[5],netas=altas-bajas;
+      var altas=r[0],bajas=r[1],altasMes=r[2],activos=r[3],bloq=r[4],baja=r[5],traspasos=r[6],netas=altas-bajas;
       cont.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:12px">'
-        +_infKpi(altas,'Altas en el período','#2563eb')+_infKpi(bajas,'Bajas en el período','#dc2626')
+        +_infKpi(altas,'Altas en el período','#2563eb')+_infKpi(bajas,'Bajas de clientes','#dc2626')
         +_infKpi((netas>=0?'+':'')+netas,'Altas netas',netas>=0?'#16a34a':'#d97706')+_infKpi(altasMes,'Altas este mes','#7c3aed')+'</div>'
         +'<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">'
-        +_infKpi(activos,'Activos hoy','#16a34a')+_infKpi(bloq,'Bloqueados hoy','#d97706')+_infKpi(baja,'En baja hoy','#64748b')+'</div>'
-        +'<div class="muted" style="margin-top:14px;font-size:12px">'+((g.excl&&g.desde<_gMIG)?'⚠️ Se excluyó la migración inicial de ISPcube (09-06, 4499 clientes). ':'')+'<b>Altas</b> = clientes creados en el rango · <b>Bajas</b> = clientes eliminados de ISPcube o dados de baja en el rango. La precisión es total de acá en adelante.</div>'
+        +_infKpi(traspasos,'Eliminados ISPcube (traspasos/508)','#64748b')+_infKpi(activos,'Activos hoy','#16a34a')+_infKpi(bloq,'Bloqueados hoy','#d97706')+_infKpi(baja,'En baja hoy','#64748b')+'</div>'
+        +'<div class="muted" style="margin-top:14px;font-size:12px">'+((g.excl&&g.desde<_gMIG)?'⚠️ Se excluyó la migración inicial de ISPcube (09-06, 4499 clientes). ':'')+'<b>Bajas de clientes</b> = dados de baja reales (fecha de baja) — igual que la curva. <b>Eliminados ISPcube</b> = borrados de ISPcube, como el traspaso del 508 (no son bajas comerciales). <b>Altas netas</b> = altas − bajas reales.</div>'
         +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-2" id="g-exp-altas">⬇️ Exportar altas (CSV)</button><button class="btn btn-2" id="g-exp-bajas">⬇️ Exportar bajas (CSV)</button></div>';
       document.getElementById('g-exp-altas').addEventListener('click',function(){ _gExport('altas',desdeA,hh,g.hasta); });
       document.getElementById('g-exp-bajas').addEventListener('click',function(){ _gExport('bajas',g.desde,hh,g.hasta); });
@@ -3031,7 +3031,7 @@
   function _gExport(tipo,desde,hh,hasta){
     var q=(tipo==='altas')
       ? 'clientes?created_at=gte.'+desde+'&created_at=lte.'+hh+'&estado=neq.eliminado&select=numero_cliente,nombre,apellido,doc_numero,telefono,barrio,domicilio_full,empresa,planes(nombre),created_at&order=created_at.desc'
-      : 'clientes?or=(and(eliminado_isp_at.gte.'+desde+',eliminado_isp_at.lte.'+hh+'),and(fecha_baja.gte.'+desde+',fecha_baja.lte.'+hasta+'))&select=numero_cliente,nombre,apellido,doc_numero,telefono,barrio,empresa,eliminado_isp_at,fecha_baja&order=numero_cliente.desc';
+      : 'clientes?fecha_baja=gte.'+desde+'&fecha_baja=lte.'+hasta+'&select=numero_cliente,nombre,apellido,doc_numero,telefono,barrio,empresa,eliminado_isp_at,fecha_baja&order=fecha_baja.desc';
     sbGetAll(q).then(function(d){
       d=Array.isArray(d)?d:[];
       var head=(tipo==='altas')?['N°','Nombre','Apellido','DNI','Teléfono','Barrio','Domicilio','Empresa','Plan','Alta']:['N°','Nombre','Apellido','DNI','Teléfono','Barrio','Empresa','Eliminado ISP','Fecha baja'];
