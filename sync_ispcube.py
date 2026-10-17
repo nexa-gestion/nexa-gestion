@@ -128,6 +128,16 @@ def sb_post(path, rows):
     _req(SB_URL + "/rest/v1/" + path, rows, "POST",
          {"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Prefer": "return=minimal"})
 
+def sb_count(path):
+    sep = "&" if "?" in path else "?"
+    try:
+        r = _req(SB_URL + "/rest/v1/" + path + sep + "select=id",
+                 headers={"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Prefer": "count=exact", "Range": "0-0"})
+        cr = r.headers.get("Content-Range", "")
+        return int(cr.split("/")[-1]) if "/" in cr else 0
+    except Exception:
+        return 0
+
 def sb_insert_one(path, body):
     r = _req(SB_URL + "/rest/v1/" + path, body, "POST",
              {"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Prefer": "return=representation"})
@@ -600,6 +610,31 @@ def cerrar_desconexiones_por_retiro():
         except Exception as e: print(f"  ERROR crear desconexion retiro lote {i}: {e}")
     return n
 
+def guardar_snapshot():
+    # Foto diaria de los conteos "de estado actual" para graficar su evolución (bloqueados, conexiones).
+    hoy = time.strftime("%Y-%m-%d", time.gmtime())
+    cx = lambda f: sb_count("conexiones?" + f)
+    row = {
+        "fecha": hoy,
+        "activos": sb_count("clientes?estado=eq.activo"),
+        "bloqueados": sb_count("clientes?estado=eq.bloqueado"),
+        "baja": sb_count("clientes?estado=eq.baja"),
+        "int_ftth_cobra":  cx("tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.activo&gratis=is.false"),
+        "int_ftth_gratis": cx("tipo=eq.internet&tecnologia=eq.FTTH&estado=eq.activo&gratis=is.true"),
+        "int_wl_cobra":    cx("tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.activo&gratis=is.false"),
+        "int_wl_gratis":   cx("tipo=eq.internet&tecnologia=eq.WIRELESS&estado=eq.activo&gratis=is.true"),
+        "tv_activas":      cx("tipo=eq.tv&estado=eq.activo"),
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    if DRY:
+        print("📸 snapshot (DRY):", row); return
+    try:
+        _req(SB_URL + "/rest/v1/snapshots_diarios?on_conflict=fecha", row, "POST",
+             {"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Prefer": "resolution=merge-duplicates,return=minimal"})
+        print("📸 snapshot del día guardado:", hoy, "· bloqueados", row["bloqueados"])
+    except Exception as e:
+        print("WARN snapshot:", e)
+
 def sync_conexiones(isp, nexa):
     # Reconstruye la tabla 'conexiones' desde connections[] de ISPcube (un cliente puede tener varias)
     # y marca clientes.gratis (= free de ISPcube). Clasifica cada conexión en internet (FTTH/WIRELESS) o tv.
@@ -825,6 +860,8 @@ def main():
     anuladas = anular_desconexiones_rehabilitados()
     try: sync_conexiones(isp, nexa)
     except Exception as e: print("WARN sync_conexiones:", e)
+    try: guardar_snapshot()
+    except Exception as e: print("WARN guardar_snapshot:", e)
     geoch = geolocalizar_chacras()
 
     print(f"\n✓ Sync OK: {len(updates)} actualizados, {len(graduados)} graduados, {len(nuevos)} nuevos, {eliminados} eliminados, {generadas} desconexiones generadas, {anuladas} anuladas, {limpiadas} cerradas por eliminado, {cerradas_retiro} cerradas por retiro, {geoch} ubicados por chacra. {round(time.time()-t0)}s")

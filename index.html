@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.48';
+  var VER='v3.49';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2943,13 +2943,33 @@
       +'</div>'
       +'<div class="toolbar" style="margin-top:2px;align-items:center"><span class="muted" style="font-size:12.5px">📈 Evolución mensual:</span><button class="btn btn-2 g-per" data-m="3">3 meses</button><button class="btn btn-2 g-per" data-m="6">6 meses</button><button class="btn btn-2 g-per" data-m="12">12 meses</button><span class="muted" style="font-size:12px">pasá el mouse por la curva para ver cada mes</span></div>'
       +'<div class="card" style="height:300px;margin-bottom:14px;padding:10px"><canvas id="g-canvas"></canvas></div>'
+      +'<div id="g-bloq-wrap" style="margin-bottom:14px"></div>'
       +'<div id="g-kpis"><div class="center"><div class="spin"></div></div></div>';
     document.getElementById('g-go').addEventListener('click',function(){ var s=window._gState; s.desde=document.getElementById('g-desde').value; s.hasta=document.getElementById('g-hasta').value; s.excl=document.getElementById('g-excl').checked; _gCalc(); });
     document.getElementById('g-mes').addEventListener('click',function(){ window._gState.desde=_mesInicioISO(); window._gState.hasta=_hoyISO(); vGerencial(); });
     document.getElementById('g-excl').addEventListener('change',function(){ window._gState.excl=this.checked; _gCalc(); _gGrafico(window._gMeses||6); });
     Array.prototype.forEach.call(view.querySelectorAll('.g-per'),function(b){ b.addEventListener('click',function(){ _gGrafico(Number(b.getAttribute('data-m'))); }); });
     _gGrafico(window._gMeses||6);
+    _gGraficoBloq();
     _gCalc();
+  }
+  // Bloqueados en el tiempo (foto diaria): sube con el corte del 22-23 y baja a medida que pagan
+  function _gGraficoBloq(){
+    var w=document.getElementById('g-bloq-wrap'); if(!w) return;
+    sbGetAll('snapshots_diarios?select=fecha,activos,bloqueados&order=fecha.asc').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(d.length<2){ w.innerHTML='<div class="card" style="background:#f8fafc"><div style="font-weight:700;margin-bottom:4px">🔒 Bloqueados en el tiempo</div><div class="muted" style="font-size:13px">📸 Empezamos a guardar la <b>foto diaria</b> de la base. La curva de bloqueados (cómo sube con el corte del 22-23 y baja cuando pagan) se va a ir dibujando día a día — el sync corre 2 veces por día. Mañana ya vas a ver los primeros puntos.'+(d.length?(' <span style="color:#16a34a">Ya hay '+d.length+' día guardado.</span>'):'')+'</div></div>'; return; }
+      w.innerHTML='<div class="card"><div style="font-weight:700;margin-bottom:8px">🔒 Bloqueados en el tiempo <span class="muted" style="font-weight:400;font-size:12.5px">· foto diaria</span></div><div style="height:260px"><canvas id="g-canvas-bloq"></canvas></div></div>';
+      ensureChartJs(function(){
+        if(window._gChartBloq){ try{window._gChartBloq.destroy();}catch(e){} }
+        var cv=document.getElementById('g-canvas-bloq'); if(!cv||!window.Chart) return;
+        var lbl=d.map(function(x){var p=String(x.fecha).split('-');return p[2]+'/'+p[1];});
+        window._gChartBloq=new Chart(cv.getContext('2d'),{type:'line',data:{labels:lbl,datasets:[
+          {label:'Bloqueados',data:d.map(function(x){return x.bloqueados;}),borderColor:'#d97706',backgroundColor:'rgba(217,119,6,.12)',tension:.3,fill:true,borderWidth:2,pointRadius:2,pointHoverRadius:5},
+          {label:'Activos',data:d.map(function(x){return x.activos;}),borderColor:'#16a34a',tension:.3,fill:false,borderWidth:2,pointRadius:1,pointHoverRadius:4,hidden:true}
+        ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}}},scales:{y:{beginAtZero:false,ticks:{precision:0}}}}});
+      });
+    }).catch(function(){ w.innerHTML='<div class="card muted" style="font-size:13px">🔒 Bloqueados en el tiempo — corré el SQL de snapshots para activarlo.</div>'; });
   }
   // Gráfico de ondas: evolución mensual de altas / bajas / netas / desconexiones (Chart.js, tooltip al pasar el mouse)
   function _gGrafico(meses){
@@ -2962,19 +2982,17 @@
       var excl=window._gState&&window._gState.excl, altaDesde=(excl&&desdeISO<_gMIG)?_gMIG:desdeISO;
       Promise.all([
         sbGetAll('clientes?fecha_alta=gte.'+altaDesde+'&estado=neq.eliminado&select=fecha_alta'),
-        sbGetAll('clientes?fecha_baja=gte.'+desdeISO+'&select=fecha_baja'),
-        sbGetAll('desconexiones?created_at=gte.'+desdeISO+'T00:00:00&select=created_at')
+        sbGetAll('clientes?fecha_baja=gte.'+desdeISO+'&select=fecha_baja')
       ]).then(function(r){
         var gm=function(arr,campo){ var m={}; (arr||[]).forEach(function(x){ var k=String(x[campo]||'').slice(0,7); if(k)m[k]=(m[k]||0)+1; }); return keys.map(function(k){return m[k]||0;}); };
-        var altas=gm(r[0],'fecha_alta'), bajas=gm(r[1],'fecha_baja'), desc=gm(r[2],'created_at');
+        var altas=gm(r[0],'fecha_alta'), bajas=gm(r[1],'fecha_baja');
         var netas=altas.map(function(a,i){return a-bajas[i];});
         if(window._gChart){ try{window._gChart.destroy();}catch(e){} }
         var cv=document.getElementById('g-canvas'); if(!cv||!window.Chart) return;
         window._gChart=new Chart(cv.getContext('2d'),{type:'line',data:{labels:labels,datasets:[
           {label:'Altas',data:altas,borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.12)',tension:.35,fill:true,borderWidth:2,pointRadius:3,pointHoverRadius:5},
           {label:'Bajas (clientes)',data:bajas,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.07)',tension:.35,fill:true,borderWidth:2,pointRadius:3,pointHoverRadius:5},
-          {label:'Altas netas',data:netas,borderColor:'#2563eb',borderDash:[6,4],tension:.35,fill:false,borderWidth:2,pointRadius:2,pointHoverRadius:5},
-          {label:'Desconexiones (cortes)',data:desc,borderColor:'#f59e0b',tension:.35,fill:false,borderWidth:2,pointRadius:2,pointHoverRadius:5,hidden:true}
+          {label:'Altas netas',data:netas,borderColor:'#2563eb',borderDash:[6,4],tension:.35,fill:false,borderWidth:2,pointRadius:2,pointHoverRadius:5}
         ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},tooltip:{mode:'index',intersect:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
       }).catch(function(){});
     });
