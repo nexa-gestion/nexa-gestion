@@ -246,7 +246,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.47';
+  var VER='v3.48';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2940,11 +2940,44 @@
       +'<button class="btn btn-pri" id="g-go">Ver</button>'
       +'<button class="btn btn-2" id="g-mes">Este mes</button>'
       +'<label class="l" style="display:flex;align-items:center;gap:6px;margin:0;font-size:12px"><input type="checkbox" id="g-excl"'+(g.excl?' checked':'')+' style="width:auto"> excluir migración (09-06)</label>'
-      +'</div><div id="g-kpis"><div class="center"><div class="spin"></div></div></div>';
+      +'</div>'
+      +'<div class="toolbar" style="margin-top:2px;align-items:center"><span class="muted" style="font-size:12.5px">📈 Evolución mensual:</span><button class="btn btn-2 g-per" data-m="3">3 meses</button><button class="btn btn-2 g-per" data-m="6">6 meses</button><button class="btn btn-2 g-per" data-m="12">12 meses</button><span class="muted" style="font-size:12px">pasá el mouse por la curva para ver cada mes</span></div>'
+      +'<div class="card" style="height:300px;margin-bottom:14px;padding:10px"><canvas id="g-canvas"></canvas></div>'
+      +'<div id="g-kpis"><div class="center"><div class="spin"></div></div></div>';
     document.getElementById('g-go').addEventListener('click',function(){ var s=window._gState; s.desde=document.getElementById('g-desde').value; s.hasta=document.getElementById('g-hasta').value; s.excl=document.getElementById('g-excl').checked; _gCalc(); });
     document.getElementById('g-mes').addEventListener('click',function(){ window._gState.desde=_mesInicioISO(); window._gState.hasta=_hoyISO(); vGerencial(); });
-    document.getElementById('g-excl').addEventListener('change',function(){ window._gState.excl=this.checked; _gCalc(); });
+    document.getElementById('g-excl').addEventListener('change',function(){ window._gState.excl=this.checked; _gCalc(); _gGrafico(window._gMeses||6); });
+    Array.prototype.forEach.call(view.querySelectorAll('.g-per'),function(b){ b.addEventListener('click',function(){ _gGrafico(Number(b.getAttribute('data-m'))); }); });
+    _gGrafico(window._gMeses||6);
     _gCalc();
+  }
+  // Gráfico de ondas: evolución mensual de altas / bajas / netas / desconexiones (Chart.js, tooltip al pasar el mouse)
+  function _gGrafico(meses){
+    window._gMeses=meses;
+    Array.prototype.forEach.call(document.querySelectorAll('.g-per'),function(b){ b.className='btn '+(String(b.getAttribute('data-m'))===String(meses)?'btn-pri':'btn-2')+' g-per'; });
+    ensureChartJs(function(){
+      var hoy=new Date(), desde=new Date(hoy.getFullYear(),hoy.getMonth()-(meses-1),1);
+      var desdeISO=desde.getFullYear()+'-'+('0'+(desde.getMonth()+1)).slice(-2)+'-01';
+      var keys=[],labels=[]; for(var i=0;i<meses;i++){ var d=new Date(desde.getFullYear(),desde.getMonth()+i,1); var k=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2); keys.push(k); labels.push(_repMesLbl(k)); }
+      var excl=window._gState&&window._gState.excl, altaDesde=(excl&&desdeISO<_gMIG)?_gMIG:desdeISO;
+      Promise.all([
+        sbGetAll('clientes?fecha_alta=gte.'+altaDesde+'&estado=neq.eliminado&select=fecha_alta'),
+        sbGetAll('clientes?fecha_baja=gte.'+desdeISO+'&select=fecha_baja'),
+        sbGetAll('desconexiones?created_at=gte.'+desdeISO+'T00:00:00&select=created_at')
+      ]).then(function(r){
+        var gm=function(arr,campo){ var m={}; (arr||[]).forEach(function(x){ var k=String(x[campo]||'').slice(0,7); if(k)m[k]=(m[k]||0)+1; }); return keys.map(function(k){return m[k]||0;}); };
+        var altas=gm(r[0],'fecha_alta'), bajas=gm(r[1],'fecha_baja'), desc=gm(r[2],'created_at');
+        var netas=altas.map(function(a,i){return a-bajas[i];});
+        if(window._gChart){ try{window._gChart.destroy();}catch(e){} }
+        var cv=document.getElementById('g-canvas'); if(!cv||!window.Chart) return;
+        window._gChart=new Chart(cv.getContext('2d'),{type:'line',data:{labels:labels,datasets:[
+          {label:'Altas',data:altas,borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.12)',tension:.35,fill:true,borderWidth:2,pointRadius:3,pointHoverRadius:5},
+          {label:'Bajas (clientes)',data:bajas,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.07)',tension:.35,fill:true,borderWidth:2,pointRadius:3,pointHoverRadius:5},
+          {label:'Altas netas',data:netas,borderColor:'#2563eb',borderDash:[6,4],tension:.35,fill:false,borderWidth:2,pointRadius:2,pointHoverRadius:5},
+          {label:'Desconexiones (cortes)',data:desc,borderColor:'#f59e0b',tension:.35,fill:false,borderWidth:2,pointRadius:2,pointHoverRadius:5,hidden:true}
+        ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},tooltip:{mode:'index',intersect:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+      }).catch(function(){});
+    });
   }
   function _gCalc(){
     var g=window._gState, cont=document.getElementById('g-kpis'); if(!cont) return;
