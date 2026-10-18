@@ -247,7 +247,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.58';
+  var VER='v3.59';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2936,50 +2936,88 @@
   function vCobranza(){
     if(!_verFinanzas()){ view.innerHTML='<h1>💰 Cobranza</h1><div class="center">🔒 Acceso restringido.</div>'; return; }
     loading();
+    window._cbFilt=null;
     Promise.all([
-      sbGetAll('clientes?estado=neq.eliminado&deuda=gt.0&select=numero_cliente,nombre,apellido,barrio,estado,deuda,telefono,empresa&order=deuda.desc'),
+      sbGetAll('clientes?estado=neq.eliminado&deuda=gt.0&select=id,numero_cliente,nombre,apellido,barrio,domicilio_full,estado,deuda,telefono,empresa&order=deuda.desc'),
       sbGetAll('conexiones?tipo=eq.internet&estado=eq.activo&gratis=is.false&select=precio,tecnologia,clientes(empresa)')
     ]).then(function(r){
       var deud=Array.isArray(r[0])?r[0]:[], conx=Array.isArray(r[1])?r[1]:[];
+      deud.forEach(function(c){ c._bar=_cbBarrio(c); });
+      window._cbDeud=deud;
       var sum=function(arr){return arr.reduce(function(a,c){return a+Number(c.deuda||0);},0);};
       var deudaTot=sum(deud);
       var dAct=deud.filter(function(c){return c.estado==='activo';}), dBloq=deud.filter(function(c){return c.estado==='bloqueado';}), dBaja=deud.filter(function(c){return c.estado==='baja';});
       var fact=conx.reduce(function(a,c){return a+Number(c.precio||0);},0);
       var ftth=conx.filter(function(c){return c.tecnologia==='FTTH';}), wl=conx.filter(function(c){return c.tecnologia==='WIRELESS';});
       var arpu=conx.length?fact/conx.length:0;
-      var hero=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:170px;background:#fff;border:1px solid var(--bord);border-radius:14px;padding:15px 18px;box-shadow:var(--card-shadow)"><div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+ico+' '+lab+'</div><div style="font-size:27px;font-weight:800;color:'+col+';margin:3px 0;line-height:1.1">'+val+'</div><div style="font-size:12px;color:#94a3b8">'+sub+'</div></div>'; };
-      var h='<h1>💰 Cobranza y facturación</h1><p class="sub">🔒 Visible solo para Gastón, Javier y Fernando.</p>'
+      var hero=function(ico,lab,val,sub,col,act){ var cl=act?' cb-card':''; var cur=act?';cursor:pointer':''; var da=act?(' data-act="'+esc(act)+'"'):''; var ti=act?' title="Clic para ver el detalle"':'';
+        return '<div class="hero'+cl+'"'+da+ti+' style="flex:1;min-width:170px;background:#fff;border:1px solid var(--bord);border-radius:14px;padding:15px 18px;box-shadow:var(--card-shadow)'+cur+'"><div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+ico+' '+lab+(act?' <span style="color:#cbd5e1">›</span>':'')+'</div><div style="font-size:27px;font-weight:800;color:'+col+';margin:3px 0;line-height:1.1">'+val+'</div><div style="font-size:12px;color:#94a3b8">'+sub+'</div></div>'; };
+      var h='<h1>💰 Cobranza y facturación</h1><p class="sub">🔒 Visible solo para Gastón, Javier y Fernando. <span class="muted">Tocá cualquier tarjeta para ver el detalle abajo.</span></p>'
         +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
-          +hero('📊','Facturación mensual',_money(fact),'internet que se cobra (FTTH '+ftth.length+' · WL '+wl.length+')','#16a34a')
-          +hero('💵','Ingreso x conexión',_money(arpu),'promedio mensual','#2563eb')
-          +hero('💰','Deuda total',_money(deudaTot),deud.length.toLocaleString('es-AR')+' clientes con deuda','#dc2626')
+          +hero('📊','Facturación mensual',_money(fact),'internet que se cobra (FTTH '+ftth.length+' · WL '+wl.length+')','#16a34a','nav:cl|estado=activo')
+          +hero('💵','Ingreso x conexión',_money(arpu),'promedio mensual','#2563eb','nav:cl|estado=activo')
+          +hero('💰','Deuda total',_money(deudaTot),deud.length.toLocaleString('es-AR')+' clientes con deuda','#dc2626','filt:all')
         +'</div>'
         +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
-          +hero('🟢','Deuda de activos',_money(sum(dAct)),dAct.length+' · siguen conectados (cobrable)','#16a34a')
-          +hero('⛔','Deuda de bloqueados',_money(sum(dBloq)),dBloq.length+' · en riesgo','#d97706')
-          +hero('📉','Deuda de bajas',_money(sum(dBaja)),dBaja.length+' · difícil de recuperar','#64748b')
+          +hero('🟢','Deuda de activos',_money(sum(dAct)),dAct.length+' · siguen conectados (cobrable)','#16a34a','filt:estado:activo')
+          +hero('⛔','Deuda de bloqueados',_money(sum(dBloq)),dBloq.length+' · en riesgo','#d97706','filt:estado:bloqueado')
+          +hero('📉','Deuda de bajas',_money(sum(dBaja)),dBaja.length+' · difícil de recuperar','#64748b','filt:estado:baja')
         +'</div>';
-      // ── Por empresa que factura (FG Conexiones / NOR-TEL / NEXA SAS) ──
+      // ── Por empresa que factura (FG Conexiones / NOR-TEL / NEXA SAS) ── (filas clicables)
       var ekey=function(e){ return (e&&String(e).trim())||'(sin empresa)'; };
       var emp={}, get=function(e){ return emp[e]||(emp[e]={fact:0,conx:0,deuda:0,deud:0}); };
       conx.forEach(function(c){ var o=get(ekey(c.clientes&&c.clientes.empresa)); o.fact+=Number(c.precio||0); o.conx++; });
       deud.forEach(function(c){ var o=get(ekey(c.empresa)); o.deuda+=Number(c.deuda||0); o.deud++; });
       var empArr=Object.keys(emp).map(function(k){return [k,emp[k]];}).sort(function(a,b){return b[1].fact-a[1].fact;});
-      h+='<div class="card" style="margin-bottom:14px"><div class="label">🏢 Por empresa que factura</div>'
+      h+='<div class="card" style="margin-bottom:14px"><div class="label">🏢 Por empresa que factura <span class="muted" style="font-weight:400;font-size:12px">· tocá una fila para filtrar los deudores</span></div>'
         +'<div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'
           +'<th style="padding:5px">Empresa</th><th style="padding:5px;text-align:right">Conexiones</th><th style="padding:5px;text-align:right">Facturación/mes</th><th style="padding:5px;text-align:right">Deuda</th><th style="padding:5px;text-align:right">Deudores</th></tr></thead><tbody>'
-          +empArr.map(function(m){ return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px;font-weight:700">'+esc(m[0])+'</td><td style="padding:5px;text-align:right">'+m[1].conx.toLocaleString('es-AR')+'</td><td style="padding:5px;text-align:right;color:#16a34a;font-weight:700">'+_money(m[1].fact)+'</td><td style="padding:5px;text-align:right;color:#dc2626;font-weight:700">'+_money(m[1].deuda)+'</td><td style="padding:5px;text-align:right">'+m[1].deud.toLocaleString('es-AR')+'</td></tr>'; }).join('')
+          +empArr.map(function(m){ return '<tr class="cb-card" data-act="filt:emp:'+esc(m[0])+'" style="border-top:1px solid var(--bord);cursor:pointer"><td style="padding:5px;font-weight:700">'+esc(m[0])+'</td><td style="padding:5px;text-align:right">'+m[1].conx.toLocaleString('es-AR')+'</td><td style="padding:5px;text-align:right;color:#16a34a;font-weight:700">'+_money(m[1].fact)+'</td><td style="padding:5px;text-align:right;color:#dc2626;font-weight:700">'+_money(m[1].deuda)+'</td><td style="padding:5px;text-align:right">'+m[1].deud.toLocaleString('es-AR')+'</td></tr>'; }).join('')
         +'</tbody></table></div><div class="muted" style="font-size:11.5px;margin-top:6px">La empresa sale de ISPcube (entidad que factura). Si recién corrés el sync puede estar aproximada por barrio hasta la próxima corrida.</div></div>';
-      var porBarrio={}; deud.forEach(function(c){ var b=c.barrio||'(sin barrio)'; porBarrio[b]=(porBarrio[b]||0)+Number(c.deuda||0); });
-      var barArr=Object.keys(porBarrio).map(function(k){return [k,porBarrio[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+      var porBarrio={}; deud.forEach(function(c){ var b=c._bar||'(sin dato)'; porBarrio[b]=(porBarrio[b]||0)+Number(c.deuda||0); });
+      var barArr=Object.keys(porBarrio).map(function(k){return [k,porBarrio[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,12);
       var maxB=barArr.length?barArr[0][1]:1;
-      h+='<div class="card" style="margin-bottom:14px"><div class="label">💵 Deuda por barrio (top 10 — dónde está la plata)</div>'+barArr.map(function(m){return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px"><span style="width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:16px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxB*100)+'%;background:#dc2626;height:100%"></div></div><b style="width:100px;text-align:right">'+_money(m[1])+'</b></div>';}).join('')+'</div>';
+      h+='<div class="card" style="margin-bottom:14px"><div class="label">💵 Deuda por barrio/zona (top 12 — dónde está la plata) <span class="muted" style="font-weight:400;font-size:12px">· tocá una barra</span></div>'+barArr.map(function(m){return '<div class="cb-card" data-act="filt:bar:'+esc(m[0])+'" style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px;cursor:pointer;padding:2px 4px;border-radius:6px"><span style="width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:16px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxB*100)+'%;background:#dc2626;height:100%"></div></div><b style="width:100px;text-align:right">'+_money(m[1])+'</b></div>';}).join('')+'</div>';
       h+='<div id="cb-morosos" style="margin-bottom:14px"><div class="card"><div class="label">⚠️ Morosos recurrentes</div><div class="center"><div class="spin"></div></div></div></div>';
       h+='<div id="cb-tabla"></div>';
       view.innerHTML=h;
+      Array.prototype.forEach.call(view.querySelectorAll('.cb-card[data-act]'),function(el){ el.addEventListener('click',function(){ _cbCardClick(el.getAttribute('data-act')); }); });
       _cbTablaDeudores(deud);
       _cbMorosos();
     }).catch(function(){ view.innerHTML='<h1>💰 Cobranza</h1><div class="center" style="color:var(--rojo)">No se pudo cargar (¿corriste el SQL de conexiones?).</div>'; });
+  }
+  // Barrio/zona del cliente: usa barrio; si está vacío, lo deriva del domicilio (saca la altura final)
+  function _cbBarrio(c){
+    if(c.barrio && String(c.barrio).trim()) return String(c.barrio).trim();
+    var d=String(c.domicilio_full||'').trim();
+    if(!d) return '(sin dato)';
+    if(d.indexOf(' - ')>=0) return d.split(' - ')[0].trim();
+    return d.replace(/\s+\d+[A-Za-z]?\s*$/,'').trim() || d;
+  }
+  function _cbCardClick(act){
+    if(act.indexOf('filt:')===0) _cbApplyFilt(act.slice(5));
+    else if(act.indexOf('nav:')===0) goKpi(act.slice(4));
+  }
+  function _cbApplyFilt(key){
+    var f=null;
+    if(key==='estado:activo') f={key:key,label:'Deuda de activos',pred:function(c){return c.estado==='activo';}};
+    else if(key==='estado:bloqueado') f={key:key,label:'Deuda de bloqueados',pred:function(c){return c.estado==='bloqueado';}};
+    else if(key==='estado:baja') f={key:key,label:'Deuda de bajas',pred:function(c){return c.estado==='baja';}};
+    else if(key.indexOf('emp:')===0){ var e=key.slice(4); f={key:key,label:'Empresa: '+e,pred:function(c){return ((c.empresa&&String(c.empresa).trim())||'(sin empresa)')===e;}}; }
+    else if(key.indexOf('bar:')===0){ var b=key.slice(4); f={key:key,label:'Barrio/zona: '+b,pred:function(c){return (c._bar||'(sin dato)')===b;}}; }
+    // key==='all' → f=null (todos)
+    window._cbFilt=f;
+    _cbTablaDeudores(window._cbDeud||[]);
+    _cbMarkCards(key==='all'?'':key);
+    var t=document.getElementById('cb-tabla'); if(t&&t.scrollIntoView) try{ t.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){}
+  }
+  function _cbMarkCards(key){
+    Array.prototype.forEach.call(document.querySelectorAll('.cb-card[data-act]'),function(el){
+      var on=(el.getAttribute('data-act')==='filt:'+key);
+      el.style.outline=on?'2px solid #2563eb':''; el.style.outlineOffset=on?'-1px':'';
+      if(el.classList.contains('hero')) el.style.boxShadow=on?'0 0 0 2px #2563eb inset, var(--card-shadow)':'var(--card-shadow)';
+      else el.style.background=on?'#eff6ff':'';
+    });
   }
   // Clientes cortados 2+ veces por mora (entraron a la cola de desconexión más de una vez) = morosos crónicos
   function _cbMorosos(){
@@ -3013,12 +3051,13 @@
       var base=incAll?rows:rows.filter(function(r){ return r.c.estado==='activo'||r.c.estado==='bloqueado'; });
       var ds=base.slice().sort(function(a,b){ var va=C[si][2](a),vb=C[si][2](b); return (va<vb?-1:va>vb?1:0)*sd; });
       var ths=C.map(function(c,i){ return '<th data-i="'+i+'" style="padding:5px 4px;cursor:pointer;white-space:nowrap;user-select:none'+(i>=4?';text-align:right':'')+'">'+esc(c[0])+(si===i?(sd>0?' ▲':' ▼'):' ⇅')+'</th>'; }).join('');
-      var trs=ds.map(function(r){ var bl=r.c.estado==='bloqueado'; return '<tr style="border-top:1px solid var(--bord)'+(bl?';background:#fffbeb':'')+'">'+C.map(function(col,i){ var v=esc(col[1](r)); if(i===4) v='<b style="color:#b45309">'+v+'</b>'; if(i===7) v='<b style="color:#991b1b">'+v+'</b>'; return '<td style="padding:5px'+(i>=4?';text-align:right':'')+'">'+v+'</td>'; }).join('')+'</tr>'; }).join('');
+      var trs=ds.map(function(r){ var bl=r.c.estado==='bloqueado'; return '<tr data-cliid="'+r.c.id+'" title="Abrir ficha del cliente" style="border-top:1px solid var(--bord);cursor:pointer'+(bl?';background:#fffbeb':'')+'">'+C.map(function(col,i){ var v=esc(col[1](r)); if(i===1) v='<span style="color:#2563eb">'+v+'</span>'; if(i===4) v='<b style="color:#b45309">'+v+'</b>'; if(i===7) v='<b style="color:#991b1b">'+v+'</b>'; return '<td style="padding:5px'+(i>=4?';text-align:right':'')+'">'+v+'</td>'; }).join('')+'</tr>'; }).join('');
       cont.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">⚠️ Morosos recurrentes · '+ds.length+' cliente(s) cortado(s) 2+ veces'+(incAll?'':' <span class="muted" style="font-weight:400">(activos/bloqueados)</span>')+'</div><div style="display:flex;gap:10px;align-items:center"><label class="l" style="display:flex;align-items:center;gap:5px;margin:0;font-size:12px"><input type="checkbox" id="cb-morall"'+(incAll?' checked':'')+' style="width:auto"> incluir bajas/eliminados</label><button class="btn btn-2 btn-sm" id="cb-morcsv">⬇️ Excel</button></div></div>'
         +'<div style="overflow:auto;max-height:480px;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b;position:sticky;top:0;background:#fff">'+ths+'</tr></thead><tbody>'+trs+'</tbody></table></div>'
         +'<div class="muted" style="font-size:11.5px;margin-top:6px">"Veces cortado" = cuántas veces el cliente entró a la cola de corte por mora. El que paga y vuelve a caer suma otra. Por defecto se ven solo los que <b>siguen siendo clientes</b> (activos/bloqueados); los eliminados/bajas (ej. traspaso 508) quedan fuera salvo que tildes la casilla.</div></div>';
       var chk=document.getElementById('cb-morall'); if(chk) chk.addEventListener('change',function(){ window._cbMorAll=this.checked; pintar(); });
       Array.prototype.forEach.call(cont.querySelectorAll('th[data-i]'),function(th){ th.addEventListener('click',function(){ var i=Number(th.getAttribute('data-i')); if(si===i) sd=-sd; else { si=i; sd=(i>=4?-1:1); } pintar(); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-cliid]'),function(tr){ tr.addEventListener('click',function(){ var id=tr.getAttribute('data-cliid'); if(id&&id!=='null'&&typeof fichaCliente==='function') fichaCliente(id); }); });
       document.getElementById('cb-morcsv').addEventListener('click',function(){
         var lines=[C.map(function(c){return c[0];}).join(';')].concat(ds.map(function(r){ return C.map(function(col){ return '"'+String(col[1](r)).replace(/"/g,'""')+'"'; }).join(';'); }));
         var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='morosos_recurrentes.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+rows.length+')');
@@ -3031,22 +3070,30 @@
     var COLS=[
       ['N°',function(c){return c.numero_cliente||'';},function(c){return Number(c.numero_cliente)||0;}],
       ['Cliente',function(c){return ((c.nombre||'')+' '+(c.apellido||'')).trim();},function(c){return ((c.apellido||'')+' '+(c.nombre||'')).toLowerCase();}],
-      ['Barrio',function(c){return c.barrio||'—';},function(c){return (c.barrio||'').toLowerCase();}],
+      ['Barrio/zona',function(c){return c._bar||'—';},function(c){return (c._bar||'').toLowerCase();}],
+      ['Empresa',function(c){return c.empresa||'—';},function(c){return (c.empresa||'').toLowerCase();}],
       ['Estado',function(c){return c.estado||'';},function(c){return c.estado||'';}],
       ['Teléfono',function(c){return c.telefono||'—';},function(c){return c.telefono||'';}],
       ['Deuda',function(c){return _money(c.deuda);},function(c){return Number(c.deuda)||0;}]
     ];
-    var sortIdx=5, sortDir=-1, TOPE=500;
+    var DI=COLS.length-1; // índice col Deuda
+    var sortIdx=DI, sortDir=-1, TOPE=500;
     function pintar(){
-      var ds=deud.slice().sort(function(a,b){ var va=COLS[sortIdx][2](a),vb=COLS[sortIdx][2](b); return (va<vb?-1:va>vb?1:0)*sortDir; });
-      var ths=COLS.map(function(c,i){ return '<th data-i="'+i+'" style="padding:5px 4px;cursor:pointer;white-space:nowrap;user-select:none">'+esc(c[0])+(sortIdx===i?(sortDir>0?' ▲':' ▼'):' ⇅')+'</th>'; }).join('');
-      var rows=ds.slice(0,TOPE).map(function(c){ return '<tr style="border-top:1px solid var(--bord)">'+COLS.map(function(col,i){ return '<td style="padding:5px'+(i===5?';text-align:right;font-weight:700;color:#991b1b':'')+'">'+esc(col[1](c))+'</td>'; }).join('')+'</tr>'; }).join('');
-      cont.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">Deudores · '+deud.length.toLocaleString('es-AR')+' cliente(s)'+(deud.length>TOPE?(' <span class="muted" style="font-weight:400">· se ven los primeros '+TOPE+'</span>'):'')+'</div><button class="btn btn-2 btn-sm" id="cb-csv">⬇️ Excel</button></div>'
+      var f=window._cbFilt;
+      var fdeud=(f&&f.pred)?deud.filter(f.pred):deud;
+      var ds=fdeud.slice().sort(function(a,b){ var va=COLS[sortIdx][2](a),vb=COLS[sortIdx][2](b); return (va<vb?-1:va>vb?1:0)*sortDir; });
+      var ths=COLS.map(function(c,i){ return '<th data-i="'+i+'" style="padding:5px 4px;cursor:pointer;white-space:nowrap;user-select:none'+(i===DI?';text-align:right':'')+'">'+esc(c[0])+(sortIdx===i?(sortDir>0?' ▲':' ▼'):' ⇅')+'</th>'; }).join('');
+      var rows=ds.slice(0,TOPE).map(function(c){ return '<tr data-cliid="'+c.id+'" title="Abrir ficha del cliente" style="border-top:1px solid var(--bord);cursor:pointer">'+COLS.map(function(col,i){ var v=esc(col[1](c)); if(i===1) v='<span style="color:#2563eb">'+v+'</span>'; return '<td style="padding:5px'+(i===DI?';text-align:right;font-weight:700;color:#991b1b':'')+'">'+v+'</td>'; }).join('')+'</tr>'; }).join('');
+      var totF=ds.reduce(function(a,c){return a+Number(c.deuda||0);},0);
+      var fban=(f?'<span style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700">'+esc(f.label)+' <a href="#" id="cb-clr" style="color:#1d4ed8;text-decoration:none">✕</a></span>':'');
+      cont.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0;display:flex;align-items:center;gap:8px">Deudores · '+ds.length.toLocaleString('es-AR')+' cliente(s) · '+_money(totF)+(ds.length>TOPE?(' <span class="muted" style="font-weight:400">· se ven los primeros '+TOPE+'</span>'):'')+' '+fban+'</div><button class="btn btn-2 btn-sm" id="cb-csv">⬇️ Excel</button></div>'
         +'<div style="overflow:auto;max-height:520px;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b;position:sticky;top:0;background:#fff">'+ths+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
-      Array.prototype.forEach.call(cont.querySelectorAll('th[data-i]'),function(th){ th.addEventListener('click',function(){ var i=Number(th.getAttribute('data-i')); if(sortIdx===i) sortDir=-sortDir; else { sortIdx=i; sortDir=(i===5?-1:1); } pintar(); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('th[data-i]'),function(th){ th.addEventListener('click',function(){ var i=Number(th.getAttribute('data-i')); if(sortIdx===i) sortDir=-sortDir; else { sortIdx=i; sortDir=(i===DI?-1:1); } pintar(); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('tr[data-cliid]'),function(tr){ tr.addEventListener('click',function(){ var id=tr.getAttribute('data-cliid'); if(id&&id!=='null'&&typeof fichaCliente==='function') fichaCliente(id); }); });
+      var clr=document.getElementById('cb-clr'); if(clr) clr.addEventListener('click',function(e){ e.preventDefault(); window._cbFilt=null; _cbMarkCards(''); pintar(); });
       document.getElementById('cb-csv').addEventListener('click',function(){
         var lines=[COLS.map(function(c){return c[0];}).join(';')].concat(ds.map(function(c){ return COLS.map(function(col){ return '"'+String(col[1](c)).replace(/"/g,'""')+'"'; }).join(';'); }));
-        var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='deudores.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+deud.length+')');
+        var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='deudores.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+ds.length+')');
       });
     }
     pintar();
