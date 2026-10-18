@@ -248,7 +248,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.65';
+  var VER='v3.66';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1414,7 +1414,7 @@
     var cont=document.getElementById('f-hist'); if(!cont) return;
     cont.innerHTML='<div class="muted" style="font-size:13px">Cargando historial…</div>';
     Promise.all([
-      sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,created_at,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100'),
+      sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,inicio_tec_at,created_at,observaciones_tec,motivo_cancelacion,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100'),
       sbGet('interacciones_cliente?cliente_id=eq.'+cliId+'&select=*&order=created_at.desc&limit=100').catch(function(){return [];})
     ]).then(function(r){
       var d=Array.isArray(r[0])?r[0]:[], inter=Array.isArray(r[1])?r[1]:[];
@@ -1423,6 +1423,14 @@
       if(inter.length){ h+='<div style="margin-top:6px">'+inter.map(function(it){ return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9"><div style="font-size:11px;color:#94a3b8;width:76px;flex-shrink:0">'+esc(fmtFecha(it.created_at))+'</div><div style="flex:1"><b style="font-size:13px">'+_interIcono(it.tipo)+' '+esc(it.titulo||it.tipo||'')+'</b><div style="font-size:13px;color:#475569">'+esc(it.detalle||'')+'</div></div></div>'; }).join('')+'</div>'; }
       else { h+='<div class="muted" style="font-size:13px;margin-top:4px">Sin gestiones registradas. Las notas de tickets, compromisos y soporte van a aparecer acá.</div>'; }
       h+='</div>';
+      // ── Observaciones de los técnicos (todas las visitas con nota, sin abrir cada OT) ──
+      var obs=d.filter(function(o){ return (o.observaciones_tec&&String(o.observaciones_tec).trim()); });
+      h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:#b45309">🗒️ Observaciones de los técnicos <span class="muted" style="font-weight:400;font-size:13px">('+obs.length+')</span></h3>';
+      if(!obs.length){ h+='<div class="muted" style="font-size:13px">Sin observaciones cargadas por los técnicos.</div></div>'; }
+      else { h+=obs.map(function(o){ var f=o.fin_tec_at||o.inicio_tec_at||o.fecha_agendada||o.created_at; var noReal=(o.estado==='CANCELADA'||o.estado==='NO_REALIZADA');
+        return '<div style="background:'+(noReal?'#fff7ed':'#f8fafc')+';border:1px solid '+(noReal?'#fed7aa':'var(--bord)')+';border-radius:8px;padding:8px 10px;margin-bottom:6px">'
+          +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:#64748b"><span><b style="color:#334155">'+esc(fmtFechaHora(f))+'</b> · '+esc(o.cuadrillas?o.cuadrillas.nombre:'sin cuadrilla')+'</span><span>OT N° '+esc(o.numero)+' · '+esc(o.tipo||'')+' · '+pill(o.estado)+'</span></div>'
+          +'<div style="font-size:13px;color:#1e293b;margin-top:4px">'+esc(o.observaciones_tec)+(noReal&&o.motivo_cancelacion?(' <span style="color:#c2410c">· '+esc(o.motivo_cancelacion)+'</span>'):'')+'</div></div>'; }).join('')+'</div>'; }
       // ── Historial de servicios (OTs) ──
       var hechos=d.filter(function(o){return o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO';}).length;
       h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:var(--azul)">🧰 Historial de servicios <span class="muted" style="font-weight:400;font-size:13px">('+d.length+' OT · '+hechos+' con cierre)</span></h3>';
