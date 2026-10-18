@@ -249,7 +249,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.68';
+  var VER='v3.69';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3520,7 +3520,8 @@
     var resArr=Object.keys(res).map(function(k){return [k,res[k]];}).sort(function(a,b){return b[1]-a[1];});
     var catNoClas=cat.length?'':' <span style="color:#dc2626">⚠️ Corré nexa_motivos_rechazo.sql para cargar el catálogo</span>';
     var h='<h1>📋 Estudio de rechazos</h1><p class="sub">Motivo real sacado de la observación del técnico. Elegí el motivo definitivo en cada uno (queda normalizado para el mapa).'+catNoClas+'</p>'
-      +'<div class="toolbar" style="gap:8px;align-items:center"><label class="l" style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px"><input type="checkbox" id="re-inst"'+(soloInst?' checked':'')+' style="width:auto"> solo instalaciones</label><button class="btn btn-2 btn-sm" id="re-mot">⚙️ Motivos</button><button class="btn btn-2 btn-sm" id="re-csv">⬇️ Excel</button><span class="muted" style="font-size:12px">'+rows.length+' rechazo(s)</span></div>';
+      +'<div class="toolbar" style="gap:8px;align-items:center"><label class="l" style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px"><input type="checkbox" id="re-inst"'+(soloInst?' checked':'')+' style="width:auto"> solo instalaciones</label><button class="btn btn-2 btn-sm" id="re-map-btn">🗺️ Mapa de expansión</button><button class="btn btn-2 btn-sm" id="re-mot">⚙️ Motivos</button><button class="btn btn-2 btn-sm" id="re-csv">⬇️ Excel</button><span class="muted" style="font-size:12px">'+rows.length+' rechazo(s)</span></div>'
+      +'<div id="re-map-wrap" data-on="0" style="display:none;margin:10px 0"></div>';
     // tarjeta resumen
     var maxR=resArr.length?resArr[0][1]:1;
     h+='<div class="card" style="margin:10px 0"><div class="label">Motivo real (clasificado + sugerido)</div>'+resArr.map(function(m){ var fc=(catByNom[m[0]]&&catByNom[m[0]].fuera_cobertura); return '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px"><span style="width:250px;flex-shrink:0">'+(fc?'🔌 ':'')+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:15px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxR*100)+'%;background:'+(fc?'#d97706':'#2563eb')+';height:100%"></div></div><b style="width:34px;text-align:right">'+m[1]+'</b></div>'; }).join('')+'<div class="muted" style="font-size:11.5px;margin-top:6px">🔌 = fuera de cobertura (sirve para el mapa de dónde cablear). "⟳" en la lista = sugerencia automática sin confirmar.</div></div>';
@@ -3536,6 +3537,7 @@
       +'</div>'; }).join('');
     view.innerHTML=h;
     document.getElementById('re-inst').addEventListener('change',function(){ window._reEstado.soloInst=this.checked; _reRender(); });
+    document.getElementById('re-map-btn').addEventListener('click',_reMapa);
     document.getElementById('re-mot').addEventListener('click',_reMotivos);
     document.getElementById('re-csv').addEventListener('click',function(){ _reCSV(rows,clasif); });
     Array.prototype.forEach.call(view.querySelectorAll('.re-cli'),function(el){ el.addEventListener('click',function(){ var id=el.getAttribute('data-cli'); if(id&&typeof fichaCliente==='function') fichaCliente(id); }); });
@@ -3546,6 +3548,31 @@
     var head=['N°OT','Cliente','N°Cliente','Barrio','Cuadrilla','Fecha','Tipo','Estado','Motivo real','Observación','GPS'];
     var lines=[head.join(';')].concat(rows.map(function(o){ var c=o.clientes||{}; var cl=clasif(o); var row=[o.numero,((c.nombre||'')+' '+(c.apellido||'')).trim(),c.numero_cliente||'',c.barrio||'',(o.cuadrillas?o.cuadrillas.nombre:''),fmtFecha(o.fin_tec_at),o.tipo||'',o.estado||'',(cl.nombre||'(sin clasificar)')+(cl.fijo?'':' (sugerido)'),(o.observaciones_tec||'').replace(/\s+/g,' '),((o.lat_fin&&o.lng_fin)?(o.lat_fin+','+o.lng_fin):'')]; return row.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(';'); }));
     var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='estudio_rechazos.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+rows.length+')');
+  }
+  // motivos que cuentan para el mapa de expansión (fuera de cobertura)
+  var _RE_FC=['Fuera de nodo (no hay red)','Sin puerto disponible en caja','Ubicación difícil / no se puede tender fibra'];
+  function _reFC(o){ var cat=window._reCat||[], catById={}; cat.forEach(function(m){catById[m.id]=m;});
+    if(o.motivo_id&&catById[o.motivo_id]) return catById[o.motivo_id].fuera_cobertura?catById[o.motivo_id].nombre:'';
+    var s=_rkSugerir(o.observaciones_tec); return (_RE_FC.indexOf(s)>=0)?s:''; }
+  function _reMapa(){
+    var wrap=document.getElementById('re-map-wrap'); if(!wrap) return;
+    if(wrap.getAttribute('data-on')==='1'){ wrap.style.display='none'; wrap.setAttribute('data-on','0'); wrap.innerHTML=''; return; }
+    wrap.style.display='block'; wrap.setAttribute('data-on','1');
+    var pts=(window._reAll||[]).filter(function(o){ return o.lat_fin&&o.lng_fin&&_reFC(o); });
+    wrap.innerHTML='<div class="card" style="padding:10px"><div class="label">🗺️ Dónde extender la red · '+pts.length+' punto(s) sin servicio</div><div id="re-map" style="height:460px;border-radius:10px;overflow:hidden;background:#eef2f7"></div><div class="muted" style="font-size:11.5px;margin-top:6px">🔴 Fuera de nodo · 🟠 Sin puerto · 🟣 Ubicación difícil · ⚪ NAPs (cobertura actual). Los clusters lejos de los NAPs = candidatos a cablear.</div></div>';
+    ensureLeaflet(function(){
+      if(!window.L){ wrap.innerHTML='<div class="card muted">No se pudo cargar el mapa.</div>'; return; }
+      var map=L.map('re-map').setView([-27.4,-55.94],12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+      sbGet('geo_naps?select=lat,lng&activo=eq.true&limit=5000').then(function(naps){ (Array.isArray(naps)?naps:[]).forEach(function(n){ if(n.lat&&n.lng) L.circleMarker([n.lat,n.lng],{radius:2,weight:0,fillColor:'#94a3b8',fillOpacity:.55}).addTo(map); }); }).catch(function(){});
+      var COL={'Fuera de nodo (no hay red)':'#dc2626','Sin puerto disponible en caja':'#d97706','Ubicación difícil / no se puede tender fibra':'#7c3aed'};
+      var bounds=[];
+      pts.forEach(function(o){ var mot=_reFC(o), c=o.clientes||{}; bounds.push([o.lat_fin,o.lng_fin]);
+        L.circleMarker([o.lat_fin,o.lng_fin],{radius:7,color:'#fff',weight:2,fillColor:(COL[mot]||'#2563eb'),fillOpacity:1})
+         .bindPopup('<b>'+esc(((c.nombre||'')+' '+(c.apellido||'')).trim()||('Cliente '+(c.numero_cliente||'')))+'</b><br>'+esc(c.barrio||'')+' · OT '+esc(o.numero)+'<br><b style="color:'+(COL[mot]||'#333')+'">'+esc(mot)+'</b><br><span style="font-size:11px;color:#475569">'+esc((o.observaciones_tec||'').slice(0,140))+'</span>').addTo(map); });
+      if(bounds.length){ try{ map.fitBounds(bounds,{padding:[30,30],maxZoom:15}); }catch(e){} }
+      setTimeout(function(){ try{ map.invalidateSize(); }catch(e){} },250);
+    });
   }
   function _reMotivos(){
     sbGet('motivos_ot?select=id,nombre,activo,fuera_cobertura,orden&categoria=eq.rechazo&order=orden').then(function(m){ m=Array.isArray(m)?m:[];
