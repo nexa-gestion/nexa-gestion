@@ -232,6 +232,7 @@
       <div class="sec">Informes</div>
       <a data-v="informes">📈 Informes</a>
       <a data-v="gerencial" id="nav-gerencial" style="display:none">📊 Gerencial</a>
+      <a data-v="ranking" id="nav-ranking" style="display:none">🏆 Ranking cuadrillas</a>
       <a data-v="cobranza" id="nav-cobranza" style="display:none">💰 Cobranza</a>
     </div>
     <div class="user" id="side-user"></div>
@@ -247,7 +248,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.64';
+  var VER='v3.65';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -445,7 +446,7 @@
     document.getElementById('side-user').innerHTML = '<div style="font-size:14px;font-weight:700;color:#0f172a">'+esc(USER.nombre)+'</div><div style="text-transform:capitalize">'+esc(USER.rol)+' · '+VER+'</div><button class="u-logout" id="logout">Cerrar sesión</button>';
     var _lo=document.getElementById('logout'); if(_lo) _lo.addEventListener('click',function(e){ e.preventDefault(); try{ localStorage.removeItem('nexa_sesion'); }catch(_){} location.reload(); });
     if(USER.rol==='superadmin'){ var nu=document.getElementById('nav-usuarios'); if(nu) nu.style.display=''; }
-    if(USER.rol==='superadmin'||USER.rol==='gerencial'){ var na=document.getElementById('nav-actividad'); if(na) na.style.display=''; var nc=document.getElementById('nav-comisiones'); if(nc) nc.style.display=''; var ng=document.getElementById('nav-gerencial'); if(ng) ng.style.display=''; }
+    if(USER.rol==='superadmin'||USER.rol==='gerencial'){ var na=document.getElementById('nav-actividad'); if(na) na.style.display=''; var nc=document.getElementById('nav-comisiones'); if(nc) nc.style.display=''; var ng=document.getElementById('nav-gerencial'); if(ng) ng.style.display=''; var nrk=document.getElementById('nav-ranking'); if(nrk) nrk.style.display=''; }
     if(_verFinanzas()){ var nf=document.getElementById('nav-cobranza'); if(nf) nf.style.display=''; }
     // precargar referencias
     Promise.all([
@@ -467,7 +468,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -3330,6 +3331,103 @@
       _csvDownload(tipo+'_'+desde.substring(0,10)+'_a_'+hasta, rows);
       toast('CSV exportado ('+d.length+' filas)');
     }).catch(function(){ toast('No se pudo exportar.'); });
+  }
+
+  // ══════════ 🏆 RANKING DE CUADRILLAS ══════════ (producción por cuadrilla, gerencia/superadmin)
+  function vRanking(){
+    if(!(USER&&(USER.rol==='superadmin'||USER.rol==='gerencial'))){ view.innerHTML='<h1>🏆 Ranking</h1><div class="center">Solo disponible para gerencia y superadmin.</div>'; return; }
+    if(!window._rk) window._rk={desde:_mesInicioISO(),hasta:_hoyISO(),per:'mes'};
+    var rk=window._rk;
+    var pb=function(p,l){ return '<button class="btn '+(rk.per===p?'btn-pri':'btn-2')+' rk-per" data-p="'+p+'">'+l+'</button>'; };
+    view.innerHTML='<h1>🏆 Ranking de cuadrillas</h1><p class="sub">Producción por cuadrilla en el período (por fecha de cierre del técnico). Solo gerencia y superadmin.</p>'
+      +'<div class="toolbar" style="align-items:center;gap:6px">'
+      +'<span class="muted" style="font-size:12.5px;font-weight:700">Período:</span>'
+      +pb('mes','Este mes')+pb('3','3 meses')+pb('6','6 meses')+pb('12','12 meses')
+      +'<span style="width:1px;height:24px;background:var(--bord);margin:0 6px"></span>'
+      +'<input type="date" id="rk-d" value="'+esc(rk.desde)+'" style="width:auto"><input type="date" id="rk-h" value="'+esc(rk.hasta)+'" style="width:auto"><button class="btn btn-2" id="rk-go">Ver</button>'
+      +'</div>'
+      +'<div class="card" style="height:300px;margin:10px 0;padding:10px"><canvas id="rk-canvas"></canvas></div>'
+      +'<div id="rk-tabla"><div class="center"><div class="spin"></div></div></div>';
+    Array.prototype.forEach.call(view.querySelectorAll('.rk-per'),function(b){ b.addEventListener('click',function(){ _rkPer(b.getAttribute('data-p')); vRanking(); }); });
+    document.getElementById('rk-go').addEventListener('click',function(){ var s=window._rk; s.desde=document.getElementById('rk-d').value; s.hasta=document.getElementById('rk-h').value; s.per='custom'; vRanking(); });
+    _rkCargar();
+  }
+  function _rkPer(p){ var rk=window._rk, hoy=new Date(); rk.per=p; rk.hasta=_hoyISO();
+    if(p==='mes') rk.desde=_mesInicioISO();
+    else { var n=Number(p)||6; var d=new Date(hoy.getFullYear(),hoy.getMonth()-(n-1),1); rk.desde=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-01'; }
+  }
+  function _rkCargar(){
+    var rk=window._rk, hh=rk.hasta+'T23:59:59';
+    Promise.all([
+      sbGetAll('ordenes_trabajo?fin_tec_at=gte.'+rk.desde+'&fin_tec_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id,tipo,estado,inicio_tec_at,fin_tec_at,validado_admin_at'),
+      sbGetAll('desconexiones?finalizado_at=gte.'+rk.desde+'&finalizado_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id,finalizado_at').catch(function(){return [];})
+    ]).then(function(r){
+      var ots=Array.isArray(r[0])?r[0]:[], desc=Array.isArray(r[1])?r[1]:[];
+      var ags={}, ag=function(cid){ return ags[cid]||(ags[cid]={cerr:0,exito:0,noreal:0,valid:0,tmin:0,tcount:0,inst:0,rep:0,otros:0,cortes:0}); };
+      ots.forEach(function(o){ var a=ag(o.cuadrilla_id); a.cerr++;
+        // CANCELADA/NO_REALIZADA que el técnico cerró = visita que no terminó en trabajo hecho (no exitosa)
+        if(o.estado==='CANCELADA'||o.estado==='NO_REALIZADA'){ a.noreal++; return; }
+        a.exito++;
+        if(o.validado_admin_at) a.valid++;
+        var t=o.tipo||''; if(t==='INSTALACION')a.inst++; else if(t==='REPARACION')a.rep++; else a.otros++;
+        if(o.inicio_tec_at&&o.fin_tec_at){ var dm=(new Date(o.fin_tec_at)-new Date(o.inicio_tec_at))/60000; if(dm>0&&dm<1440){ a.tmin+=dm; a.tcount++; } }
+      });
+      desc.forEach(function(x){ ag(x.cuadrilla_id).cortes++; });
+      var nombres={}; (REF.cuadrillas||[]).forEach(function(c){ nombres[c.id]=c.nombre; });
+      var rows=Object.keys(ags).map(function(cid){ var a=ags[cid]; return {
+        nom:(nombres[cid]||('Cuadrilla #'+cid)),
+        trabajos:a.exito+a.cortes, exito:a.exito, noreal:a.noreal, cortes:a.cortes,
+        inst:a.inst, rep:a.rep, otros:a.otros,
+        efect:a.cerr?Math.round(a.exito/a.cerr*100):0,
+        validpct:a.exito?Math.round(a.valid/a.exito*100):0,
+        tprom:a.tcount?Math.round(a.tmin/a.tcount):null
+      };});
+      _rkRender(rows);
+    }).catch(function(){ var t=document.getElementById('rk-tabla'); if(t) t.innerHTML='<div class="center" style="color:var(--rojo)">No se pudo cargar el ranking.</div>'; });
+  }
+  function _rkRender(rows){
+    // gráfico de barras: trabajos por cuadrilla
+    ensureChartJs(function(){
+      if(window._rkChart){ try{window._rkChart.destroy();}catch(e){} }
+      var cv=document.getElementById('rk-canvas'); if(!cv||!window.Chart) return;
+      var ord=rows.slice().sort(function(a,b){return b.trabajos-a.trabajos;});
+      window._rkChart=new Chart(cv.getContext('2d'),{type:'bar',data:{labels:ord.map(function(r){return r.nom;}),datasets:[
+        {label:'Instalaciones',data:ord.map(function(r){return r.inst;}),backgroundColor:'#2563eb',stack:'t'},
+        {label:'Reparaciones',data:ord.map(function(r){return r.rep;}),backgroundColor:'#0d9488',stack:'t'},
+        {label:'Cortes',data:ord.map(function(r){return r.cortes;}),backgroundColor:'#d97706',stack:'t'},
+        {label:'Otros',data:ord.map(function(r){return r.otros;}),backgroundColor:'#94a3b8',stack:'t'}
+      ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},title:{display:true,text:'Trabajos por cuadrilla en el período'}},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{precision:0}}}}});
+    });
+    var cont=document.getElementById('rk-tabla'); if(!cont) return;
+    var C=[
+      ['Cuadrilla',function(r){return r.nom;},function(r){return (r.nom||'').toLowerCase();}],
+      ['Trabajos',function(r){return r.trabajos;},function(r){return r.trabajos;}],
+      ['Instal.',function(r){return r.inst;},function(r){return r.inst;}],
+      ['Repar.',function(r){return r.rep;},function(r){return r.rep;}],
+      ['Otros',function(r){return r.otros;},function(r){return r.otros;}],
+      ['Cortes',function(r){return r.cortes;},function(r){return r.cortes;}],
+      ['No realiz.',function(r){return r.noreal;},function(r){return r.noreal;}],
+      ['% efect.',function(r){return r.efect+'%';},function(r){return r.efect;}],
+      ['T. prom.',function(r){return r.tprom==null?'—':_minTxt(r.tprom);},function(r){return r.tprom==null?-1:r.tprom;}],
+      ['% validado',function(r){return r.validpct+'%';},function(r){return r.validpct;}]
+    ];
+    var si=1, sd=-1;
+    function pintar(){
+      var ds=rows.slice().sort(function(a,b){ var va=C[si][2](a),vb=C[si][2](b); return (va<vb?-1:va>vb?1:0)*sd; });
+      var medal=['🥇','🥈','🥉'];
+      var ths='<th style="padding:6px 4px;text-align:left">#</th>'+C.map(function(c,i){ return '<th data-i="'+i+'" style="padding:6px 4px;cursor:pointer;white-space:nowrap;user-select:none'+(i>=1?';text-align:right':'')+'">'+esc(c[0])+(si===i?(sd>0?' ▲':' ▼'):' ⇅')+'</th>'; }).join('');
+      var trs=ds.map(function(r,idx){ var pos=(si===1&&sd<0)?(medal[idx]||(idx+1)):(idx+1); return '<tr style="border-top:1px solid var(--bord)"><td style="padding:6px 4px;font-weight:700">'+pos+'</td>'+C.map(function(col,i){ var v=esc(col[1](r)); if(i===1) v='<b>'+v+'</b>'; return '<td style="padding:6px 4px'+(i>=1?';text-align:right':'')+'">'+v+'</td>'; }).join('')+'</tr>'; }).join('');
+      cont.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">🏆 Ranking · '+rows.length+' cuadrilla(s)</div><button class="btn btn-2 btn-sm" id="rk-csv">⬇️ Excel</button></div>'
+        +'<div style="overflow:auto;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'+ths+'</tr></thead><tbody>'+trs+'</tbody></table></div>'
+        +'<div class="muted" style="font-size:11.5px;margin-top:6px"><b>Trabajos</b> = OTs cerradas con éxito + cortes. <b>% efect.</b> = exitosas / cerradas (incluye las No realizadas). <b>T. prom.</b> = duración promedio de la visita (inicio→fin). <b>% validado</b> = de las exitosas, cuántas validó oficina.</div></div>';
+      Array.prototype.forEach.call(cont.querySelectorAll('th[data-i]'),function(th){ th.addEventListener('click',function(){ var i=Number(th.getAttribute('data-i')); if(si===i) sd=-sd; else { si=i; sd=(i>=1?-1:1); } pintar(); }); });
+      document.getElementById('rk-csv').addEventListener('click',function(){
+        var lines=[['#'].concat(C.map(function(c){return c[0];})).join(';')].concat(ds.map(function(r,idx){ return [idx+1].concat(C.map(function(col){ return '"'+String(col[1](r)).replace(/"/g,'""')+'"'; })).join(';'); }));
+        var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='ranking_cuadrillas.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado');
+      });
+    }
+    if(!rows.length){ cont.innerHTML='<div class="card center muted">Sin trabajos cerrados en el período.</div>'; return; }
+    pintar();
   }
   function vInformes(){
     if(!infState.desde) infState.desde=_mesInicioISO();
