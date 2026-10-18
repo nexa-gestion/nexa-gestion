@@ -247,7 +247,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.59';
+  var VER='v3.60';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -2938,53 +2938,68 @@
     loading();
     window._cbFilt=null;
     Promise.all([
-      sbGetAll('clientes?estado=neq.eliminado&deuda=gt.0&select=id,numero_cliente,nombre,apellido,barrio,domicilio_full,estado,deuda,telefono,empresa&order=deuda.desc'),
+      sbGetAll('clientes?estado=neq.eliminado&deuda=gt.0&select=id,numero_cliente,nombre,apellido,barrio,domicilio_full,estado,deuda,telefono,empresa,bloqueado_desde&order=deuda.desc'),
       sbGetAll('conexiones?tipo=eq.internet&estado=eq.activo&gratis=is.false&select=precio,tecnologia,clientes(empresa)')
     ]).then(function(r){
-      var deud=Array.isArray(r[0])?r[0]:[], conx=Array.isArray(r[1])?r[1]:[];
-      deud.forEach(function(c){ c._bar=_cbBarrio(c); });
-      window._cbDeud=deud;
-      var sum=function(arr){return arr.reduce(function(a,c){return a+Number(c.deuda||0);},0);};
-      var deudaTot=sum(deud);
-      var dAct=deud.filter(function(c){return c.estado==='activo';}), dBloq=deud.filter(function(c){return c.estado==='bloqueado';}), dBaja=deud.filter(function(c){return c.estado==='baja';});
-      var fact=conx.reduce(function(a,c){return a+Number(c.precio||0);},0);
-      var ftth=conx.filter(function(c){return c.tecnologia==='FTTH';}), wl=conx.filter(function(c){return c.tecnologia==='WIRELESS';});
-      var arpu=conx.length?fact/conx.length:0;
-      var hero=function(ico,lab,val,sub,col,act){ var cl=act?' cb-card':''; var cur=act?';cursor:pointer':''; var da=act?(' data-act="'+esc(act)+'"'):''; var ti=act?' title="Clic para ver el detalle"':'';
-        return '<div class="hero'+cl+'"'+da+ti+' style="flex:1;min-width:170px;background:#fff;border:1px solid var(--bord);border-radius:14px;padding:15px 18px;box-shadow:var(--card-shadow)'+cur+'"><div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+ico+' '+lab+(act?' <span style="color:#cbd5e1">›</span>':'')+'</div><div style="font-size:27px;font-weight:800;color:'+col+';margin:3px 0;line-height:1.1">'+val+'</div><div style="font-size:12px;color:#94a3b8">'+sub+'</div></div>'; };
-      var h='<h1>💰 Cobranza y facturación</h1><p class="sub">🔒 Visible solo para Gastón, Javier y Fernando. <span class="muted">Tocá cualquier tarjeta para ver el detalle abajo.</span></p>'
-        +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
-          +hero('📊','Facturación mensual',_money(fact),'internet que se cobra (FTTH '+ftth.length+' · WL '+wl.length+')','#16a34a','nav:cl|estado=activo')
-          +hero('💵','Ingreso x conexión',_money(arpu),'promedio mensual','#2563eb','nav:cl|estado=activo')
-          +hero('💰','Deuda total',_money(deudaTot),deud.length.toLocaleString('es-AR')+' clientes con deuda','#dc2626','filt:all')
-        +'</div>'
-        +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
-          +hero('🟢','Deuda de activos',_money(sum(dAct)),dAct.length+' · siguen conectados (cobrable)','#16a34a','filt:estado:activo')
-          +hero('⛔','Deuda de bloqueados',_money(sum(dBloq)),dBloq.length+' · en riesgo','#d97706','filt:estado:bloqueado')
-          +hero('📉','Deuda de bajas',_money(sum(dBaja)),dBaja.length+' · difícil de recuperar','#64748b','filt:estado:baja')
-        +'</div>';
-      // ── Por empresa que factura (FG Conexiones / NOR-TEL / NEXA SAS) ── (filas clicables)
-      var ekey=function(e){ return (e&&String(e).trim())||'(sin empresa)'; };
-      var emp={}, get=function(e){ return emp[e]||(emp[e]={fact:0,conx:0,deuda:0,deud:0}); };
-      conx.forEach(function(c){ var o=get(ekey(c.clientes&&c.clientes.empresa)); o.fact+=Number(c.precio||0); o.conx++; });
-      deud.forEach(function(c){ var o=get(ekey(c.empresa)); o.deuda+=Number(c.deuda||0); o.deud++; });
-      var empArr=Object.keys(emp).map(function(k){return [k,emp[k]];}).sort(function(a,b){return b[1].fact-a[1].fact;});
-      h+='<div class="card" style="margin-bottom:14px"><div class="label">🏢 Por empresa que factura <span class="muted" style="font-weight:400;font-size:12px">· tocá una fila para filtrar los deudores</span></div>'
-        +'<div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'
-          +'<th style="padding:5px">Empresa</th><th style="padding:5px;text-align:right">Conexiones</th><th style="padding:5px;text-align:right">Facturación/mes</th><th style="padding:5px;text-align:right">Deuda</th><th style="padding:5px;text-align:right">Deudores</th></tr></thead><tbody>'
-          +empArr.map(function(m){ return '<tr class="cb-card" data-act="filt:emp:'+esc(m[0])+'" style="border-top:1px solid var(--bord);cursor:pointer"><td style="padding:5px;font-weight:700">'+esc(m[0])+'</td><td style="padding:5px;text-align:right">'+m[1].conx.toLocaleString('es-AR')+'</td><td style="padding:5px;text-align:right;color:#16a34a;font-weight:700">'+_money(m[1].fact)+'</td><td style="padding:5px;text-align:right;color:#dc2626;font-weight:700">'+_money(m[1].deuda)+'</td><td style="padding:5px;text-align:right">'+m[1].deud.toLocaleString('es-AR')+'</td></tr>'; }).join('')
-        +'</tbody></table></div><div class="muted" style="font-size:11.5px;margin-top:6px">La empresa sale de ISPcube (entidad que factura). Si recién corrés el sync puede estar aproximada por barrio hasta la próxima corrida.</div></div>';
-      var porBarrio={}; deud.forEach(function(c){ var b=c._bar||'(sin dato)'; porBarrio[b]=(porBarrio[b]||0)+Number(c.deuda||0); });
-      var barArr=Object.keys(porBarrio).map(function(k){return [k,porBarrio[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,12);
-      var maxB=barArr.length?barArr[0][1]:1;
-      h+='<div class="card" style="margin-bottom:14px"><div class="label">💵 Deuda por barrio/zona (top 12 — dónde está la plata) <span class="muted" style="font-weight:400;font-size:12px">· tocá una barra</span></div>'+barArr.map(function(m){return '<div class="cb-card" data-act="filt:bar:'+esc(m[0])+'" style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px;cursor:pointer;padding:2px 4px;border-radius:6px"><span style="width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:16px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxB*100)+'%;background:#dc2626;height:100%"></div></div><b style="width:100px;text-align:right">'+_money(m[1])+'</b></div>';}).join('')+'</div>';
-      h+='<div id="cb-morosos" style="margin-bottom:14px"><div class="card"><div class="label">⚠️ Morosos recurrentes</div><div class="center"><div class="spin"></div></div></div></div>';
-      h+='<div id="cb-tabla"></div>';
-      view.innerHTML=h;
-      Array.prototype.forEach.call(view.querySelectorAll('.cb-card[data-act]'),function(el){ el.addEventListener('click',function(){ _cbCardClick(el.getAttribute('data-act')); }); });
-      _cbTablaDeudores(deud);
-      _cbMorosos();
+      var deudAll=Array.isArray(r[0])?r[0]:[], conx=Array.isArray(r[1])?r[1]:[];
+      var hoy=Date.now();
+      deudAll.forEach(function(c){ c._bar=_cbBarrio(c); c._dias=(c.bloqueado_desde?Math.round((hoy-new Date(c.bloqueado_desde))/86400000):null); });
+      window._cbDeudAll=deudAll; window._cbConx=conx;
+      _cbRender();
     }).catch(function(){ view.innerHTML='<h1>💰 Cobranza</h1><div class="center" style="color:var(--rojo)">No se pudo cargar (¿corriste el SQL de conexiones?).</div>'; });
+  }
+  var CB_VIEJO=90; // días: un bloqueado de más de 90 días probablemente ya no paga (espera retiro)
+  function _cbRender(){
+    var deudAll=window._cbDeudAll||[], conx=window._cbConx||[];
+    var excl=!!window._cbExclBloq;
+    var deud=excl?deudAll.filter(function(c){return c.estado!=='bloqueado';}):deudAll;
+    window._cbDeud=deud; window._cbFilt=null;
+    var sum=function(arr){return arr.reduce(function(a,c){return a+Number(c.deuda||0);},0);};
+    var deudaTot=sum(deud);
+    var dAct=deudAll.filter(function(c){return c.estado==='activo';}), dBloq=deudAll.filter(function(c){return c.estado==='bloqueado';}), dBaja=deudAll.filter(function(c){return c.estado==='baja';});
+    var dBloqViejo=dBloq.filter(function(c){return c._dias!=null && c._dias>=CB_VIEJO;});
+    var fact=conx.reduce(function(a,c){return a+Number(c.precio||0);},0);
+    var ftth=conx.filter(function(c){return c.tecnologia==='FTTH';}), wl=conx.filter(function(c){return c.tecnologia==='WIRELESS';});
+    var arpu=conx.length?fact/conx.length:0;
+    var hero=function(ico,lab,val,sub,col,act,dim){ var cl=act?' cb-card':''; var cur=act?';cursor:pointer':''; var da=act?(' data-act="'+esc(act)+'"'):''; var ti=act?' title="Clic para ver el detalle"':'';
+      return '<div class="hero'+cl+'"'+da+ti+' style="flex:1;min-width:170px;background:#fff;border:1px solid var(--bord);border-radius:14px;padding:15px 18px;box-shadow:var(--card-shadow)'+cur+(dim?';opacity:.5':'')+'"><div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+ico+' '+lab+(act?' <span style="color:#cbd5e1">›</span>':'')+'</div><div style="font-size:27px;font-weight:800;color:'+col+';margin:3px 0;line-height:1.1">'+val+'</div><div style="font-size:12px;color:#94a3b8">'+sub+'</div></div>'; };
+    var h='<h1>💰 Cobranza y facturación</h1><p class="sub">🔒 Visible solo para Gastón, Javier y Fernando. <span class="muted">Tocá cualquier tarjeta para ver el detalle abajo.</span></p>'
+      +'<div class="card" style="padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        +'<label class="l" style="display:flex;align-items:center;gap:7px;margin:0;font-size:13px;font-weight:700"><input type="checkbox" id="cb-exbloq"'+(excl?' checked':'')+' style="width:auto"> Excluir bloqueados de la deuda</label>'
+        +'<span class="muted" style="font-size:12px">'+(excl?('Mostrando solo deuda de activos y bajas. '):'')+'Hay <b>'+dBloqViejo.length+'</b> bloqueados de +'+CB_VIEJO+' días ('+_money(sum(dBloqViejo))+') — probablemente ya no pagan, esperan retiro.</span>'
+      +'</div>'
+      +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
+        +hero('📊','Facturación mensual',_money(fact),'internet que se cobra (FTTH '+ftth.length+' · WL '+wl.length+')','#16a34a','nav:cl|estado=activo')
+        +hero('💵','Ingreso x conexión',_money(arpu),'promedio mensual','#2563eb','nav:cl|estado=activo')
+        +hero('💰','Deuda total',_money(deudaTot),deud.length.toLocaleString('es-AR')+' clientes'+(excl?' (sin bloqueados)':' con deuda'),'#dc2626','filt:all')
+      +'</div>'
+      +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
+        +hero('🟢','Deuda de activos',_money(sum(dAct)),dAct.length+' · siguen conectados (cobrable)','#16a34a','filt:estado:activo')
+        +hero('⛔','Deuda de bloqueados',_money(sum(dBloq)),dBloq.length+' · '+dBloqViejo.length+' de +'+CB_VIEJO+'d'+(excl?' · EXCLUIDA':' · en riesgo'),'#d97706',(excl?'':'filt:estado:bloqueado'),excl)
+        +hero('📉','Deuda de bajas',_money(sum(dBaja)),dBaja.length+' · difícil de recuperar','#64748b','filt:estado:baja')
+      +'</div>';
+    // ── Por empresa que factura (FG Conexiones / NOR-TEL / NEXA SAS) ── (filas clicables)
+    var ekey=function(e){ return (e&&String(e).trim())||'(sin empresa)'; };
+    var emp={}, get=function(e){ return emp[e]||(emp[e]={fact:0,conx:0,deuda:0,deud:0}); };
+    conx.forEach(function(c){ var o=get(ekey(c.clientes&&c.clientes.empresa)); o.fact+=Number(c.precio||0); o.conx++; });
+    deud.forEach(function(c){ var o=get(ekey(c.empresa)); o.deuda+=Number(c.deuda||0); o.deud++; });
+    var empArr=Object.keys(emp).map(function(k){return [k,emp[k]];}).sort(function(a,b){return b[1].fact-a[1].fact;});
+    h+='<div class="card" style="margin-bottom:14px"><div class="label">🏢 Por empresa que factura <span class="muted" style="font-weight:400;font-size:12px">· tocá una fila para filtrar los deudores</span></div>'
+      +'<div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'
+        +'<th style="padding:5px">Empresa</th><th style="padding:5px;text-align:right">Conexiones</th><th style="padding:5px;text-align:right">Facturación/mes</th><th style="padding:5px;text-align:right">Deuda</th><th style="padding:5px;text-align:right">Deudores</th></tr></thead><tbody>'
+        +empArr.map(function(m){ return '<tr class="cb-card" data-act="filt:emp:'+esc(m[0])+'" style="border-top:1px solid var(--bord);cursor:pointer"><td style="padding:5px;font-weight:700">'+esc(m[0])+'</td><td style="padding:5px;text-align:right">'+m[1].conx.toLocaleString('es-AR')+'</td><td style="padding:5px;text-align:right;color:#16a34a;font-weight:700">'+_money(m[1].fact)+'</td><td style="padding:5px;text-align:right;color:#dc2626;font-weight:700">'+_money(m[1].deuda)+'</td><td style="padding:5px;text-align:right">'+m[1].deud.toLocaleString('es-AR')+'</td></tr>'; }).join('')
+      +'</tbody></table></div><div class="muted" style="font-size:11.5px;margin-top:6px">La empresa sale de ISPcube (entidad que factura). Si recién corrés el sync puede estar aproximada por barrio hasta la próxima corrida.</div></div>';
+    var porBarrio={}; deud.forEach(function(c){ var b=c._bar||'(sin dato)'; porBarrio[b]=(porBarrio[b]||0)+Number(c.deuda||0); });
+    var barArr=Object.keys(porBarrio).map(function(k){return [k,porBarrio[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,12);
+    var maxB=barArr.length?barArr[0][1]:1;
+    h+='<div class="card" style="margin-bottom:14px"><div class="label">💵 Deuda por barrio/zona (top 12 — dónde está la plata) <span class="muted" style="font-weight:400;font-size:12px">· tocá una barra</span></div>'+barArr.map(function(m){return '<div class="cb-card" data-act="filt:bar:'+esc(m[0])+'" style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px;cursor:pointer;padding:2px 4px;border-radius:6px"><span style="width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:16px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxB*100)+'%;background:#dc2626;height:100%"></div></div><b style="width:100px;text-align:right">'+_money(m[1])+'</b></div>';}).join('')+'</div>';
+    h+='<div id="cb-morosos" style="margin-bottom:14px"><div class="card"><div class="label">⚠️ Morosos recurrentes</div><div class="center"><div class="spin"></div></div></div></div>';
+    h+='<div id="cb-tabla"></div>';
+    view.innerHTML=h;
+    var xb=document.getElementById('cb-exbloq'); if(xb) xb.addEventListener('change',function(){ window._cbExclBloq=this.checked; _cbRender(); });
+    Array.prototype.forEach.call(view.querySelectorAll('.cb-card[data-act]'),function(el){ el.addEventListener('click',function(){ _cbCardClick(el.getAttribute('data-act')); }); });
+    _cbTablaDeudores(deud);
+    _cbMorosos();
   }
   // Barrio/zona del cliente: usa barrio; si está vacío, lo deriva del domicilio (saca la altura final)
   function _cbBarrio(c){
@@ -3248,12 +3263,12 @@
       ['Estado', function(c){return c.estado||'';}, function(c){return c.estado||'';}],
       [fLbl, function(c){return c[fkey]?fmtFecha(c[fkey]):'—';}, function(c){return c[fkey]||'';}]
     ];
-    sbGetAll('clientes?'+m[0]+'&select=numero_cliente,nombre,apellido,barrio,telefono,empresa,estado,planes(nombre),'+fkey+'&order='+fkey+'.desc').then(function(d){
+    sbGetAll('clientes?'+m[0]+'&select=id,numero_cliente,nombre,apellido,barrio,telefono,empresa,estado,planes(nombre),'+fkey+'&order='+fkey+'.desc').then(function(d){
       d=Array.isArray(d)?d:[]; var sortIdx=6, sortDir=-1, TOPE=500;
       function pintar(){
         var ds=d.slice().sort(function(a,b){ var va=COLS[sortIdx][2](a),vb=COLS[sortIdx][2](b); return (va<vb?-1:va>vb?1:0)*sortDir; });
         var ths=COLS.map(function(c,i){ return '<th data-i="'+i+'" style="padding:5px 4px;cursor:pointer;white-space:nowrap;user-select:none">'+esc(c[0])+(sortIdx===i?(sortDir>0?' ▲':' ▼'):' ⇅')+'</th>'; }).join('');
-        var rows=ds.slice(0,TOPE).map(function(c){ return '<tr style="border-top:1px solid var(--bord)">'+COLS.map(function(col){ return '<td style="padding:5px">'+esc(col[1](c))+'</td>'; }).join('')+'</tr>'; }).join('');
+        var rows=ds.slice(0,TOPE).map(function(c){ return '<tr data-cliid="'+c.id+'" title="Abrir ficha del cliente" style="border-top:1px solid var(--bord);cursor:pointer">'+COLS.map(function(col,i){ var v=esc(col[1](c)); if(i===1) v='<span style="color:#2563eb">'+v+'</span>'; return '<td style="padding:5px">'+v+'</td>'; }).join('')+'</tr>'; }).join('');
         cont.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">'+m[1]+' · '+d.length.toLocaleString('es-AR')+' cliente(s)'+(d.length>TOPE?(' <span class="muted" style="font-weight:400">· se ven los primeros '+TOPE+'</span>'):'')+'</div><div style="display:flex;gap:6px"><button class="btn btn-2 btn-sm" id="gl-csv">⬇️ Excel</button><button class="btn btn-2 btn-sm" id="gl-x">✖ Cerrar</button></div></div>'
           +'<div style="overflow:auto;max-height:460px;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b;position:sticky;top:0;background:#fff">'+ths+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
         document.getElementById('gl-x').addEventListener('click',function(){ cont.style.display='none'; cont.innerHTML=''; window._gKsel=null; _gResaltarCard(); });
@@ -3262,6 +3277,7 @@
           var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='gerencial_'+key+'.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+d.length+')');
         });
         Array.prototype.forEach.call(cont.querySelectorAll('th[data-i]'),function(th){ th.addEventListener('click',function(){ var i=Number(th.getAttribute('data-i')); if(sortIdx===i) sortDir=-sortDir; else { sortIdx=i; sortDir=(i===6?-1:1); } pintar(); }); });
+        Array.prototype.forEach.call(cont.querySelectorAll('tr[data-cliid]'),function(tr){ tr.addEventListener('click',function(){ var id=tr.getAttribute('data-cliid'); if(id&&id!=='null'&&typeof fichaCliente==='function') fichaCliente(id); }); });
       }
       pintar();
     }).catch(function(){ cont.innerHTML='<div class="card muted">No se pudo cargar la lista.</div>'; });
