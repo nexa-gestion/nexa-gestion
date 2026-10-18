@@ -232,6 +232,7 @@
       <div class="sec">Informes</div>
       <a data-v="informes">📈 Informes</a>
       <a data-v="gerencial" id="nav-gerencial" style="display:none">📊 Gerencial</a>
+      <a data-v="cobranza" id="nav-cobranza" style="display:none">💰 Cobranza</a>
     </div>
     <div class="user" id="side-user"></div>
   </div>
@@ -246,7 +247,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.56';
+  var VER='v3.57';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -445,6 +446,7 @@
     var _lo=document.getElementById('logout'); if(_lo) _lo.addEventListener('click',function(e){ e.preventDefault(); try{ localStorage.removeItem('nexa_sesion'); }catch(_){} location.reload(); });
     if(USER.rol==='superadmin'){ var nu=document.getElementById('nav-usuarios'); if(nu) nu.style.display=''; }
     if(USER.rol==='superadmin'||USER.rol==='gerencial'){ var na=document.getElementById('nav-actividad'); if(na) na.style.display=''; var nc=document.getElementById('nav-comisiones'); if(nc) nc.style.display=''; var ng=document.getElementById('nav-gerencial'); if(ng) ng.style.display=''; }
+    if(_verFinanzas()){ var nf=document.getElementById('nav-cobranza'); if(nf) nf.style.display=''; }
     // precargar referencias
     Promise.all([
       sbGet('empresas?select=*&order=nombre'),
@@ -465,7 +467,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -2927,6 +2929,71 @@
   function _atrasoTxtAdm(min){ var h=Math.floor(min/60), m=min%60; return 'atrasado '+(h?(h+'h '):'')+m+'min'; }
   function _mesInicioISO(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-01'; }
   function _infKpi(n,l,col,key){ return '<div'+(key?' class="gkcard" data-gk="'+key+'"':'')+' style="flex:1;min-width:120px;background:#fff;border:1px solid var(--bord);border-left:4px solid '+col+';border-radius:12px;padding:12px 14px'+(key?';cursor:pointer':'')+'"><div style="font-size:24px;font-weight:800">'+n+'</div><div class="muted" style="font-size:12px">'+l+(key?' <span style="color:#2563eb;font-weight:600">· ver →</span>':'')+'</div></div>'; }
+  // ══════════ COBRANZA / FACTURACIÓN ══════════ (acceso restringido: Gastón, Javier, Fernando)
+  var _FIN_OK=['gaston','javier','fernando'];
+  function _verFinanzas(){ return !!(USER && _FIN_OK.indexOf(String(USER.email||'').toLowerCase())>=0); }
+  function _money(n){ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); }
+  function vCobranza(){
+    if(!_verFinanzas()){ view.innerHTML='<h1>💰 Cobranza</h1><div class="center">🔒 Acceso restringido.</div>'; return; }
+    loading();
+    Promise.all([
+      sbGetAll('clientes?estado=neq.eliminado&deuda=gt.0&select=numero_cliente,nombre,apellido,barrio,estado,deuda,telefono,empresa&order=deuda.desc'),
+      sbGetAll('conexiones?tipo=eq.internet&estado=eq.activo&gratis=is.false&select=precio,tecnologia')
+    ]).then(function(r){
+      var deud=Array.isArray(r[0])?r[0]:[], conx=Array.isArray(r[1])?r[1]:[];
+      var sum=function(arr){return arr.reduce(function(a,c){return a+Number(c.deuda||0);},0);};
+      var deudaTot=sum(deud);
+      var dAct=deud.filter(function(c){return c.estado==='activo';}), dBloq=deud.filter(function(c){return c.estado==='bloqueado';}), dBaja=deud.filter(function(c){return c.estado==='baja';});
+      var fact=conx.reduce(function(a,c){return a+Number(c.precio||0);},0);
+      var ftth=conx.filter(function(c){return c.tecnologia==='FTTH';}), wl=conx.filter(function(c){return c.tecnologia==='WIRELESS';});
+      var arpu=conx.length?fact/conx.length:0;
+      var hero=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:170px;background:#fff;border:1px solid var(--bord);border-radius:14px;padding:15px 18px;box-shadow:var(--card-shadow)"><div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+ico+' '+lab+'</div><div style="font-size:27px;font-weight:800;color:'+col+';margin:3px 0;line-height:1.1">'+val+'</div><div style="font-size:12px;color:#94a3b8">'+sub+'</div></div>'; };
+      var h='<h1>💰 Cobranza y facturación</h1><p class="sub">🔒 Visible solo para Gastón, Javier y Fernando.</p>'
+        +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
+          +hero('📊','Facturación mensual',_money(fact),'internet que se cobra (FTTH '+ftth.length+' · WL '+wl.length+')','#16a34a')
+          +hero('💵','Ingreso x conexión',_money(arpu),'promedio mensual','#2563eb')
+          +hero('💰','Deuda total',_money(deudaTot),deud.length.toLocaleString('es-AR')+' clientes con deuda','#dc2626')
+        +'</div>'
+        +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
+          +hero('🟢','Deuda de activos',_money(sum(dAct)),dAct.length+' · siguen conectados (cobrable)','#16a34a')
+          +hero('⛔','Deuda de bloqueados',_money(sum(dBloq)),dBloq.length+' · en riesgo','#d97706')
+          +hero('📉','Deuda de bajas',_money(sum(dBaja)),dBaja.length+' · difícil de recuperar','#64748b')
+        +'</div>';
+      var porBarrio={}; deud.forEach(function(c){ var b=c.barrio||'(sin barrio)'; porBarrio[b]=(porBarrio[b]||0)+Number(c.deuda||0); });
+      var barArr=Object.keys(porBarrio).map(function(k){return [k,porBarrio[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+      var maxB=barArr.length?barArr[0][1]:1;
+      h+='<div class="card" style="margin-bottom:14px"><div class="label">💵 Deuda por barrio (top 10 — dónde está la plata)</div>'+barArr.map(function(m){return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px"><span style="width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:16px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxB*100)+'%;background:#dc2626;height:100%"></div></div><b style="width:100px;text-align:right">'+_money(m[1])+'</b></div>';}).join('')+'</div>';
+      h+='<div id="cb-tabla"></div>';
+      view.innerHTML=h;
+      _cbTablaDeudores(deud);
+    }).catch(function(){ view.innerHTML='<h1>💰 Cobranza</h1><div class="center" style="color:var(--rojo)">No se pudo cargar (¿corriste el SQL de conexiones?).</div>'; });
+  }
+  function _cbTablaDeudores(deud){
+    var cont=document.getElementById('cb-tabla'); if(!cont) return;
+    var COLS=[
+      ['N°',function(c){return c.numero_cliente||'';},function(c){return Number(c.numero_cliente)||0;}],
+      ['Cliente',function(c){return ((c.nombre||'')+' '+(c.apellido||'')).trim();},function(c){return ((c.apellido||'')+' '+(c.nombre||'')).toLowerCase();}],
+      ['Barrio',function(c){return c.barrio||'—';},function(c){return (c.barrio||'').toLowerCase();}],
+      ['Estado',function(c){return c.estado||'';},function(c){return c.estado||'';}],
+      ['Teléfono',function(c){return c.telefono||'—';},function(c){return c.telefono||'';}],
+      ['Deuda',function(c){return _money(c.deuda);},function(c){return Number(c.deuda)||0;}]
+    ];
+    var sortIdx=5, sortDir=-1, TOPE=500;
+    function pintar(){
+      var ds=deud.slice().sort(function(a,b){ var va=COLS[sortIdx][2](a),vb=COLS[sortIdx][2](b); return (va<vb?-1:va>vb?1:0)*sortDir; });
+      var ths=COLS.map(function(c,i){ return '<th data-i="'+i+'" style="padding:5px 4px;cursor:pointer;white-space:nowrap;user-select:none">'+esc(c[0])+(sortIdx===i?(sortDir>0?' ▲':' ▼'):' ⇅')+'</th>'; }).join('');
+      var rows=ds.slice(0,TOPE).map(function(c){ return '<tr style="border-top:1px solid var(--bord)">'+COLS.map(function(col,i){ return '<td style="padding:5px'+(i===5?';text-align:right;font-weight:700;color:#991b1b':'')+'">'+esc(col[1](c))+'</td>'; }).join('')+'</tr>'; }).join('');
+      cont.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">Deudores · '+deud.length.toLocaleString('es-AR')+' cliente(s)'+(deud.length>TOPE?(' <span class="muted" style="font-weight:400">· se ven los primeros '+TOPE+'</span>'):'')+'</div><button class="btn btn-2 btn-sm" id="cb-csv">⬇️ Excel</button></div>'
+        +'<div style="overflow:auto;max-height:520px;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b;position:sticky;top:0;background:#fff">'+ths+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+      Array.prototype.forEach.call(cont.querySelectorAll('th[data-i]'),function(th){ th.addEventListener('click',function(){ var i=Number(th.getAttribute('data-i')); if(sortIdx===i) sortDir=-sortDir; else { sortIdx=i; sortDir=(i===5?-1:1); } pintar(); }); });
+      document.getElementById('cb-csv').addEventListener('click',function(){
+        var lines=[COLS.map(function(c){return c[0];}).join(';')].concat(ds.map(function(c){ return COLS.map(function(col){ return '"'+String(col[1](c)).replace(/"/g,'""')+'"'; }).join(';'); }));
+        var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='deudores.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+deud.length+')');
+      });
+    }
+    pintar();
+  }
+
   // ══════════ GERENCIAL ══════════ (solo gerencia/superadmin: altas/bajas por período)
   var _gMIG='2026-06-10'; // las "altas" anteriores a esta fecha son la migración inicial de ISPcube (09-06, 4499 clientes)
   function vGerencial(){
