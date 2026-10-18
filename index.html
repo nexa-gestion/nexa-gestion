@@ -247,7 +247,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.62';
+  var VER='v3.63';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1362,7 +1362,7 @@
         : '<div style="font-size:24px;font-weight:800;color:#16a34a;line-height:1">Al día ✓</div><div style="font-size:11px;color:#15803d;font-weight:600;text-align:right">sin deuda</div>';
       var cuentaHtml='<div class="card" style="margin:10px 0;padding:14px;background:'+(_dv>0?'#fff7f7':'#f6fef9')+'">'
         +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="font-weight:700;color:#334155;font-size:14px">💳 Cuenta</div><div>'+_saldoBox+'</div></div>'
-        +(_chips.length?('<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">'+_chips.join('')+'</div>'):'')
+        +'<div id="f-cx-wrap" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">'+_chips.join('')+'</div>'
         +'<div class="muted" style="font-size:11px;margin-top:9px">Saldo y datos de ISPcube (último sync). El <b>detalle de facturas y cobranzas</b> (cta cte) se sumará cuando ISPcube habilite el endpoint por API.</div></div>';
       modal('<h2>Cliente N° '+esc(c.numero_cliente)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+esc(cNom)+' · '+pill(c.estado)+(c.telefono?waLink(c.telefono,cNom,'',c.domicilio_full,'WhatsApp'):'')+'</p>'
         +cuentaHtml
@@ -1379,6 +1379,13 @@
         +'<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-pri" id="f-ot">+ Generar OT</button><button class="btn btn-2" id="f-close">Cerrar</button></div>', 'wide');
       document.getElementById('f-close').addEventListener('click',cerrarModal);
       document.getElementById('f-ot').addEventListener('click',function(){ cerrarModal(); nuevaOT(c); });
+      // cortes (veces que entró a la cola de corte por mora) + compromisos de pago pedidos → chips en 💳 Cuenta
+      sbGet('desconexiones?cliente_id=eq.'+c.id+'&origen=in.(bloqueado_30d,baja_isp)&select=compromiso_count&limit=200').then(function(dx){
+        dx=Array.isArray(dx)?dx:[]; var cortes=dx.length, comp=dx.reduce(function(a,d){return a+(Number(d.compromiso_count)||0);},0);
+        var w=document.getElementById('f-cx-wrap'); if(!w) return;
+        if(cortes) w.insertAdjacentHTML('beforeend',_chip('✂️ Cortado '+cortes+' '+(cortes===1?'vez':'veces')));
+        if(comp) w.insertAdjacentHTML('beforeend',_chip('🤝 Compromisos de pago: '+comp));
+      }).catch(function(){});
       cargarHistCliente(c.id);
       document.getElementById('f-conx-save').addEventListener('click',function(){
         var b={ caja_nap:document.getElementById('f-caja').value.trim()||null, puerto:document.getElementById('f-puerto').value.trim()||null, precinto:document.getElementById('f-precinto').value.trim()||null };
@@ -2960,13 +2967,16 @@
     if(!_verFinanzas()){ view.innerHTML='<h1>💰 Cobranza</h1><div class="center">🔒 Acceso restringido.</div>'; return; }
     loading();
     window._cbFilt=null;
+    window._cbExclBloq=true;   // al abrir Cobranza, siempre arranca excluyendo bloqueados (pedido de Gastón) — se puede destildar
     Promise.all([
       sbGetAll('clientes?estado=neq.eliminado&deuda=gt.0&select=id,numero_cliente,nombre,apellido,barrio,domicilio_full,estado,deuda,telefono,empresa,bloqueado_desde&order=deuda.desc'),
-      sbGetAll('conexiones?tipo=eq.internet&estado=eq.activo&gratis=is.false&select=precio,tecnologia,clientes(empresa)')
+      sbGetAll('conexiones?tipo=eq.internet&estado=eq.activo&gratis=is.false&select=precio,tecnologia,clientes(empresa)'),
+      sbGetAll('desconexiones?select=cliente_id,compromiso_count&origen=in.(bloqueado_30d,baja_isp)')
     ]).then(function(r){
-      var deudAll=Array.isArray(r[0])?r[0]:[], conx=Array.isArray(r[1])?r[1]:[];
+      var deudAll=Array.isArray(r[0])?r[0]:[], conx=Array.isArray(r[1])?r[1]:[], dx=Array.isArray(r[2])?r[2]:[];
       var hoy=Date.now();
-      deudAll.forEach(function(c){ c._bar=_cbBarrio(c); c._dias=(c.bloqueado_desde?Math.round((hoy-new Date(c.bloqueado_desde))/86400000):null); });
+      var cortesMap={}; dx.forEach(function(d){ if(d.cliente_id!=null){ var o=cortesMap[d.cliente_id]||(cortesMap[d.cliente_id]={cortes:0,comp:0}); o.cortes++; o.comp+=Number(d.compromiso_count)||0; } });
+      deudAll.forEach(function(c){ c._bar=_cbBarrio(c); c._dias=(c.bloqueado_desde?Math.round((hoy-new Date(c.bloqueado_desde))/86400000):null); var cm=cortesMap[c.id]||{cortes:0,comp:0}; c._cortes=cm.cortes; c._comp=cm.comp; });
       window._cbDeudAll=deudAll; window._cbConx=conx;
       _cbRender();
     }).catch(function(){ view.innerHTML='<h1>💰 Cobranza</h1><div class="center" style="color:var(--rojo)">No se pudo cargar (¿corriste el SQL de conexiones?).</div>'; });
@@ -3111,6 +3121,7 @@
       ['Barrio/zona',function(c){return c._bar||'—';},function(c){return (c._bar||'').toLowerCase();}],
       ['Empresa',function(c){return c.empresa||'—';},function(c){return (c.empresa||'').toLowerCase();}],
       ['Estado',function(c){return c.estado||'';},function(c){return c.estado||'';}],
+      ['Cortes',function(c){return c._cortes||0;},function(c){return c._cortes||0;}],
       ['Teléfono',function(c){return c.telefono||'—';},function(c){return c.telefono||'';}],
       ['Deuda',function(c){return _money(c.deuda);},function(c){return Number(c.deuda)||0;}]
     ];
