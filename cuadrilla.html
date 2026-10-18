@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.52</title>
+<title>Nexa · Técnico — v0.53</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.52';
+  var VER='v0.53';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -273,11 +273,14 @@
       sbGet('ordenes_trabajo?id=eq.'+o.id+'&select=id,numero,tipo,tipo_trabajo_id,clientes(id,tecnologia,nombre,apellido,caja_nap,puerto,precinto)&limit=1'),
       sbGet('tipos_trabajo?activo=eq.true&select=id,nombre,codigo&order=orden'),
       sbGet('stock_seriales?estado=eq.EN_CUADRILLA&cuadrilla_id=eq.'+CUAD.id+'&select=id,serial,material_id'),
-      sbGet('motivos_ot?select=id,nombre&order=nombre'),
+      sbGet('motivos_ot?select=*&activo=eq.true&order=orden'),
       sbGet('ot_datos_servicio?ot_id=eq.'+o.id+'&origen=eq.ADMIN&select=clave,valor')
     ]).then(function(r){
       var ot=(r[0]&&r[0][0])||o, tipos=_cieArr(r[1]), tec=ot.clientes?ot.clientes.tecnologia:'';
-      CIE={ o:ot, accion:(modoRechazo?'NO_REALIZADA':'REALIZADA'), modoRechazo:!!modoRechazo, tipos:tipos, ttId:(ot.tipo_trabajo_id||_ttPorTec(tipos,tec)||null), kitMat:[], kitMo:[], seriales:_cieArr(r[2]), motivos:_cieArr(r[3]), datosAdmin:_cieArr(r[4]), mats:{}, mos:{}, datos:{}, fotos:[] };
+      // motivos: para RECHAZO mostramos solo los de categoría 'rechazo'; si todavía no se cargaron (SQL sin correr) caemos a todos
+      var _mAll=_cieArr(r[3]), _mRech=_mAll.filter(function(m){return m.categoria==='rechazo';});
+      var _mot=(modoRechazo && _mRech.length)?_mRech:_mAll;
+      CIE={ o:ot, accion:(modoRechazo?'NO_REALIZADA':'REALIZADA'), modoRechazo:!!modoRechazo, tipos:tipos, ttId:(ot.tipo_trabajo_id||_ttPorTec(tipos,tec)||null), kitMat:[], kitMo:[], seriales:_cieArr(r[2]), motivos:_mot, datosAdmin:_cieArr(r[4]), mats:{}, mos:{}, datos:{}, fotos:[] };
       if(!modoRechazo && _cieRestaurar()) toast('📋 Recuperé un cierre sin terminar de esta OT');
       cieCargarKit();
     });

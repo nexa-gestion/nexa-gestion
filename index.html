@@ -233,6 +233,7 @@
       <a data-v="informes">📈 Informes</a>
       <a data-v="gerencial" id="nav-gerencial" style="display:none">📊 Gerencial</a>
       <a data-v="ranking" id="nav-ranking" style="display:none">🏆 Ranking cuadrillas</a>
+      <a data-v="rechazos" id="nav-rechazos" style="display:none">📋 Rechazos (estudio)</a>
       <a data-v="cobranza" id="nav-cobranza" style="display:none">💰 Cobranza</a>
     </div>
     <div class="user" id="side-user"></div>
@@ -248,7 +249,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.67';
+  var VER='v3.68';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -446,7 +447,7 @@
     document.getElementById('side-user').innerHTML = '<div style="font-size:14px;font-weight:700;color:#0f172a">'+esc(USER.nombre)+'</div><div style="text-transform:capitalize">'+esc(USER.rol)+' · '+VER+'</div><button class="u-logout" id="logout">Cerrar sesión</button>';
     var _lo=document.getElementById('logout'); if(_lo) _lo.addEventListener('click',function(e){ e.preventDefault(); try{ localStorage.removeItem('nexa_sesion'); }catch(_){} location.reload(); });
     if(USER.rol==='superadmin'){ var nu=document.getElementById('nav-usuarios'); if(nu) nu.style.display=''; }
-    if(USER.rol==='superadmin'||USER.rol==='gerencial'){ var na=document.getElementById('nav-actividad'); if(na) na.style.display=''; var nc=document.getElementById('nav-comisiones'); if(nc) nc.style.display=''; var ng=document.getElementById('nav-gerencial'); if(ng) ng.style.display=''; var nrk=document.getElementById('nav-ranking'); if(nrk) nrk.style.display=''; }
+    if(USER.rol==='superadmin'||USER.rol==='gerencial'){ var na=document.getElementById('nav-actividad'); if(na) na.style.display=''; var nc=document.getElementById('nav-comisiones'); if(nc) nc.style.display=''; var ng=document.getElementById('nav-gerencial'); if(ng) ng.style.display=''; var nrk=document.getElementById('nav-ranking'); if(nrk) nrk.style.display=''; var nre=document.getElementById('nav-rechazos'); if(nre) nre.style.display=''; }
     if(_verFinanzas()){ var nf=document.getElementById('nav-cobranza'); if(nf) nf.style.display=''; }
     // precargar referencias
     Promise.all([
@@ -468,7 +469,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,recuperables:vRecuperables,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,rechazos:vRechazos,recuperables:vRecuperables,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -3481,6 +3482,82 @@
       _recResolver(otId, nueva?nueva.id:true);
       toast('🔧 OT de instalación generada ✓');
     }).catch(function(){ toast('No se pudo generar la OT.'); });
+  }
+  // ══════════ 📋 ESTUDIO DE RECHAZOS ══════════ (clasificar el motivo real de la observación + normalizar)
+  var RK_RULES=[
+    ['Fuera de nodo (no hay red)', /fuera de[l]? nodo|no hay (nodo|red)|sin (nodo|red)\b|no llega.*red|fuera de cobertura|sin cobertura|no hay factibilidad|no pasa.*cable/],
+    ['Sin puerto disponible en caja', /sin puerto|falta.*puerto|no (hay|tenemos) puerto|puerto.*(ocupad|lleno|completo)|caja.*(llena|completa)|sin splitter|sin lugar en.*caja/],
+    ['Falta poste (lo pone el cliente)', /poste/],
+    ['No autorizado (vecinos / dueño)', /autoriza|due[ñn][oa].*terreno|disputa.*terreno|permiso.*vecin/],
+    ['Ya tiene conexión / duplicado', /ya (hab[ií]a|existe|tiene).*(conexi|servici|instalaci)|cargad[oa] (2|dos) veces|duplicad|ya est[áa].*instalad|ya se le? instal|se le instal.*(pareja|otro)/],
+    ['Tiene deuda / a nombre de otro', /deuda|a nombre de otro|moroso/],
+    ['Ubicación difícil / no se puede tender fibra', /ubicaci[oó]n.*(complicad|dif[ií]cil)|dif[ií]cil.*fibra|no se puede.*(tender|llevar).*fibra|muy lejos/],
+    ['Cliente pide reagendar (otro día)', /recordin|recoordin|reagend|otro d[ií]a|otra semana|pasar.*nuevamente|informar.*d[ií]a|de viaje|fuerza mayor|por el momento/],
+    ['Cliente desiste / no quiere', /desist|se arrepi|no (va a? )?quer|no quiere|rechaz|dar de baja|anul|cancelar.*instalaci|pidi[oó] cancelar/],
+    ['Sin contacto (no contesta / no responde)', /no (se )?(contest|atend|respond)|no se pudo (comunicar|contactar|encontrar)|sin contacto|no responde.*(mensaje|llamad)|no hubo forma de comunic|no atiende/],
+    ['Cliente ausente (no había nadie)', /no hab[ií]a nadie|ausente|no estaba|no.*encontr.*(al cliente|a nadie)|cerrado/]
+  ];
+  function _rkSugerir(obs){ var t=(obs||'').toLowerCase(); if(!t.trim()) return ''; for(var i=0;i<RK_RULES.length;i++){ if(RK_RULES[i][1].test(t)) return RK_RULES[i][0]; } return ''; }
+  function vRechazos(){
+    if(!(USER&&(USER.rol==='superadmin'||USER.rol==='gerencial'))){ view.innerHTML='<h1>📋 Rechazos</h1><div class="center">Solo gerencia y superadmin.</div>'; return; }
+    if(!window._reEstado) window._reEstado={soloInst:true};
+    loading();
+    Promise.all([
+      sbGetAll('ordenes_trabajo?or=(estado.eq.CANCELADA,estado.eq.NO_REALIZADA)&select=id,numero,tipo,estado,motivo_cancelacion,motivo_id,observaciones_tec,fin_tec_at,lat_fin,lng_fin,cuadrillas(nombre),clientes(id,numero_cliente,nombre,apellido,barrio)&order=fin_tec_at.desc.nullslast'),
+      sbGet('motivos_ot?select=id,nombre,fuera_cobertura&categoria=eq.rechazo&order=orden').catch(function(){return [];})
+    ]).then(function(r){
+      window._reAll=Array.isArray(r[0])?r[0]:[]; window._reCat=Array.isArray(r[1])?r[1]:[];
+      _reRender();
+    }).catch(function(){ view.innerHTML='<h1>📋 Rechazos</h1><div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
+  }
+  function _reRender(){
+    var all=window._reAll||[], cat=window._reCat||[], soloInst=window._reEstado.soloInst;
+    var rows=soloInst?all.filter(function(o){return o.tipo==='INSTALACION';}):all;
+    var catById={}, catByNom={}; cat.forEach(function(m){ catById[m.id]=m; catByNom[m.nombre]=m; });
+    function clasif(o){ if(o.motivo_id&&catById[o.motivo_id]) return {nombre:catById[o.motivo_id].nombre, fijo:true}; var s=_rkSugerir(o.observaciones_tec); return {nombre:s||'', fijo:false}; }
+    // resumen
+    var res={}; rows.forEach(function(o){ var c=clasif(o); var k=c.nombre||'(sin clasificar)'; res[k]=(res[k]||0)+1; });
+    var resArr=Object.keys(res).map(function(k){return [k,res[k]];}).sort(function(a,b){return b[1]-a[1];});
+    var catNoClas=cat.length?'':' <span style="color:#dc2626">⚠️ Corré nexa_motivos_rechazo.sql para cargar el catálogo</span>';
+    var h='<h1>📋 Estudio de rechazos</h1><p class="sub">Motivo real sacado de la observación del técnico. Elegí el motivo definitivo en cada uno (queda normalizado para el mapa).'+catNoClas+'</p>'
+      +'<div class="toolbar" style="gap:8px;align-items:center"><label class="l" style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px"><input type="checkbox" id="re-inst"'+(soloInst?' checked':'')+' style="width:auto"> solo instalaciones</label><button class="btn btn-2 btn-sm" id="re-mot">⚙️ Motivos</button><button class="btn btn-2 btn-sm" id="re-csv">⬇️ Excel</button><span class="muted" style="font-size:12px">'+rows.length+' rechazo(s)</span></div>';
+    // tarjeta resumen
+    var maxR=resArr.length?resArr[0][1]:1;
+    h+='<div class="card" style="margin:10px 0"><div class="label">Motivo real (clasificado + sugerido)</div>'+resArr.map(function(m){ var fc=(catByNom[m[0]]&&catByNom[m[0]].fuera_cobertura); return '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px"><span style="width:250px;flex-shrink:0">'+(fc?'🔌 ':'')+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:15px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxR*100)+'%;background:'+(fc?'#d97706':'#2563eb')+';height:100%"></div></div><b style="width:34px;text-align:right">'+m[1]+'</b></div>'; }).join('')+'<div class="muted" style="font-size:11.5px;margin-top:6px">🔌 = fuera de cobertura (sirve para el mapa de dónde cablear). "⟳" en la lista = sugerencia automática sin confirmar.</div></div>';
+    // lista
+    h+=rows.map(function(o){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim(); var cl=clasif(o);
+      var opts='<option value="">— elegir motivo —</option>'+cat.map(function(m){ var sel=(o.motivo_id===m.id)||(!o.motivo_id&&cl.nombre===m.nombre); return '<option value="'+m.id+'"'+(sel?' selected':'')+'>'+(m.fuera_cobertura?'🔌 ':'')+esc(m.nombre)+'</option>'; }).join('');
+      return '<div class="card" style="margin-bottom:8px;padding:11px">'
+        +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">'
+          +'<div><b class="re-cli" data-cli="'+(c.id||'')+'" style="color:#2563eb;cursor:pointer">'+esc(nom||('Cliente '+(c.numero_cliente||'')))+'</b> <span class="muted" style="font-size:12px">· N° '+esc(c.numero_cliente||'')+' · '+esc(c.barrio||'—')+' · '+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+' · '+esc(fmtFecha(o.fin_tec_at))+' · OT '+esc(o.numero)+(o.tipo!=='INSTALACION'?(' · '+esc(o.tipo)):'')+'</span>'+((o.lat_fin&&o.lng_fin)?(' <a href="https://www.google.com/maps?q='+o.lat_fin+','+o.lng_fin+'" target="_blank" style="font-size:12px">📍</a>'):'')+'</div>'
+          +'<select class="re-set" data-id="'+o.id+'" style="width:auto;min-width:230px;font-size:12.5px'+(cl.fijo?';border-color:#16a34a':'')+'">'+opts+'</select>'
+        +'</div>'
+        +'<div style="font-size:13px;color:#1e293b;margin-top:6px;background:#f8fafc;border-radius:6px;padding:6px 9px">'+(o.observaciones_tec?esc(o.observaciones_tec):'<span class="muted">(sin observación — motivo cargado: '+esc(o.motivo_cancelacion||'—')+')</span>')+'</div>'
+      +'</div>'; }).join('');
+    view.innerHTML=h;
+    document.getElementById('re-inst').addEventListener('change',function(){ window._reEstado.soloInst=this.checked; _reRender(); });
+    document.getElementById('re-mot').addEventListener('click',_reMotivos);
+    document.getElementById('re-csv').addEventListener('click',function(){ _reCSV(rows,clasif); });
+    Array.prototype.forEach.call(view.querySelectorAll('.re-cli'),function(el){ el.addEventListener('click',function(){ var id=el.getAttribute('data-cli'); if(id&&typeof fichaCliente==='function') fichaCliente(id); }); });
+    Array.prototype.forEach.call(view.querySelectorAll('.re-set'),function(sel){ sel.addEventListener('change',function(){ var id=sel.getAttribute('data-id'), mid=sel.value?Number(sel.value):null, mnom=sel.value?sel.options[sel.selectedIndex].text.replace(/^🔌 /,''):null;
+      sel.disabled=true; sbPatch('ordenes_trabajo?id=eq.'+id,{ motivo_id:mid, motivo_cancelacion:mnom }).then(function(){ var o=(window._reAll||[]).filter(function(x){return String(x.id)===String(id);})[0]; if(o){ o.motivo_id=mid; o.motivo_cancelacion=mnom; } sel.disabled=false; sel.style.borderColor='#16a34a'; toast('Motivo guardado ✓'); }).catch(function(){ sel.disabled=false; toast('No se pudo guardar.'); }); }); });
+  }
+  function _reCSV(rows,clasif){
+    var head=['N°OT','Cliente','N°Cliente','Barrio','Cuadrilla','Fecha','Tipo','Estado','Motivo real','Observación','GPS'];
+    var lines=[head.join(';')].concat(rows.map(function(o){ var c=o.clientes||{}; var cl=clasif(o); var row=[o.numero,((c.nombre||'')+' '+(c.apellido||'')).trim(),c.numero_cliente||'',c.barrio||'',(o.cuadrillas?o.cuadrillas.nombre:''),fmtFecha(o.fin_tec_at),o.tipo||'',o.estado||'',(cl.nombre||'(sin clasificar)')+(cl.fijo?'':' (sugerido)'),(o.observaciones_tec||'').replace(/\s+/g,' '),((o.lat_fin&&o.lng_fin)?(o.lat_fin+','+o.lng_fin):'')]; return row.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(';'); }));
+    var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='estudio_rechazos.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+rows.length+')');
+  }
+  function _reMotivos(){
+    sbGet('motivos_ot?select=id,nombre,activo,fuera_cobertura,orden&categoria=eq.rechazo&order=orden').then(function(m){ m=Array.isArray(m)?m:[];
+      var h='<h2>⚙️ Motivos de rechazo</h2><p class="muted" style="font-size:13px">Editá el nombre, el orden, si está activo y si es "fuera de cobertura" (🔌, cuenta para el mapa).</p><div id="rm-list">';
+      h+=m.map(function(x){ return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px" data-id="'+x.id+'"><input class="rm-nom" value="'+esc(x.nombre)+'" style="flex:1"><input class="rm-ord" type="number" value="'+(x.orden||0)+'" style="width:60px" title="orden"><label style="font-size:11px;display:flex;align-items:center;gap:3px"><input type="checkbox" class="rm-fc" '+(x.fuera_cobertura?'checked':'')+' style="width:auto">🔌</label><label style="font-size:11px;display:flex;align-items:center;gap:3px"><input type="checkbox" class="rm-ac" '+(x.activo?'checked':'')+' style="width:auto">activo</label><button class="btn btn-ok rm-save" style="padding:3px 9px;font-size:12px">💾</button></div>'; }).join('');
+      h+='</div><div style="border-top:1px solid var(--bord);margin-top:10px;padding-top:10px"><div class="label">Agregar motivo</div><div style="display:flex;gap:6px;align-items:center"><input id="rm-new" placeholder="Nuevo motivo de rechazo" style="flex:1"><label style="font-size:11px;display:flex;align-items:center;gap:3px"><input type="checkbox" id="rm-new-fc" style="width:auto">🔌</label><button class="btn btn-ok" id="rm-add">➕</button></div></div>'
+        +'<div style="margin-top:14px;text-align:right"><button class="btn btn-2" id="rm-close">Cerrar</button></div>';
+      modal(h,'wide');
+      document.getElementById('rm-close').addEventListener('click',function(){ cerrarModal(); vRechazos(); });
+      Array.prototype.forEach.call(document.querySelectorAll('.rm-save'),function(b){ b.addEventListener('click',function(){ var row=b.closest('[data-id]'), id=row.getAttribute('data-id'); var body={ nombre:row.querySelector('.rm-nom').value.trim(), orden:Number(row.querySelector('.rm-ord').value)||0, fuera_cobertura:row.querySelector('.rm-fc').checked, activo:row.querySelector('.rm-ac').checked }; b.disabled=true; sbPatch('motivos_ot?id=eq.'+id,body).then(function(){ b.disabled=false; toast('Guardado ✓'); }).catch(function(){ b.disabled=false; toast('No se pudo guardar.'); }); }); });
+      document.getElementById('rm-add').addEventListener('click',function(){ var nom=document.getElementById('rm-new').value.trim(); if(!nom){ toast('Escribí el motivo.'); return; } var b=this; b.disabled=true; sbPost('motivos_ot',{ nombre:nom, categoria:'rechazo', activo:true, orden:999, fuera_cobertura:document.getElementById('rm-new-fc').checked }).then(function(){ toast('Agregado ✓'); _reMotivos(); }).catch(function(){ b.disabled=false; toast('No se pudo agregar.'); }); });
+    });
   }
   function vInformes(){
     if(!infState.desde) infState.desde=_mesInicioISO();
