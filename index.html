@@ -247,7 +247,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.60';
+  var VER='v3.61';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -518,7 +518,7 @@
       sbCount('solicitudes_alta?estado=eq.pendiente&select=id'),
       sbCount('clientes?codigo_ispcube=is.null&estado=neq.baja&select=id'),
       sbCount('ordenes_trabajo?estado=eq.EN_CURSO&area=eq.INTERNET&select=id'),
-      sbCount('ordenes_trabajo?estado=eq.CERRADA_TECNICO&select=id'),
+      sbCount('ordenes_trabajo?estado=in.(CERRADA_TECNICO,NO_REALIZADA)&validado_admin_at=is.null&area=eq.INTERNET&select=id'),
       sbCount('ordenes_trabajo?estado=in.(CERRADA_TECNICO,FINALIZADA)&fin_tec_at=gte.'+HOY+'T00:00:00&select=id'),
       // OTs abiertas asignadas (para detectar huérfanas de cuadrilla desactivada y las sin fecha coordinada)
       sbGet('ordenes_trabajo?estado=in.(ASIGNADA,EN_CURSO,CERRADA_TECNICO)&area=eq.INTERNET&cuadrilla_id=not.is.null&select=id,numero,estado,fecha_agendada,cuadrilla_id&limit=3000'),
@@ -526,12 +526,14 @@
       sbCount('isp_tickets?estado_nexa=eq.nuevo&select=id').catch(function(){return 0;}),
       sbCount('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&select=id').catch(function(){return 0;}),
       sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&solicitudes_alta.dia_preferido=not.is.null&select=id,solicitudes_alta!inner(dia_preferido)').catch(function(){return 0;}),
-      sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&fecha_agendada=not.is.null&select=id').catch(function(){return 0;})
+      sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&fecha_agendada=not.is.null&select=id').catch(function(){return 0;}),
+      // solapamiento: con fecha_agendada Y además coordinada por el cliente (dia_preferido) → se descuenta de "Coordinadas (admin)" para que el número coincida con la lista
+      sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&fecha_agendada=not.is.null&select=id,solicitudes_alta!inner(dia_preferido)&solicitudes_alta.dia_preferido=not.is.null').catch(function(){return 0;})
     ]).then(function(c){
       var pend=Array.isArray(c[0])?c[0]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0, coordN=c[10]||0, adminCoordN=c[11]||0;
+      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0, coordN=c[10]||0, adminCoordN=Math.max(0,(c[11]||0)-(c[12]||0));
       var openA=c[6]||[]; var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var huer=openA.filter(function(o){ return !_act[o.cuadrilla_id]; });
       var sinCoord=openA.filter(function(o){ return _act[o.cuadrilla_id] && !o.fecha_agendada; });
@@ -559,16 +561,16 @@
         // ===== GESTIÓN / BACKLOG (arriba: lo pendiente es lo importante) =====
         +'<div class="dash-sec">📋 Gestión / Backlog</div>'
         +'<div class="dkpis">'
-          +dkpi(totalPend,'Pendientes','OTs sin terminar (asignadas o no)','amber','ot|PENDIENTE')
+          +dkpi(totalPend,'Pendientes','OTs sin terminar (asignadas o no)','amber','ot|BACKLOG')
           +dkpi(solic,'Solicitudes','pendientes de convertir','cyan','sol')
           +dkpi(faltaIsp,'Falta ISPcube','clientes sin código','red','isp')
         +'</div>'
         +'<div class="dash-sec">📋 Pendientes por tipo <span class="dash-sec-r">backlog real — todo lo sin terminar, esté asignado o no</span></div><div class="dkpis">'
-          +Object.keys(porTipo).sort(function(a,b){return porTipo[b]-porTipo[a];}).map(function(t){ return dkpi(porTipo[t], (_PEND_STY[t]?_PEND_STY[t][1]:t), '', 'gray', 'ot|PENDIENTE|'+t); }).join('')
+          +Object.keys(porTipo).sort(function(a,b){return porTipo[b]-porTipo[a];}).map(function(t){ return dkpi(porTipo[t], (_PEND_STY[t]?_PEND_STY[t][1]:t), '', 'gray', 'ot|BACKLOG|'+t); }).join('')
           +dkpi(descoN,'✂️ Desconexiones','bajas a cortar','red','nav|desconexiones')
         +'</div>'
         +'<div class="dash-sec">Antigüedad de pendientes</div><div class="dkpis">'
-          +dkpi(ag.a,'&lt; 24 hs',pct(ag.a),'green','ot|PENDIENTE||a')+dkpi(ag.b,'24 a 72 hs',pct(ag.b),'amber','ot|PENDIENTE||b')+dkpi(ag.d,'&gt; 72 hs ⚠️',pct(ag.d),'red','ot|PENDIENTE||d')
+          +dkpi(ag.a,'&lt; 24 hs',pct(ag.a),'green','ot|BACKLOG||a')+dkpi(ag.b,'24 a 72 hs',pct(ag.b),'amber','ot|BACKLOG||b')+dkpi(ag.d,'&gt; 72 hs ⚠️',pct(ag.d),'red','ot|BACKLOG||d')
         +'</div>'
         // ===== OPERACIÓN POR DÍA (navegable) — Internet + Servicios, abajo =====
         +'<div id="dash-dia"></div>'
@@ -1672,7 +1674,7 @@
     view.innerHTML='<h1>Órdenes de trabajo</h1><p class="sub">Generación y seguimiento.</p>'
       +'<div class="toolbar">'
       +'<input id="ot-q" placeholder="🔎 Buscar N° OT, cliente, DNI, domicilio, barrio, tel…" value="'+esc(otState.q||'')+'" style="min-width:280px;flex:1">'
-      +'<select id="ot-estado"><option value="">Todos los estados</option>'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],otState.estado)+'</select>'
+      +'<select id="ot-estado"><option value="">Todos los estados</option><option value="BACKLOG"'+(otState.estado==='BACKLOG'?' selected':'')+'>Sin terminar (pend.+asig.+curso)</option>'+opt(['PENDIENTE','ASIGNADA','EN_CURSO','CERRADA_TECNICO','FINALIZADA','CANCELADA','NO_REALIZADA'],otState.estado)+'</select>'
       +'<select id="ot-filtro-tipo"><option value=""'+(otState.tipo?'':' selected')+'>Todos los tipos</option>'+opt(OT_TIPOS,otState.tipo)+'</select>'
       +'<select id="ot-filtro-antig"><option value="">Cualquier antigüedad</option><option value="a"'+(otState.antig==='a'?' selected':'')+'>&lt; 24 hs</option><option value="b"'+(otState.antig==='b'?' selected':'')+'>24 a 72 hs</option><option value="d"'+(otState.antig==='d'?' selected':'')+'>&gt; 72 hs</option></select>'
       +'<select id="ot-cuad"><option value="">Todas las cuadrillas</option>'+(REF.cuadrillas||[]).map(function(c){return '<option value="'+c.id+'"'+(String(otState.cuad)===String(c.id)?' selected':'')+'>'+esc(c.nombre)+'</option>';}).join('')+'</select>'
@@ -1696,7 +1698,8 @@
   function cargarOT(){
     var cont=document.getElementById('ot-tabla'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
     var base='select=id,numero,tipo,estado,prioridad,fecha_agendada,hora_agendada,created_at,solicitud_id,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,doc_numero,nombre,apellido,telefono,domicilio_full,barrio,tv_online,pack_futbol),cuadrillas(nombre),solicitudes_alta(dia_preferido,franja_preferida),planes(nombre,bajada_mbps)&area=eq.INTERNET';
-    if(otState.estado) base+='&estado=eq.'+otState.estado;
+    if(otState.estado==='BACKLOG') base+='&estado=in.(PENDIENTE,ASIGNADA,EN_CURSO)';   // "sin terminar" = igual que el conteo del dashboard
+    else if(otState.estado) base+='&estado=eq.'+otState.estado;
     if(otState.tipo) base+='&tipo=eq.'+otState.tipo;
     base+='&order=id.asc';   // orden estable para paginar (el cliente re-ordena según la columna elegida)
     // Traemos TODAS las que matchean (paginando: Supabase corta en 1000 por request; sbGetAll junta todas las páginas)
