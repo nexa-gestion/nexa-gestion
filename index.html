@@ -249,7 +249,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.69';
+  var VER='v3.70';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -3518,15 +3518,18 @@
     // resumen
     var res={}; rows.forEach(function(o){ var c=clasif(o); var k=c.nombre||'(sin clasificar)'; res[k]=(res[k]||0)+1; });
     var resArr=Object.keys(res).map(function(k){return [k,res[k]];}).sort(function(a,b){return b[1]-a[1];});
+    var filtM=window._reEstado.motivoFiltro||'';
+    var listRows=filtM?rows.filter(function(o){ var n=clasif(o).nombre||'(sin clasificar)'; return n===filtM; }):rows;
     var catNoClas=cat.length?'':' <span style="color:#dc2626">⚠️ Corré nexa_motivos_rechazo.sql para cargar el catálogo</span>';
     var h='<h1>📋 Estudio de rechazos</h1><p class="sub">Motivo real sacado de la observación del técnico. Elegí el motivo definitivo en cada uno (queda normalizado para el mapa).'+catNoClas+'</p>'
       +'<div class="toolbar" style="gap:8px;align-items:center"><label class="l" style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px"><input type="checkbox" id="re-inst"'+(soloInst?' checked':'')+' style="width:auto"> solo instalaciones</label><button class="btn btn-2 btn-sm" id="re-map-btn">🗺️ Mapa de expansión</button><button class="btn btn-2 btn-sm" id="re-mot">⚙️ Motivos</button><button class="btn btn-2 btn-sm" id="re-csv">⬇️ Excel</button><span class="muted" style="font-size:12px">'+rows.length+' rechazo(s)</span></div>'
       +'<div id="re-map-wrap" data-on="0" style="display:none;margin:10px 0"></div>';
     // tarjeta resumen
     var maxR=resArr.length?resArr[0][1]:1;
-    h+='<div class="card" style="margin:10px 0"><div class="label">Motivo real (clasificado + sugerido)</div>'+resArr.map(function(m){ var fc=(catByNom[m[0]]&&catByNom[m[0]].fuera_cobertura); return '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px"><span style="width:250px;flex-shrink:0">'+(fc?'🔌 ':'')+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:15px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxR*100)+'%;background:'+(fc?'#d97706':'#2563eb')+';height:100%"></div></div><b style="width:34px;text-align:right">'+m[1]+'</b></div>'; }).join('')+'<div class="muted" style="font-size:11.5px;margin-top:6px">🔌 = fuera de cobertura (sirve para el mapa de dónde cablear). "⟳" en la lista = sugerencia automática sin confirmar.</div></div>';
+    h+='<div class="card" style="margin:10px 0"><div class="label">Motivo real (clasificado + sugerido) <span class="muted" style="font-weight:400;font-size:12px">· tocá un motivo para filtrar</span></div>'+resArr.map(function(m){ var fc=(catByNom[m[0]]&&catByNom[m[0]].fuera_cobertura); var on=(filtM===m[0]); return '<div class="re-mbar" data-mot="'+esc(m[0])+'" style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px;cursor:pointer;padding:2px 4px;border-radius:6px'+(on?';background:#eff6ff;outline:1px solid #bfdbfe':'')+'"><span style="width:250px;flex-shrink:0">'+(fc?'🔌 ':'')+esc(m[0])+'</span><div style="background:#eef2f7;border-radius:6px;height:15px;flex:1;overflow:hidden"><div style="width:'+Math.round(m[1]/maxR*100)+'%;background:'+(fc?'#d97706':'#2563eb')+';height:100%"></div></div><b style="width:34px;text-align:right">'+m[1]+'</b></div>'; }).join('')+'<div class="muted" style="font-size:11.5px;margin-top:6px">🔌 = fuera de cobertura (sirve para el mapa de dónde cablear). "⟳" en la lista = sugerencia automática sin confirmar.</div></div>';
     // lista
-    h+=rows.map(function(o){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim(); var cl=clasif(o);
+    if(filtM) h+='<div style="margin:6px 0"><span style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:999px;padding:3px 11px;font-size:12.5px;font-weight:700">Filtrado: '+esc(filtM)+' ('+listRows.length+') <a href="#" id="re-clr" style="color:#1d4ed8;text-decoration:none">✕</a></span></div>';
+    h+=listRows.map(function(o){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim(); var cl=clasif(o);
       var opts='<option value="">— elegir motivo —</option>'+cat.map(function(m){ var sel=(o.motivo_id===m.id)||(!o.motivo_id&&cl.nombre===m.nombre); return '<option value="'+m.id+'"'+(sel?' selected':'')+'>'+(m.fuera_cobertura?'🔌 ':'')+esc(m.nombre)+'</option>'; }).join('');
       return '<div class="card" style="margin-bottom:8px;padding:11px">'
         +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">'
@@ -3539,7 +3542,9 @@
     document.getElementById('re-inst').addEventListener('change',function(){ window._reEstado.soloInst=this.checked; _reRender(); });
     document.getElementById('re-map-btn').addEventListener('click',_reMapa);
     document.getElementById('re-mot').addEventListener('click',_reMotivos);
-    document.getElementById('re-csv').addEventListener('click',function(){ _reCSV(rows,clasif); });
+    document.getElementById('re-csv').addEventListener('click',function(){ _reCSV(listRows,clasif); });
+    Array.prototype.forEach.call(view.querySelectorAll('.re-mbar'),function(el){ el.addEventListener('click',function(){ var m=el.getAttribute('data-mot'); window._reEstado.motivoFiltro=(window._reEstado.motivoFiltro===m?'':m); _reRender(); }); });
+    var clr=document.getElementById('re-clr'); if(clr) clr.addEventListener('click',function(e){ e.preventDefault(); window._reEstado.motivoFiltro=''; _reRender(); });
     Array.prototype.forEach.call(view.querySelectorAll('.re-cli'),function(el){ el.addEventListener('click',function(){ var id=el.getAttribute('data-cli'); if(id&&typeof fichaCliente==='function') fichaCliente(id); }); });
     Array.prototype.forEach.call(view.querySelectorAll('.re-set'),function(sel){ sel.addEventListener('change',function(){ var id=sel.getAttribute('data-id'), mid=sel.value?Number(sel.value):null, mnom=sel.value?sel.options[sel.selectedIndex].text.replace(/^🔌 /,''):null;
       sel.disabled=true; sbPatch('ordenes_trabajo?id=eq.'+id,{ motivo_id:mid, motivo_cancelacion:mnom }).then(function(){ var o=(window._reAll||[]).filter(function(x){return String(x.id)===String(id);})[0]; if(o){ o.motivo_id=mid; o.motivo_cancelacion=mnom; } sel.disabled=false; sel.style.borderColor='#16a34a'; toast('Motivo guardado ✓'); }).catch(function(){ sel.disabled=false; toast('No se pudo guardar.'); }); }); });
