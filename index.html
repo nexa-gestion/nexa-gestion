@@ -248,7 +248,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.66';
+  var VER='v3.67';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -468,7 +468,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,recuperables:vRecuperables,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -529,12 +529,13 @@
       sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&solicitudes_alta.dia_preferido=not.is.null&select=id,solicitudes_alta!inner(dia_preferido)').catch(function(){return 0;}),
       sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&fecha_agendada=not.is.null&select=id').catch(function(){return 0;}),
       // solapamiento: con fecha_agendada Y además coordinada por el cliente (dia_preferido) → se descuenta de "Coordinadas (admin)" para que el número coincida con la lista
-      sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&fecha_agendada=not.is.null&select=id,solicitudes_alta!inner(dia_preferido)&solicitudes_alta.dia_preferido=not.is.null').catch(function(){return 0;})
+      sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&fecha_agendada=not.is.null&select=id,solicitudes_alta!inner(dia_preferido)&solicitudes_alta.dia_preferido=not.is.null').catch(function(){return 0;}),
+      sbCount('ordenes_trabajo?recuperable=is.true&recuperable_resuelto_at=is.null&select=id').catch(function(){return 0;})
     ]).then(function(c){
       var pend=Array.isArray(c[0])?c[0]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0, coordN=c[10]||0, adminCoordN=Math.max(0,(c[11]||0)-(c[12]||0));
+      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0, coordN=c[10]||0, adminCoordN=Math.max(0,(c[11]||0)-(c[12]||0)), recupN=c[13]||0;
       var openA=c[6]||[]; var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var huer=openA.filter(function(o){ return !_act[o.cuadrilla_id]; });
       var sinCoord=openA.filter(function(o){ return _act[o.cuadrilla_id] && !o.fecha_agendada; });
@@ -565,6 +566,7 @@
           +dkpi(totalPend,'Pendientes','OTs sin terminar (asignadas o no)','amber','ot|BACKLOG')
           +dkpi(solic,'Solicitudes','pendientes de convertir','cyan','sol')
           +dkpi(faltaIsp,'Falta ISPcube','clientes sin código','red','isp')
+          +dkpi(recupN,'🔧 A solucionar','trabajos recuperables (no se perdieron)','amber','nav|recuperables')
         +'</div>'
         +'<div class="dash-sec">📋 Pendientes por tipo <span class="dash-sec-r">backlog real — todo lo sin terminar, esté asignado o no</span></div><div class="dkpis">'
           +Object.keys(porTipo).sort(function(a,b){return porTipo[b]-porTipo[a];}).map(function(t){ return dkpi(porTipo[t], (_PEND_STY[t]?_PEND_STY[t][1]:t), '', 'gray', 'ot|BACKLOG|'+t); }).join('')
@@ -891,7 +893,7 @@
         var esRech=(o.estado==='NO_REALIZADA');
         h+='<div class="toolbar" style="margin-top:12px;flex-wrap:wrap">'
           +(esRech
-             ? '<button class="btn btn-x" id="vd-baja" style="font-size:15px;padding:11px 26px">🚫 Dar de baja el pedido</button>'
+             ? '<button class="btn btn-x" id="vd-baja" style="font-size:15px;padding:11px 26px">🚫 Dar de baja el pedido</button><button class="btn btn-2" id="vd-recup" style="border-color:#d97706;color:#b45309;font-size:15px;padding:11px 20px" title="El trabajo se puede hacer (ej. había puerto) — queda en la lista A solucionar del dashboard">⚠️ A solucionar</button>'
              : '<button class="btn btn-ok" id="vd-validar" style="font-size:15px;padding:11px 26px">✅ Validar y finalizar</button>')
           +'<button class="btn btn-2" id="vd-reasig">🔄 Reasignar</button><button class="btn btn-2" id="vd-devolver">↩️ Devolver al pool</button><button class="btn btn-ok" id="vd-print">🖨️ Imprimir OT</button></div>';
         view.innerHTML=h;
@@ -928,6 +930,12 @@
           var b=this; if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Dar de baja el pedido? Tocá de nuevo'; return; }
           b.disabled=true; b.textContent='Dando de baja…';
           sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'CANCELADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id }).then(function(){ logOT(o.id,'CAMBIO_ESTADO',{de:o.estado,a:'CANCELADA',cuadId:o.cuadrilla_id,detalle:'Pedido dado de baja desde validación (no realizada · '+(o.motivo_cancelacion||'sin motivo')+')'}); toast('Pedido dado de baja ✓'); vValidacion(); }).catch(function(){ b.disabled=false; b.textContent='🚫 Dar de baja el pedido'; toast('No se pudo dar de baja.'); });
+        });
+        var vr=document.getElementById('vd-recup'); if(vr) vr.addEventListener('click',function(){
+          var nota=prompt('¿Por qué SE PUEDE hacer este trabajo? (queda en la lista "A solucionar" del dashboard)\nEj: había puerto en otra caja / faltó coordinar con el cliente / revisar acometida', '');
+          if(nota===null) return;
+          var b=this; b.disabled=true; b.textContent='Guardando…';
+          sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'CANCELADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id, recuperable:true, recuperable_obs:(nota.trim()||null), recuperable_at:new Date().toISOString(), recuperable_por:USER.id }).then(function(){ logOT(o.id,'CAMBIO_ESTADO',{de:o.estado,a:'CANCELADA',cuadId:o.cuadrilla_id,detalle:'Marcada A SOLUCIONAR desde validación'+(nota.trim()?(' · '+nota.trim()):'')}); toast('⚠️ Marcada A solucionar ✓'); vValidacion(); }).catch(function(){ b.disabled=false; b.textContent='⚠️ A solucionar'; toast('No se pudo marcar (¿corriste el SQL de recuperables?).'); });
         });
       });
     });
@@ -3436,6 +3444,43 @@
     }
     if(!rows.length){ cont.innerHTML='<div class="card center muted">Sin trabajos cerrados en el período.</div>'; return; }
     pintar();
+  }
+
+  // ══════════ 🔧 A SOLUCIONAR ══════════ (OTs no realizadas que SÍ se pueden hacer — recuperables)
+  function vRecuperables(){
+    loading();
+    sbGetAll('ordenes_trabajo?recuperable=is.true&recuperable_resuelto_at=is.null&select=id,numero,tipo,estado,recuperable_obs,recuperable_at,motivo_cancelacion,observaciones_tec,fin_tec_at,cuadrilla_id,cliente_id,cuadrillas(nombre),clientes(id,numero_cliente,nombre,apellido,barrio,telefono,estado,codigo_ispcube)&order=recuperable_at.desc.nullslast').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var h='<h1>🔧 A solucionar</h1><p class="sub">Trabajos que no se hicieron pero SE PUEDEN hacer — para que no se pierdan. '+d.length+' caso(s).</p>';
+      if(!d.length){ view.innerHTML=h+'<div class="card center muted">No hay casos a solucionar. 🎉</div>'; return; }
+      h+=d.map(function(o){ var c=o.clientes||{}; var nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+        return '<div class="card" style="margin-bottom:10px">'
+          +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">'
+            +'<div><div style="font-weight:700;font-size:15px"><span class="rec-cli" data-cli="'+(c.id||'')+'" style="color:#2563eb;cursor:pointer">'+esc(nom||('Cliente '+(c.numero_cliente||'')))+'</span> <span class="muted" style="font-weight:400;font-size:12px">· N° '+esc(c.numero_cliente||'')+' · '+esc(c.barrio||'—')+' · '+pill(c.estado)+'</span></div>'
+            +'<div style="font-size:12px;color:#64748b;margin-top:2px">OT N° '+esc(o.numero)+' · '+esc(o.tipo||'')+' · '+esc(o.cuadrillas?o.cuadrillas.nombre:'sin cuadrilla')+' · '+esc(fmtFecha(o.fin_tec_at||o.recuperable_at))+'</div></div>'
+            +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ok btn-sm rec-gen" data-id="'+o.id+'" data-cli="'+(c.id||'')+'">🔧 Generar OT</button><button class="btn btn-2 btn-sm rec-ok" data-id="'+o.id+'">✅ Resuelto</button></div>'
+          +'</div>'
+          +(o.recuperable_obs?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:7px 10px;margin-top:8px;font-size:13px"><b>Por qué se puede:</b> '+esc(o.recuperable_obs)+'</div>':'')
+          +(o.observaciones_tec?'<div class="muted" style="font-size:12px;margin-top:5px">🗒️ Técnico: '+esc(o.observaciones_tec)+'</div>':'')
+        +'</div>'; }).join('');
+      view.innerHTML=h;
+      Array.prototype.forEach.call(view.querySelectorAll('.rec-cli'),function(el){ el.addEventListener('click',function(){ var id=el.getAttribute('data-cli'); if(id&&typeof fichaCliente==='function') fichaCliente(id); }); });
+      Array.prototype.forEach.call(view.querySelectorAll('.rec-ok'),function(b){ b.addEventListener('click',function(){ _recResolver(b.getAttribute('data-id'),null); }); });
+      Array.prototype.forEach.call(view.querySelectorAll('.rec-gen'),function(b){ b.addEventListener('click',function(){ _recGenerar(b.getAttribute('data-id'),b.getAttribute('data-cli')); }); });
+    }).catch(function(){ view.innerHTML='<h1>🔧 A solucionar</h1><div class="center" style="color:var(--rojo)">No se pudo cargar (¿corriste el SQL de recuperables?).</div>'; });
+  }
+  function _recResolver(otId, nuevaOtId){
+    sbPatch('ordenes_trabajo?id=eq.'+otId,{ recuperable_resuelto_at:new Date().toISOString(), recuperable_resuelto_por:USER.id }).then(function(){ logOT(otId,'CAMBIO_ESTADO',{detalle:'Caso "A solucionar" resuelto'+(nuevaOtId?' · OT nueva generada':'')}); toast('✅ Resuelto'); vRecuperables(); }).catch(function(){ toast('No se pudo marcar resuelto.'); });
+  }
+  function _recGenerar(otId, cliId){
+    if(!cliId){ toast('Ese caso no tiene cliente vinculado.'); return; }
+    if(!confirm('¿Generar una OT de instalación nueva (PENDIENTE) para este cliente y marcar el caso como resuelto?')) return;
+    sbPost('ordenes_trabajo',{ cliente_id:Number(cliId), tipo:'INSTALACION', estado:'PENDIENTE', prioridad:'NORMAL', area:'INTERNET', descripcion:'Reinstalación (recuperada de OT N° a solucionar)', created_by:USER.id }).then(function(r){
+      var nueva=(Array.isArray(r)&&r[0])?r[0]:null;
+      if(nueva&&nueva.id) logOT(nueva.id,'CREAR',{detalle:'OT generada desde "A solucionar"'});
+      _recResolver(otId, nueva?nueva.id:true);
+      toast('🔧 OT de instalación generada ✓');
+    }).catch(function(){ toast('No se pudo generar la OT.'); });
   }
   function vInformes(){
     if(!infState.desde) infState.desde=_mesInicioISO();
