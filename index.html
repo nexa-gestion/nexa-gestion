@@ -247,7 +247,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.63';
+  var VER='v3.64';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1112,6 +1112,7 @@
     {k:'caja_nap',t:'Caja',ord:'caja_nap',r:function(c){return esc(c.caja_nap||'');}},
     {k:'puerto',t:'Puerto',ord:'puerto',r:function(c){return esc(c.puerto||'');}},
     {k:'precinto',t:'Precinto',ord:'precinto',r:function(c){return esc(c.precinto||'');}},
+    {k:'deuda',t:'Deuda',ord:'deuda',r:function(c){var d=Number(c.deuda||0); return d>0?('<b style="color:#dc2626">$'+Math.round(d).toLocaleString('es-AR')+'</b>'):'<span class="muted">$0</span>';}},
     {k:'estado',t:'Estado',ord:'estado',r:function(c){var isp=c.codigo_ispcube?'':' <span class="pill p-bloqueado" title="Falta cargar en ISPcube">⚠️ ISP</span>'; return pill(c.estado)+isp;}}
   ];
   var CL_COLS_DEF=['numero_cliente','nombre','doc_numero','domicilio_full','telefono','plan','barrio','empresa','estado'];
@@ -1222,7 +1223,8 @@
     clState.tec=document.getElementById('cl-tec').value;
   }
   function clQuery(){
-    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,domicilio_full,codigo_ispcube,caja_nap,puerto,precinto,tecnologia,planes(nombre)','order='+(clState.orderBy||'numero_cliente')+'.'+(clState.orderDir||'desc')];
+    var _ob=(clState.orderBy||'numero_cliente'), _od=(clState.orderDir||'desc'), _nl=(_ob==='deuda')?'.nullslast':'';
+    var p=['select=id,numero_cliente,nombre,apellido,doc_numero,telefono,estado,empresa,barrio,domicilio_full,codigo_ispcube,caja_nap,puerto,precinto,tecnologia,deuda,planes(nombre)','order='+_ob+'.'+_od+_nl];
     if(clState.estado) p.push('estado=eq.'+clState.estado);
     else p.push('estado=neq.eliminado');   // por defecto, ocultar los eliminados de ISPcube (salvo que se filtre por ese estado)
     if(clState.empresa) p.push('empresa=eq.'+encodeURIComponent(clState.empresa));
