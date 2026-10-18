@@ -148,7 +148,7 @@ def fetch_nexa():
     out, page = {}, 0
     while True:
         r = urllib.request.Request(
-            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde,plan_id&codigo_ispcube=not.is.null&order=id.asc",
+            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde,plan_id,empresa&codigo_ispcube=not.is.null&order=id.asc",
             headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
         chunk = json.load(urllib.request.urlopen(r, timeout=60))
         for c in chunk: out[_ncode(c["codigo_ispcube"])] = c
@@ -191,6 +191,14 @@ def barrio_de(addr):
     addr = (addr or "").strip()
     return addr.split(" - ")[0].strip() if " - " in addr else None
 
+def _biz(c):
+    # Empresa REAL que factura en ISPcube (FG Conexiones / NOR-TEL / NEXA SAS).
+    # ISPcube la manda como dict {id,name} o como string. Normalizo (saco el punto final).
+    b = c.get("business")
+    n = (b.get("name") if isinstance(b, dict) else b) or ""
+    n = str(n).strip().rstrip(".").strip()
+    return n or None
+
 def nuevo_cliente(c, planes, bemap, portmap=None):
     code = _ncode(c.get("code"))
     addr = c.get("address") or c.get("tax_residence")
@@ -205,7 +213,7 @@ def nuevo_cliente(c, planes, bemap, portmap=None):
         "telefono": (c.get("phones") or [{}])[0].get("number") if c.get("phones") else None,
         "email": (c.get("contact_emails") or [{}])[0].get("email") if c.get("contact_emails") else None,
         "domicilio_full": addr, "barrio": barrio,
-        "empresa": bemap.get(barrio),
+        "empresa": _biz(c) or bemap.get(barrio),   # empresa real de ISPcube; si no viene, se infiere por barrio
         "nodo": c.get("node_name"),
         "plan_id": planes.get(plan),
         "tecnologia": "FTTH" if "FTTH" in (plan or "").upper() else ("INALAMBRICO" if "WIFI" in (plan or "").upper() else None),
@@ -763,6 +771,8 @@ def main():
                 upd["bloqueado_desde"] = None
             if cur["estado"] == "eliminado": upd["eliminado_isp_at"] = None   # reapareció en ISPcube → revivir
             if deu is not None and float(deu) != float(cur.get("deuda") or 0): upd["deuda"] = deu
+            bizn = _biz(c)   # empresa real que factura en ISPcube → mantener al día (antes se infería por barrio)
+            if bizn and bizn != (cur.get("empresa") or ""): upd["empresa"] = bizn
             cx = conex(c, portmap)
             for f in ("caja_nap", "puerto", "precinto"):
                 if cx[f] and cx[f] != (cur.get(f) or None): upd[f] = cx[f]
