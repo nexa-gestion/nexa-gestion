@@ -247,7 +247,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.61';
+  var VER='v3.62';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1345,7 +1345,27 @@
           +'<div class="muted" style="margin:6px 0">Cuando lo des de alta en ISPcube, pegá acá su N° para marcarlo como cargado.</div>'
           +'<div style="display:flex;gap:8px"><input id="f-isp" placeholder="N° de cliente en ISPcube" style="flex:1"><button class="btn btn-ok" id="f-isp-save">Guardar</button></div></div>';
       var cNom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+      // ── 💳 Cuenta: saldo de ISPcube + datos de cobranza (defensivo: muestra lo que esté sincronizado) ──
+      var _dv=Number(c.deuda||0);
+      var _blqD=c.bloqueado_desde?Math.round((Date.now()-new Date(c.bloqueado_desde))/86400000):null;
+      var _deuD=c.deuda_fecha?Math.round((Date.now()-new Date(c.deuda_fecha))/86400000):null;
+      var _chip=function(t){ return '<span style="background:#fff;border:1px solid var(--bord);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;white-space:nowrap">'+t+'</span>'; };
+      var _chips=[];
+      if(c.deuda_fecha) _chips.push(_chip('🗓️ Deuda al '+fmtFecha(c.deuda_fecha)));
+      if(_blqD!=null) _chips.push(_chip('⛔ Bloqueado hace '+_blqD+'d'));
+      if(c.medio_pago) _chips.push(_chip('💳 '+esc(c.medio_pago)));
+      if(c.aplica_mora!=null && c.aplica_mora!=='') _chips.push(_chip('⚠️ Mora: '+(c.aplica_mora?'sí':'no')));
+      if(c.plan_precio) _chips.push(_chip('📄 Plan '+_money(c.plan_precio)));
+      if(c.pago_detectado_at) _chips.push(_chip('✅ Últ. pago detectado '+fmtFecha(c.pago_detectado_at)));
+      var _saldoBox=(_dv>0)
+        ? '<div style="font-size:30px;font-weight:800;color:#dc2626;line-height:1">'+_money(_dv)+'</div><div style="font-size:11px;color:#991b1b;font-weight:600;text-align:right">saldo deudor</div>'
+        : '<div style="font-size:24px;font-weight:800;color:#16a34a;line-height:1">Al día ✓</div><div style="font-size:11px;color:#15803d;font-weight:600;text-align:right">sin deuda</div>';
+      var cuentaHtml='<div class="card" style="margin:10px 0;padding:14px;background:'+(_dv>0?'#fff7f7':'#f6fef9')+'">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="font-weight:700;color:#334155;font-size:14px">💳 Cuenta</div><div>'+_saldoBox+'</div></div>'
+        +(_chips.length?('<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">'+_chips.join('')+'</div>'):'')
+        +'<div class="muted" style="font-size:11px;margin-top:9px">Saldo y datos de ISPcube (último sync). El <b>detalle de facturas y cobranzas</b> (cta cte) se sumará cuando ISPcube habilite el endpoint por API.</div></div>';
       modal('<h2>Cliente N° '+esc(c.numero_cliente)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+esc(cNom)+' · '+pill(c.estado)+(c.telefono?waLink(c.telefono,cNom,'',c.domicilio_full,'WhatsApp'):'')+'</p>'
+        +cuentaHtml
         +'<div class="fichagrid">'+fr('Empresa',c.empresa)+fr('Documento',(c.tipo_doc||'')+' '+(c.doc_numero||''))+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(c.telefono||'—')+' '+waLink(c.telefono,cNom,'',_domLimpio(c.domicilio_full))+'</span></div>'+fr('Email',c.email)
         +fr('Domicilio',_domLimpio(c.domicilio_full))+fr('Barrio',c.barrio)
         +'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(c.lat,c.lng)+'</span></div>'+fr('Nodo',c.nodo)
