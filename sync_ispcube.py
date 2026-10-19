@@ -487,7 +487,7 @@ def generar_desconexiones_pendientes():
         yaset = set()
         for i in range(0, len(cand_ids), 150):
             part = ",".join(str(x) for x in cand_ids[i:i+150])
-            r = sb_get("desconexiones?cliente_id=in.(%s)&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO,COMPROMISO_PAGO,IMPOSIBLE,MIGRACION_508)&select=cliente_id&limit=2000" % part)
+            r = sb_get("desconexiones?cliente_id=in.(%s)&estado=in.(PENDIENTE,ASIGNADA,PARCIAL,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO,COMPROMISO_PAGO,IMPOSIBLE,MIGRACION_508)&select=cliente_id&limit=2000" % part)
             for x in (r or []): yaset.add(x["cliente_id"])
     except Exception as e:
         print("WARN generar_desconexiones:", e); return 0
@@ -601,7 +601,7 @@ def cerrar_desconexiones_por_retiro():
                 "cuadrilla_id": ot.get("cuadrilla_id"), "obs_tecnico": "Corte/retiro hecho por OT N %s" % ot.get("numero"),
                 "compromiso_vence": None}
         abierta = next((x for x in dxs if x["estado"] in ("PENDIENTE", "ASIGNADA")), None)
-        en_flujo_o_resuelta = any(x["estado"] in ("PENDIENTE_ADMIN", "EN_REVISION", "FINALIZADO", "CANCELADA", "ANULADA_PAGO") for x in dxs)
+        en_flujo_o_resuelta = any(x["estado"] in ("PARCIAL", "PENDIENTE_ADMIN", "EN_REVISION", "FINALIZADO", "CANCELADA", "ANULADA_PAGO") for x in dxs)
         if abierta:
             avanzar.append((abierta["id"], body))
         elif not en_flujo_o_resuelta:

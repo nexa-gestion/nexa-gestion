@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.53</title>
+<title>Nexa · Técnico — v0.54</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.53';
+  var VER='v0.54';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -73,6 +73,7 @@
   function sbPatch(p,b){ return fetch(SB_URL+'/rest/v1/'+p,{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(b)}).then(function(r){return r.json();}); }
   // como sbPatch pero RECHAZA si el server da error → para escrituras críticas que no deben pasar de largo
   function sbPatchOk(p,b){ return fetch(SB_URL+'/rest/v1/'+p,{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(b)}).then(function(r){ if(!r.ok) return r.text().then(function(t){ throw new Error('PATCH '+r.status+' '+t); }); return r.json(); }); }
+  function sbPostOk(p,b){ return fetch(SB_URL+'/rest/v1/'+p,{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=representation'}),body:JSON.stringify(b)}).then(function(r){ if(!r.ok) return r.text().then(function(t){ throw new Error('POST '+r.status+' '+t); }); return r.json(); }); }
   function getGPS(){ return new Promise(function(res){ if(!navigator.geolocation){res(null);return;} navigator.geolocation.getCurrentPosition(function(p){res({lat:+p.coords.latitude.toFixed(6),lng:+p.coords.longitude.toFixed(6)});},function(){res(null);},{enableHighAccuracy:true,timeout:20000,maximumAge:30000}); }); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2400); }
@@ -954,7 +955,7 @@
     if(desconState.list) renderDescon(); else cargarDescon();
   }
   function cargarDescon(){
-    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,gestion_obs,telefono_contacto,intentos_count,intentos_obs,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
+    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PARCIAL)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,gestion_obs,telefono_contacto,intentos_count,intentos_obs,nap_cortada,recupero_equipo,parte_pendiente,equipo_serial,equipo_motivo,nap_motivo,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       desconState.list=d; renderDescon();
       _dxOrdenarGPS(true);   // intento automático de ordenar por cercanía (no bloquea la lista)
@@ -990,7 +991,9 @@
     var ic=o.intentos_count||0;
     var semCol=(ic>=2?'#f97316':(ic===1?'#eab308':'#16a34a'));
     var semBadge=(ic>0?('<span class="badge-tt" style="background:'+(ic>=2?'#ffedd5':'#fef9c3')+';color:'+(ic>=2?'#9a3412':'#854d0e')+'">✗ '+ic+' intento'+(ic>1?'s':'')+'</span>'):'');
-    return '<div class="ot cli-card" data-id="'+o.id+'" style="border-left:5px solid '+semCol+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+' '+semBadge+' '+sinUbic+'</div></div>'
+    var mediaBadge=(o.estado==='PARCIAL'?('<span class="badge-tt" style="background:#ffedd5;color:#9a3412">🔶 a medias · falta '+(o.parte_pendiente==='NAP'?'cortar NAP':'retirar equipo')+'</span>'):'');
+    if(o.estado==='PARCIAL') semCol='#ea580c';
+    return '<div class="ot cli-card" data-id="'+o.id+'" style="border-left:5px solid '+semCol+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+' '+mediaBadge+' '+semBadge+' '+sinUbic+'</div></div>'
       +'<div class="cli">'+esc(nom)+'</div>'+(c.domicilio_full?'<div class="dir">📍 '+esc(c.domicilio_full)+'</div>':'')+(c.barrio?'<div class="dir">'+esc(c.barrio)+'</div>':'')
       +'<div class="dir" style="margin-top:4px">📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
       +'<div class="acc">'+((c.lat!=null||c.domicilio_full)?'<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(c)+'">🚗 Ir</a>':'')
@@ -1008,7 +1011,8 @@
 
   // ════════ CORTE / DESCONEXIÓN ════════
   var CORTE=null, DESC_MAX_INT=3;
-  function vCortar(o){ var c=(o&&o.clientes)?o.clientes:o; CORTE={ dx:(o&&o.id?o:null), c:c, fotos:[], recupero:true };
+  function vCortar(o){ var c=(o&&o.clientes)?o.clientes:o; var dx=(o&&o.id?o:null);
+    CORTE={ dx:dx, c:c, fotos:[], recupero:(dx&&dx.recupero_equipo!=null?!!dx.recupero_equipo:true), napCortada:(dx&&dx.nap_cortada!=null?!!dx.nap_cortada:true) };
     sbGet('config_comercial?id=eq.1&select=desc_max_intentos').then(function(d){ var v=(d&&d[0]&&d[0].desc_max_intentos); if(v>0) DESC_MAX_INT=v; }).catch(function(){}).then(renderCortar); }
   function renderCorteFotos(){ if(!CORTE.fotos.length) return '<span class="muted">Sin fotos.</span>'; return '<div style="display:flex;flex-wrap:wrap;gap:8px">'+CORTE.fotos.map(function(f,i){return '<div style="position:relative"><img src="'+f.preview+'" style="width:74px;height:74px;object-fit:cover;border-radius:8px"><button class="btn cofoto-del" data-i="'+i+'" style="position:absolute;top:-7px;right:-7px;width:22px;height:22px;padding:0;background:var(--rojo);color:#fff;border-radius:50%;line-height:1">×</button><div style="font-size:10px;text-align:center;color:'+(f.url?'var(--verde)':'var(--ambar)')+'">'+(f.url?'✓':'…')+'</div></div>';}).join('')+'</div>'; }
   var MOTIVOS_FALLA=['No había nadie','No lo entregan / se niegan','Pidió pasar otro día','No encontré el domicilio','Otro'];
@@ -1031,12 +1035,17 @@
       +'<div class="card"><div class="muted" style="font-size:13px">Registrás el corte y la baja pasa a <b>pendiente administrativo</b> (soporte y comercial la cierran en ISPcube).</div></div>'
       +((CORTE.dx&&(CORTE.dx.gestion_obs||CORTE.dx.telefono_contacto))?('<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd"><div class="label" style="color:#0369a1">📋 Nota del administrativo</div>'+(CORTE.dx.gestion_obs?('<div style="font-size:13.5px;margin-top:3px">'+esc(CORTE.dx.gestion_obs)+'</div>'):'')+(CORTE.dx.telefono_contacto?('<div style="margin-top:7px">📞 Tel. extra para coordinar: <a href="tel:'+esc(String(CORTE.dx.telefono_contacto).replace(/[^\d+]/g,''))+'" style="font-weight:700">'+esc(CORTE.dx.telefono_contacto)+'</a></div>'):'')+'</div>'):'')
       +'<div class="card"><div class="label">📡 Conexión</div>'+fila('Caja (NAP)',c.caja_nap)+fila('Puerto',c.puerto)+fila('Precinto',c.precinto)+'</div>'
-      +'<div class="card"><div class="label">¿Se recuperó el equipo?</div><div style="display:flex;gap:8px;margin-top:4px"><button class="btn '+(CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-si">Sí</button><button class="btn '+(CORTE.recupero?'btn-2':'btn-ok')+'" id="co-rec-no">No</button></div></div>'
-      +'<div class="card"><div class="label">Equipo retirado (serial / MAC)</div><input id="co-serial" placeholder="Serial o MAC del equipo"></div>'
+      +'<div class="card"><div class="label">📦 ¿Retiraste el equipo?</div><div style="display:flex;gap:8px;margin-top:4px"><button class="btn '+(CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-si">Sí</button><button class="btn '+(!CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-no">No pude</button></div>'
+        +(CORTE.recupero
+           ? '<input id="co-serial" placeholder="Serial o MAC del equipo retirado" style="margin-top:8px" value="'+esc((CORTE.dx&&CORTE.dx.equipo_serial)||'')+'">'
+           : '<input id="co-eqmot" placeholder="¿Por qué no? (no hay nadie / no encontré la casa)" style="margin-top:8px" value="'+esc((CORTE.dx&&CORTE.dx.equipo_motivo)||'')+'">')+'</div>'
+      +'<div class="card"><div class="label">✂️ ¿Cortaste la NAP (liberaste el puerto)?</div><div style="display:flex;gap:8px;margin-top:4px"><button class="btn '+(CORTE.napCortada?'btn-ok':'btn-2')+'" id="co-nap-si">Sí</button><button class="btn '+(!CORTE.napCortada?'btn-ok':'btn-2')+'" id="co-nap-no">No pude</button></div>'
+        +(!CORTE.napCortada?'<input id="co-napmot" placeholder="¿Por qué no? (lluvia / no encontré la NAP)" style="margin-top:8px" value="'+esc((CORTE.dx&&CORTE.dx.nap_motivo)||'')+'">':'')
+        +((CORTE.recupero&&CORTE.napCortada)?'':'<div class="muted" style="font-size:12px;margin-top:6px;color:#9a3412">🔶 Queda <b>a medias</b>: se guarda lo hecho y la parte que falta vuelve al listado para terminarla.</div>')+'</div>'
       +'<div class="card"><div class="label">Foto (opcional)</div><div id="co-fotos">'+renderCorteFotos()+'</div><input type="file" accept="image/*" multiple id="co-foto-in" style="margin-top:8px;border:0;padding:6px 0"></div>'
       +'<div class="card"><div class="label">Observación</div><textarea id="co-obs" rows="2" style="width:100%"></textarea></div>'
       +'<div class="err" id="co-err"></div>'
-      +'<button class="btn btn-ok" id="co-confirmar" style="background:var(--rojo)">✂️ Confirmar corte</button>'
+      +'<button class="btn btn-ok" id="co-confirmar" style="background:'+((CORTE.recupero&&CORTE.napCortada)?'var(--rojo)':'#ea580c')+'">'+((CORTE.recupero&&CORTE.napCortada)?'✂️ Confirmar corte':'💾 Guardar (queda a medias)')+'</button>'
       +_compSec
       +'<button class="btn btn-2" id="co-pagado" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">✅ Ya pagó (verificado) — no cortar</button>'
       +_noPudoSec
@@ -1045,6 +1054,8 @@
     document.getElementById('co-volver').addEventListener('click',vDescon);
     document.getElementById('co-rec-si').addEventListener('click',function(){ CORTE.recupero=true; renderCortar(); });
     document.getElementById('co-rec-no').addEventListener('click',function(){ CORTE.recupero=false; renderCortar(); });
+    document.getElementById('co-nap-si').addEventListener('click',function(){ CORTE.napCortada=true; renderCortar(); });
+    document.getElementById('co-nap-no').addEventListener('click',function(){ CORTE.napCortada=false; renderCortar(); });
     var _cob=document.getElementById('co-comp'); if(_cob) _cob.addEventListener('click',compromisoPago);
     var _cpa=document.getElementById('co-pagado'); if(_cpa) _cpa.addEventListener('click',cortePagado);
     var _np=document.getElementById('co-nopudo'); if(_np) _np.addEventListener('click',function(){ var b=document.getElementById('co-nopudo-box'); b.style.display=(b.style.display==='none'?'block':'none'); });
@@ -1067,19 +1078,37 @@
   function confirmarCorte(){
     var c=CORTE.c, err=document.getElementById('co-err'); err.textContent='';
     if(CORTE.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá que terminen de subir las fotos.'; return; }
-    var btn=document.getElementById('co-confirmar'); btn.disabled=true; btn.textContent='Cortando…';
-    var serial=document.getElementById('co-serial').value.trim(), obs=document.getElementById('co-obs').value.trim();
-    if(CORTE.recupero&&!serial){ err.textContent='Poné el serial/MAC del equipo recuperado (o marcá «No» en recupero).'; btn.disabled=false; btn.textContent='✂️ Confirmar corte'; return; }
+    var eq=!!CORTE.recupero, nap=!!CORTE.napCortada;
+    if(!eq && !nap){ err.textContent='No marcaste ninguna de las dos partes. Si no pudiste hacer nada, usá «No se pudo retirar» abajo.'; return; }
+    var serEl=document.getElementById('co-serial'), serial=serEl?serEl.value.trim():((CORTE.dx&&CORTE.dx.equipo_serial)||'');
+    if(eq && !serial){ err.textContent='Poné el serial/MAC del equipo retirado (o marcá «No pude»).'; return; }
+    var eqmEl=document.getElementById('co-eqmot'), napmEl=document.getElementById('co-napmot');
+    var eqmot=eqmEl?eqmEl.value.trim():null, napmot=napmEl?napmEl.value.trim():null, obs=document.getElementById('co-obs').value.trim();
+    var completo=(eq&&nap), btxt=(completo?'✂️ Confirmar corte':'💾 Guardar (queda a medias)');
+    var btn=document.getElementById('co-confirmar'); btn.disabled=true; btn.textContent='Guardando…';
     getGPS().then(function(g){
-      var cierre={ estado:'PENDIENTE_ADMIN', cuadrilla_id:CUAD.id, recupero_equipo:!!CORTE.recupero, equipo_serial:serial||null, caja_nap:c.caja_nap||null, puerto:c.puerto||null, precinto:c.precinto||null, obs_tecnico:obs||null, foto_url:(CORTE.fotos[0]?CORTE.fotos[0].url:null), corte_at:new Date().toISOString(), cerrado_por:CUAD.id, updated_at:new Date().toISOString() };
+      var ahora=new Date().toISOString();
+      var cierre={ cuadrilla_id:CUAD.id, recupero_equipo:eq, nap_cortada:nap, equipo_serial:(eq?serial:null), equipo_motivo:(!eq?(eqmot||null):null), nap_motivo:(!nap?(napmot||null):null), caja_nap:c.caja_nap||null, puerto:c.puerto||null, precinto:c.precinto||null, obs_tecnico:obs||null, foto_url:(CORTE.fotos[0]?CORTE.fotos[0].url:null), cerrado_por:CUAD.id, updated_at:ahora };
+      if(eq) cierre.equipo_retirado_at=ahora;
+      if(nap){ cierre.nap_cortada_at=ahora; cierre.corte_at=ahora; }
+      if(completo){ cierre.estado='PENDIENTE_ADMIN'; cierre.parte_pendiente=null; }
+      else { cierre.estado='PARCIAL'; cierre.parte_pendiente=(!eq?'EQUIPO':'NAP'); }
       if(g){ cierre.lat=g.lat; cierre.lng=g.lng; }
       var dxId=CORTE.dx&&CORTE.dx.id;
-      // si vino de una orden asignada → cierra esa orden; si no, crea una ya cerrada (compat)
-      var main = dxId ? sbPatch('desconexiones?id=eq.'+dxId,cierre)
-                      : sbPost('desconexiones',Object.assign({cliente_id:c.id,cuadrilla_id:CUAD.id,origen:'manual'},cierre));
-      var jobs=[ main, sbPatch('clientes?id=eq.'+c.id,{estado:'desconectado'}) ];
-      if(CORTE.recupero&&serial) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial),{estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}));
-      Promise.all(jobs).then(function(){ toast('Corte registrado ✓ — pasa a administrativo'); if(desconState.list) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); }).catch(function(){ err.textContent='Error al registrar el corte.'; btn.disabled=false; btn.textContent='✂️ Confirmar corte'; });
+      var doWrite=function(body){ return dxId ? sbPatchOk('desconexiones?id=eq.'+dxId,body) : sbPostOk('desconexiones',Object.assign({cliente_id:c.id,cuadrilla_id:CUAD.id,origen:'manual'},body)); };
+      function sideJobsAndDone(){
+        var jobs=[];
+        if(nap) jobs.push(sbPatch('clientes?id=eq.'+c.id,{estado:'desconectado'}));   // el servicio queda abajo solo si se cortó la NAP
+        if(eq&&serial) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial),{estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}));
+        Promise.all(jobs).then(function(){ toast(completo?'Corte completo ✓ — pasa a administrativo':('🔶 Guardado a medias — falta '+(!eq?'retirar el equipo':'cortar la NAP'))); if(desconState.list&&dxId) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); });
+      }
+      doWrite(cierre).then(sideJobsAndDone).catch(function(){
+        // Fallback: si faltan las columnas nuevas (SQL sin correr), cierra con el modelo clásico para no perder el corte.
+        var legacy={ estado:'PENDIENTE_ADMIN', cuadrilla_id:CUAD.id, recupero_equipo:eq, equipo_serial:(eq?serial:null), caja_nap:c.caja_nap||null, puerto:c.puerto||null, precinto:c.precinto||null, obs_tecnico:obs||null, foto_url:(CORTE.fotos[0]?CORTE.fotos[0].url:null), corte_at:ahora, cerrado_por:CUAD.id, updated_at:ahora };
+        if(g){ legacy.lat=g.lat; legacy.lng=g.lng; }
+        completo=true; // en modo legacy no hay "a medias"
+        doWrite(legacy).then(sideJobsAndDone).catch(function(){ err.textContent='Error al registrar.'; btn.disabled=false; btn.textContent=btxt; });
+      });
     });
   }
   // El técnico fue al domicilio y NO pudo retirar (no había nadie, no lo entregan, pidió otro día, no encontró).

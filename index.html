@@ -249,7 +249,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.71';
+  var VER='v3.72';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -487,6 +487,7 @@
     else if(v==='nuevaOT'){ navTo('ordenes'); setTimeout(function(){ if(typeof nuevaOT==='function') nuevaOT(); },60); }
     else if(v==='isp'){ clState={ q:'', estado:'', empresa:'', barrio:'', pend:true, page:0, size:50, total:0, orderBy:'numero_cliente', orderDir:'desc', sel:{}, cols:null }; navTo('clientes'); }
     else if(v==='cx'){ _cxLista(p[1]); }
+    else if(v==='dxtab'){ window._dxState=Object.assign(window._dxState||{},{ver:p[1]||'PARCIAL'}); navTo('desconexiones'); }
   }
   var view=document.getElementById('view');
   function loading(){ view.innerHTML='<div class="center"><div class="spin"></div></div>'; }
@@ -531,12 +532,13 @@
       sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&fecha_agendada=not.is.null&select=id').catch(function(){return 0;}),
       // solapamiento: con fecha_agendada Y además coordinada por el cliente (dia_preferido) → se descuenta de "Coordinadas (admin)" para que el número coincida con la lista
       sbCount('ordenes_trabajo?area=eq.INTERNET&estado=in.(PENDIENTE,ASIGNADA)&fecha_agendada=not.is.null&select=id,solicitudes_alta!inner(dia_preferido)&solicitudes_alta.dia_preferido=not.is.null').catch(function(){return 0;}),
-      sbCount('ordenes_trabajo?recuperable=is.true&recuperable_resuelto_at=is.null&select=id').catch(function(){return 0;})
+      sbCount('ordenes_trabajo?recuperable=is.true&recuperable_resuelto_at=is.null&select=id').catch(function(){return 0;}),
+      sbCount('desconexiones?estado=eq.PARCIAL&select=id').catch(function(){return 0;})
     ]).then(function(c){
       var pend=Array.isArray(c[0])?c[0]:[], totalPend=pend.length;
       var porTipo={}; pend.forEach(function(o){ porTipo[o.tipo]=(porTipo[o.tipo]||0)+1; });
       var ahora=Date.now(), ag={a:0,b:0,d:0}; pend.forEach(function(o){ var hs=(ahora-new Date(o.created_at).getTime())/3600000; if(hs<24)ag.a++; else if(hs<72)ag.b++; else ag.d++; });
-      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0, coordN=c[10]||0, adminCoordN=Math.max(0,(c[11]||0)-(c[12]||0)), recupN=c[13]||0;
+      var solic=c[1]||0, faltaIsp=c[2]||0, enCurso=c[3]||0, aValidar=c[4]||0, finHoy=c[5]||0, ispCargar=c[7]||0, ispTk=c[8]||0, descoN=c[9]||0, coordN=c[10]||0, adminCoordN=Math.max(0,(c[11]||0)-(c[12]||0)), recupN=c[13]||0, dxParcialN=c[14]||0;
       var openA=c[6]||[]; var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var huer=openA.filter(function(o){ return !_act[o.cuadrilla_id]; });
       var sinCoord=openA.filter(function(o){ return _act[o.cuadrilla_id] && !o.fecha_agendada; });
@@ -572,6 +574,7 @@
         +'<div class="dash-sec">📋 Pendientes por tipo <span class="dash-sec-r">backlog real — todo lo sin terminar, esté asignado o no</span></div><div class="dkpis">'
           +Object.keys(porTipo).sort(function(a,b){return porTipo[b]-porTipo[a];}).map(function(t){ return dkpi(porTipo[t], (_PEND_STY[t]?_PEND_STY[t][1]:t), '', 'gray', 'ot|BACKLOG|'+t); }).join('')
           +dkpi(descoN,'✂️ Desconexiones','bajas a cortar','red','nav|desconexiones')
+          +(dxParcialN>0?dkpi(dxParcialN,'🔶 A medias','desconexiones incompletas (falta NAP o equipo)','amber','dxtab|PARCIAL'):'')
         +'</div>'
         +'<div class="dash-sec">Antigüedad de pendientes</div><div class="dkpis">'
           +dkpi(ag.a,'&lt; 24 hs',pct(ag.a),'green','ot|BACKLOG||a')+dkpi(ag.b,'24 a 72 hs',pct(ag.b),'amber','ot|BACKLOG||b')+dkpi(ag.d,'&gt; 72 hs ⚠️',pct(ag.d),'red','ot|BACKLOG||d')
@@ -1443,7 +1446,7 @@
           +'<div style="font-size:13px;color:#1e293b;margin-top:4px">'+esc(o.observaciones_tec)+(noReal&&o.motivo_cancelacion?(' <span style="color:#c2410c">· '+esc(o.motivo_cancelacion)+'</span>'):'')+'</div></div>'; }).join('')+'</div>'; }
       // ── Desconexiones / intentos de retiro / contactos ──
       if(dxs.length){
-        var _dxEst=function(e){ return {PENDIENTE:'🔴 pendiente',ASIGNADA:'🟡 asignada',PENDIENTE_ADMIN:'🟣 a revisar',FINALIZADO:'✅ cortada',IMPOSIBLE:'🚫 imposible',COMPROMISO_PAGO:'🤝 compromiso',ANULADA_PAGO:'💵 pagó',CANCELADA:'✖ cancelada',MIGRACION_508:'📋 508',EN_REVISION:'🔎 revisión'}[e]||e; };
+        var _dxEst=function(e){ return {PENDIENTE:'🔴 pendiente',ASIGNADA:'🟡 asignada',PARCIAL:'🔶 a medias',PENDIENTE_ADMIN:'🟣 a revisar',FINALIZADO:'✅ cortada',IMPOSIBLE:'🚫 imposible',COMPROMISO_PAGO:'🤝 compromiso',ANULADA_PAGO:'💵 pagó',CANCELADA:'✖ cancelada',MIGRACION_508:'📋 508',EN_REVISION:'🔎 revisión'}[e]||e; };
         h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:#b91c1c">🔌 Desconexiones · intentos de retiro y contactos <span class="muted" style="font-weight:400;font-size:13px">('+dxs.length+')</span></h3>';
         h+=dxs.map(function(x){
           var det=[];
@@ -4086,15 +4089,15 @@
   // ══════════ DESCONEXIONES / RETIROS / BAJAS ══════════
   // Ciclo: PENDIENTE → ASIGNADA → (técnico corta/recupera) PENDIENTE_ADMIN → (soporte + comercial) FINALIZADO
   function _dxEsAdmin(){ return USER && (USER.rol==='administrativo'||USER.rol==='gerencial'||USER.rol==='superadmin'); }
-  function _dxBadge(){ sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&select=id&limit=5000').then(function(d){ var n=Array.isArray(d)?d.length:0, b=document.getElementById('nav-dx-badge'); if(b){ if(n>0){ b.textContent=n; b.style.display=''; } else b.style.display='none'; } }).catch(function(){}); }
-  var DX_TABS=[['PENDIENTE','⏳ Pendientes'],['ASIGNADA','📍 Asignadas'],['PENDIENTE_ADMIN','📝 Pendiente admin'],['compromiso','🤝 Compromisos'],['EN_REVISION','⏸️ En revisión'],['IMPOSIBLE','🚫 Imposibles'],['MIGRACION_508','📋 Migración 508'],['cerradas','✅ Cerradas'],['cand','➕ Candidatos']];
+  function _dxBadge(){ sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PARCIAL,PENDIENTE_ADMIN)&select=id&limit=5000').then(function(d){ var n=Array.isArray(d)?d.length:0, b=document.getElementById('nav-dx-badge'); if(b){ if(n>0){ b.textContent=n; b.style.display=''; } else b.style.display='none'; } }).catch(function(){}); }
+  var DX_TABS=[['PENDIENTE','⏳ Pendientes'],['ASIGNADA','📍 Asignadas'],['PARCIAL','🔶 A medias'],['PENDIENTE_ADMIN','📝 Pendiente admin'],['compromiso','🤝 Compromisos'],['EN_REVISION','⏸️ En revisión'],['IMPOSIBLE','🚫 Imposibles'],['MIGRACION_508','📋 Migración 508'],['cerradas','✅ Cerradas'],['cand','➕ Candidatos']];
   function _dxDiasRest(iso){ if(!iso) return null; return Math.ceil((Date.parse(iso)-Date.now())/86400000); }
   function _dxTabs(){ var v=window._dxState.ver; return '<div class="toolbar">'+DX_TABS.map(function(t){return '<button class="btn '+(v===t[0]?'btn-pri':'btn-2')+' dx-tab" data-ver="'+t[0]+'">'+t[1]+'</button>';}).join('')+'</div>'; }
   function _dxOrigen(o){ return {manual:'✋ manual',baja_isp:'⬇️ baja ISPcube',bloqueado_30d:'⛔ bloqueado +30d',voluntaria:'🙋 baja voluntaria'}[o]||o||''; }
   // Días reales bloqueado (hoy − bloqueado_desde). null si no hay dato.
   function _diasBloq(iso){ if(!iso) return null; var ms=Date.now()-new Date(iso).getTime(); var d=Math.floor(ms/86400000); return d>=0?d:0; }
   function _diasBloqTxt(c){ if(!c) return ''; var d=_diasBloq(c.bloqueado_desde); if(d==null) return ''; return '⛔ bloqueado hace <b>'+d+'</b> día'+(d===1?'':'s'); }
-  function _dxEstadoTxt(e){ return {ANULADA_PAGO:'🟢 Anulada (pagó / sigue)',CANCELADA:'⛔ Cancelada',EN_REVISION:'⏸️ En revisión',FINALIZADO:'✅ Finalizada',MIGRACION_508:'📋 Migración 508'}[e]||e; }
+  function _dxEstadoTxt(e){ return {ANULADA_PAGO:'🟢 Anulada (pagó / sigue)',CANCELADA:'⛔ Cancelada',EN_REVISION:'⏸️ En revisión',FINALIZADO:'✅ Finalizada',PARCIAL:'🔶 A medias',MIGRACION_508:'📋 Migración 508'}[e]||e; }
   // Auto-genera órdenes PENDIENTE para los clientes a dar de baja (baja ISPcube + bloqueado +30d) que no tengan ya una
   // ¿qué clientes (de una lista) YA tienen una desconexión que bloquea regenerar otra?
   // Bloquean: abiertas (PEND/ASIG/PEND_ADMIN) + en revisión + finalizada + compromiso + imposible + migración 508.
@@ -4105,7 +4108,7 @@
     (function chunk(){
       if(i>=ids.length){ done(ya); return; }
       var part=ids.slice(i,i+150); i+=150;
-      sbGet('desconexiones?cliente_id=in.('+part.join(',')+')&estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO,COMPROMISO_PAGO,IMPOSIBLE,MIGRACION_508)&select=cliente_id&limit=2000')
+      sbGet('desconexiones?cliente_id=in.('+part.join(',')+')&estado=in.(PENDIENTE,ASIGNADA,PARCIAL,PENDIENTE_ADMIN,EN_REVISION,FINALIZADO,COMPROMISO_PAGO,IMPOSIBLE,MIGRACION_508)&select=cliente_id&limit=2000')
         .then(function(d){ (Array.isArray(d)?d:[]).forEach(function(x){ ya[x.cliente_id]=1; }); chunk(); })
         .catch(function(){ chunk(); });
     })();
@@ -4198,7 +4201,7 @@
         ids.forEach(function(cs){ var cid=Number(cs), ot=porCli[cs], dxs=dxPorCli[cid]||[];
           var body={estado:'PENDIENTE_ADMIN',corte_at:ot.fin_tec_at||new Date().toISOString(),cuadrilla_id:(ot.cuadrilla_id||null),obs_tecnico:'Corte/retiro hecho por OT N° '+ot.numero,compromiso_vence:null};
           var abierta=dxs.filter(function(x){return x.estado==='PENDIENTE'||x.estado==='ASIGNADA';})[0];
-          var enFlujoOResuelta=dxs.some(function(x){return ['PENDIENTE_ADMIN','EN_REVISION','FINALIZADO','CANCELADA','ANULADA_PAGO','COMPROMISO_PAGO','IMPOSIBLE','MIGRACION_508'].indexOf(x.estado)>=0;});
+          var enFlujoOResuelta=dxs.some(function(x){return ['PARCIAL','PENDIENTE_ADMIN','EN_REVISION','FINALIZADO','CANCELADA','ANULADA_PAGO','COMPROMISO_PAGO','IMPOSIBLE','MIGRACION_508'].indexOf(x.estado)>=0;});
           if(abierta){ acciones.push(sbPatch('desconexiones?id=eq.'+abierta.id,body).catch(function(){})); nAvanz++; }
           else if(!enFlujoOResuelta){ creates.push(Object.assign({cliente_id:cid,origen:'baja_isp',created_by:USER.id},body)); }
         });
@@ -4339,6 +4342,7 @@
   function _dxFechaAR(iso){ if(!iso) return ''; try{ return new Date(new Date(iso).getTime()-10800000).toISOString().substring(0,10); }catch(e){ return String(iso).substring(0,10); } }
   function _dxInfo(o){
     if(o.estado==='ASIGNADA') return '🔧 '+esc(_cuadNombre(o.cuadrilla_id)||'—')+(o.fecha_agendada?('<br><span class="muted">📅 '+fmtFecha(o.fecha_agendada)+'</span>'):'');
+    if(o.estado==='PARCIAL'){ var _f=(o.parte_pendiente==='NAP')?'✂️ cortar NAP (puerto ocupado)':'📦 retirar equipo'; var _h=(o.parte_pendiente==='NAP')?'equipo retirado ✓':'NAP cortada ✓'; var _m=(o.parte_pendiente==='NAP'?o.nap_motivo:o.equipo_motivo); return '🔶 <b>A medias</b><br><span style="font-size:11px;color:#9a3412">Falta: '+_f+'</span><br><span class="muted" style="font-size:11px">'+_h+(_m?(' · '+esc(_m)):'')+'</span>'; }
     if(o.estado==='PENDIENTE_ADMIN'){ var rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':'—'); return rec+'<br><span style="font-size:11px">'+(o.deposito_hecho?'<span style="color:#166534">✓Depósito</span>':'<span class="muted">☐Depósito</span>')+' '+(o.soporte_hecho?'<span style="color:#166534">✓Soporte</span>':'<span class="muted">☐Soporte</span>')+' '+(o.comercial_hecho?'<span style="color:#166534">✓Comercial</span>':'<span class="muted">☐Comercial</span>')+'</span>'; }
     if(o.estado==='COMPROMISO_PAGO'){ var dr=_dxDiasRest(o.compromiso_vence), q=(o.compromiso_count>=2?'2° (último)':'1er'); return '🤝 <b>'+q+' compromiso</b><br><span style="font-size:11px">'+((dr==null)?'—':(dr<0?'<span style="color:var(--rojo);font-weight:700">⏰ vencido</span>':('faltan <b>'+dr+'</b> día'+(dr===1?'':'s'))))+(o.compromiso_vence?(' · vence '+fmtFecha(o.compromiso_vence)):'')+'</span>'+(o.compromiso_obs?('<br><span class="muted" style="font-size:11px">🗣️ '+esc(o.compromiso_obs)+'</span>'):''); }
     if(o.estado==='EN_REVISION') return '⏸️ '+esc(o.resolucion||'a revisar');
@@ -4350,11 +4354,12 @@
   function _dxAcc(o){
     if(o.estado==='PENDIENTE') return _bx('btn btn-ok dx-asignar',o.id,'📍 Asignar')+_bx('btn btn-2 dx-comp-otro',o.id,'🤝 Compromiso')+_bx('btn btn-2 dx-ver',o.id,'👁️');
     if(o.estado==='ASIGNADA') return _bx('btn btn-ok dx-reasignar',o.id,'🔄 Reasignar')+_bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
+    if(o.estado==='PARCIAL') return _bx('btn btn-ok dx-asignar',o.id,'📍 Asignar')+_bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
     if(o.estado==='PENDIENTE_ADMIN') return _bx('btn btn-ok dx-ver',o.id,'🔧 Gestionar');
     if(o.estado==='COMPROMISO_PAGO') return _bx('btn btn-2 dx-comp-pool',o.id,'↩️ Al pool')+_bx('btn btn-ok dx-comp-pago',o.id,'✅ Pagó')+_bx('btn btn-2 dx-comp-otro',o.id,'🤝 Otro')+_bx('btn btn-2 dx-ver',o.id,'👁️');
     return _bx('btn btn-2 dx-ver',o.id,'👁️ Ver');
   }
-  function _dxColor(o){ return {PENDIENTE:'#d97706',ASIGNADA:'#2563eb',PENDIENTE_ADMIN:'#7c3aed',COMPROMISO_PAGO:'#16a34a',EN_REVISION:'#0891b2',MIGRACION_508:'#64748b'}[o.estado]||'#64748b'; }
+  function _dxColor(o){ return {PENDIENTE:'#d97706',ASIGNADA:'#2563eb',PARCIAL:'#ea580c',PENDIENTE_ADMIN:'#7c3aed',COMPROMISO_PAGO:'#16a34a',EN_REVISION:'#0891b2',MIGRACION_508:'#64748b'}[o.estado]||'#64748b'; }
   // Color del marker en el mapa: semáforo por intentos de retiro. Gris = 508 (no retirar).
   function _dxMapColor(o){
     if(o.estado==='MIGRACION_508') return '#94a3b8';         // gris: no retirar
