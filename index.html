@@ -249,7 +249,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.72';
+  var VER='v3.73';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1428,7 +1428,7 @@
     Promise.all([
       sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,inicio_tec_at,created_at,observaciones_tec,motivo_cancelacion,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100'),
       sbGet('interacciones_cliente?cliente_id=eq.'+cliId+'&select=*&order=created_at.desc&limit=100').catch(function(){return [];}),
-      sbGet('desconexiones?cliente_id=eq.'+cliId+'&select=id,estado,origen,intentos_count,intentos_obs,gestion_obs,compromiso_obs,obs_tecnico,recupero_equipo,corte_at,created_at,updated_at,cuadrillas(nombre)&order=created_at.desc&limit=50').catch(function(){return [];})
+      sbGet('desconexiones?cliente_id=eq.'+cliId+'&select=id,estado,origen,intentos_count,intentos_obs,nap_intentos_count,nap_intentos_obs,parte_pendiente,gestion_obs,compromiso_obs,obs_tecnico,recupero_equipo,nap_cortada,corte_at,created_at,updated_at,cuadrillas(nombre)&order=created_at.desc&limit=50').catch(function(){return [];})
     ]).then(function(r){
       var d=Array.isArray(r[0])?r[0]:[], inter=Array.isArray(r[1])?r[1]:[], dxs=Array.isArray(r[2])?r[2]:[];
       // ── Gestiones e historial (interacciones) ──
@@ -1450,7 +1450,9 @@
         h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:#b91c1c">🔌 Desconexiones · intentos de retiro y contactos <span class="muted" style="font-weight:400;font-size:13px">('+dxs.length+')</span></h3>';
         h+=dxs.map(function(x){
           var det=[];
-          if(x.intentos_count>0) det.push('<div style="font-size:12.5px;color:#92400e"><b>⚠️ '+x.intentos_count+' intento(s) de retiro</b>'+(x.intentos_obs?('<div style="white-space:pre-line;color:#475569;margin-top:2px">'+esc(x.intentos_obs)+'</div>'):'')+'</div>');
+          if(x.intentos_count>0) det.push('<div style="font-size:12.5px;color:#92400e"><b>📦⚠️ '+x.intentos_count+' intento(s) de retiro</b>'+(x.intentos_obs?('<div style="white-space:pre-line;color:#475569;margin-top:2px">'+esc(x.intentos_obs)+'</div>'):'')+'</div>');
+          if(x.nap_intentos_count>0) det.push('<div style="font-size:12.5px;color:#9a3412"><b>✂️⚠️ '+x.nap_intentos_count+' intento(s) de corte de NAP</b>'+(x.nap_intentos_obs?('<div style="white-space:pre-line;color:#475569;margin-top:2px">'+esc(x.nap_intentos_obs)+'</div>'):'')+'</div>');
+          if(x.estado==='PARCIAL'&&x.parte_pendiente) det.push('<div style="font-size:12.5px;color:#9a3412">🔶 <b>A medias</b> — falta '+(x.parte_pendiente==='NAP'?'cortar la NAP':'retirar el equipo')+'</div>');
           if(x.gestion_obs) det.push('<div style="font-size:12.5px">📞 <b>Gestión:</b> '+esc(x.gestion_obs)+'</div>');
           if(x.compromiso_obs) det.push('<div style="font-size:12.5px">🤝 <b>Compromiso:</b> '+esc(x.compromiso_obs)+'</div>');
           if(x.obs_tecnico) det.push('<div style="font-size:12.5px">🗒️ '+esc(x.obs_tecnico)+'</div>');

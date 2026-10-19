@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.54</title>
+<title>Nexa · Técnico — v0.55</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.54';
+  var VER='v0.55';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -955,7 +955,7 @@
     if(desconState.list) renderDescon(); else cargarDescon();
   }
   function cargarDescon(){
-    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PARCIAL)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,gestion_obs,telefono_contacto,intentos_count,intentos_obs,nap_cortada,recupero_equipo,parte_pendiente,equipo_serial,equipo_motivo,nap_motivo,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
+    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PARCIAL)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,gestion_obs,telefono_contacto,intentos_count,intentos_obs,nap_cortada,recupero_equipo,parte_pendiente,equipo_serial,equipo_motivo,nap_motivo,nap_intentos_count,nap_intentos_obs,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       desconState.list=d; renderDescon();
       _dxOrdenarGPS(true);   // intento automático de ordenar por cercanía (no bloquea la lista)
@@ -990,7 +990,9 @@
     // Semáforo por intentos de retiro: verde (0) · amarillo (1) · naranja (2)
     var ic=o.intentos_count||0;
     var semCol=(ic>=2?'#f97316':(ic===1?'#eab308':'#16a34a'));
-    var semBadge=(ic>0?('<span class="badge-tt" style="background:'+(ic>=2?'#ffedd5':'#fef9c3')+';color:'+(ic>=2?'#9a3412':'#854d0e')+'">✗ '+ic+' intento'+(ic>1?'s':'')+'</span>'):'');
+    var nic=o.nap_intentos_count||0;
+    var semBadge=(ic>0?('<span class="badge-tt" style="background:'+(ic>=2?'#ffedd5':'#fef9c3')+';color:'+(ic>=2?'#9a3412':'#854d0e')+'">📦✗ '+ic+'</span>'):'')
+      +(nic>0?('<span class="badge-tt" style="background:#ffedd5;color:#9a3412">✂️✗ '+nic+'</span>'):'');
     var mediaBadge=(o.estado==='PARCIAL'?('<span class="badge-tt" style="background:#ffedd5;color:#9a3412">🔶 a medias · falta '+(o.parte_pendiente==='NAP'?'cortar NAP':'retirar equipo')+'</span>'):'');
     if(o.estado==='PARCIAL') semCol='#ea580c';
     return '<div class="ot cli-card" data-id="'+o.id+'" style="border-left:5px solid '+semCol+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+' '+mediaBadge+' '+semBadge+' '+sinUbic+'</div></div>'
@@ -1018,15 +1020,11 @@
   var MOTIVOS_FALLA=['No había nadie','No lo entregan / se niegan','Pidió pasar otro día','No encontré el domicilio','Otro'];
   function renderCortar(){
     var c=CORTE.c, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
-    var _ic=(CORTE.dx&&CORTE.dx.intentos_count)||0;
-    var _intAviso=(_ic>0?('<div class="card" style="background:#fffbeb;border:1px solid #fde68a"><div style="font-weight:800;color:#92400e">⚠️ Ya hubo '+_ic+' intento'+(_ic>1?'s':'')+' de retiro</div>'+((CORTE.dx&&CORTE.dx.intentos_obs)?('<div class="muted" style="font-size:12px;white-space:pre-line;margin-top:4px">'+esc(CORTE.dx.intentos_obs)+'</div>'):'')+'<div class="muted" style="font-size:12px;margin-top:4px">Al llegar a '+DESC_MAX_INT+' intentos la baja pasa a <b>Imposibles</b> y sale del listado.</div></div>'):'');
-    var _noPudoSec='<button class="btn btn-2" id="co-nopudo" style="margin-top:10px;border-color:#d97706;color:#92400e">✗ No se pudo retirar (registrar intento)</button>'
-      +'<div id="co-nopudo-box" style="display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px;margin-top:8px">'
-        +'<div class="label" style="color:#92400e">Motivo del intento fallido</div>'
-        +'<select id="co-nopudo-mot" style="width:100%">'+MOTIVOS_FALLA.map(function(m){return '<option>'+esc(m)+'</option>';}).join('')+'</select>'
-        +'<textarea id="co-nopudo-obs" rows="2" placeholder="Detalle (opcional)" style="width:100%;margin-top:8px"></textarea>'
-        +'<button class="btn btn-ok" id="co-nopudo-ok" style="margin-top:8px;background:#d97706">Registrar intento</button>'
-      +'</div>';
+    var _ic=(CORTE.dx&&CORTE.dx.intentos_count)||0, _nic=(CORTE.dx&&CORTE.dx.nap_intentos_count)||0;
+    var _avBox=function(tit,obs){ return '<div class="card" style="background:#fffbeb;border:1px solid #fde68a"><div style="font-weight:800;color:#92400e">'+tit+'</div>'+(obs?('<div class="muted" style="font-size:12px;white-space:pre-line;margin-top:4px">'+esc(obs)+'</div>'):'')+'</div>'; };
+    var _intAviso=(_ic>0?_avBox('⚠️ Ya hubo '+_ic+' intento'+(_ic>1?'s':'')+' de RETIRO del equipo'+(_ic>=DESC_MAX_INT?' · al '+DESC_MAX_INT+'° pasa a Imposibles':''),(CORTE.dx&&CORTE.dx.intentos_obs)):'')
+      +(_nic>0?_avBox('⚠️ Ya hubo '+_nic+' intento'+(_nic>1?'s':'')+' de CORTE de la NAP',(CORTE.dx&&CORTE.dx.nap_intentos_obs)):'');
+    var _noPudoSec='';
     var _cc=(CORTE.dx&&CORTE.dx.compromiso_count)||0, _compSec;
     if(_cc>=2){ _compSec='<div class="card" style="border-left:4px solid var(--rojo)"><div style="font-weight:800;color:var(--rojo)">🤝 Sin más compromisos</div><div class="muted" style="font-size:12.5px;margin-top:3px">Este cliente ya tuvo los 2 compromisos de pago y no cumplió. No se le puede dar otro — corresponde el corte. (Si hay un acuerdo nuevo, lo carga un administrador.)</div></div>'; }
     else { var _dias=(_cc===0?7:3); _compSec=(_cc===1?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12.5px;color:#92400e">⚠️ Este cliente <b>ya tuvo un compromiso de pago y no cumplió</b>. Este sería el <b>ÚLTIMO</b> (3 días).</div>':'')+'<button class="btn btn-2" id="co-comp" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">🤝 Compromiso de pago ('+_dias+' días) — no cortar</button>'; }
@@ -1045,7 +1043,7 @@
       +'<div class="card"><div class="label">Foto (opcional)</div><div id="co-fotos">'+renderCorteFotos()+'</div><input type="file" accept="image/*" multiple id="co-foto-in" style="margin-top:8px;border:0;padding:6px 0"></div>'
       +'<div class="card"><div class="label">Observación</div><textarea id="co-obs" rows="2" style="width:100%"></textarea></div>'
       +'<div class="err" id="co-err"></div>'
-      +'<button class="btn btn-ok" id="co-confirmar" style="background:'+((CORTE.recupero&&CORTE.napCortada)?'var(--rojo)':'#ea580c')+'">'+((CORTE.recupero&&CORTE.napCortada)?'✂️ Confirmar corte':'💾 Guardar (queda a medias)')+'</button>'
+      +'<button class="btn btn-ok" id="co-confirmar" style="background:'+((CORTE.recupero&&CORTE.napCortada)?'var(--rojo)':((!CORTE.recupero&&!CORTE.napCortada)?'#d97706':'#ea580c'))+'">'+((CORTE.recupero&&CORTE.napCortada)?'✂️ Confirmar corte':((!CORTE.recupero&&!CORTE.napCortada)?'✗ Registrar intento (no se pudo)':'💾 Guardar (queda a medias)'))+'</button>'
       +_compSec
       +'<button class="btn btn-2" id="co-pagado" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">✅ Ya pagó (verificado) — no cortar</button>'
       +_noPudoSec
@@ -1058,8 +1056,6 @@
     document.getElementById('co-nap-no').addEventListener('click',function(){ CORTE.napCortada=false; renderCortar(); });
     var _cob=document.getElementById('co-comp'); if(_cob) _cob.addEventListener('click',compromisoPago);
     var _cpa=document.getElementById('co-pagado'); if(_cpa) _cpa.addEventListener('click',cortePagado);
-    var _np=document.getElementById('co-nopudo'); if(_np) _np.addEventListener('click',function(){ var b=document.getElementById('co-nopudo-box'); b.style.display=(b.style.display==='none'?'block':'none'); });
-    var _npo=document.getElementById('co-nopudo-ok'); if(_npo) _npo.addEventListener('click',intentoFallido);
     var fin=document.getElementById('co-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirCorteFotos(e.target.files); });
     Array.prototype.forEach.call(document.querySelectorAll('.cofoto-del'),function(b){ b.onclick=function(){ CORTE.fotos.splice(+b.getAttribute('data-i'),1); renderCortar(); }; });
     document.getElementById('co-confirmar').addEventListener('click',confirmarCorte);
@@ -1079,28 +1075,36 @@
     var c=CORTE.c, err=document.getElementById('co-err'); err.textContent='';
     if(CORTE.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá que terminen de subir las fotos.'; return; }
     var eq=!!CORTE.recupero, nap=!!CORTE.napCortada;
-    if(!eq && !nap){ err.textContent='No marcaste ninguna de las dos partes. Si no pudiste hacer nada, usá «No se pudo retirar» abajo.'; return; }
     var serEl=document.getElementById('co-serial'), serial=serEl?serEl.value.trim():((CORTE.dx&&CORTE.dx.equipo_serial)||'');
     if(eq && !serial){ err.textContent='Poné el serial/MAC del equipo retirado (o marcá «No pude»).'; return; }
     var eqmEl=document.getElementById('co-eqmot'), napmEl=document.getElementById('co-napmot');
-    var eqmot=eqmEl?eqmEl.value.trim():null, napmot=napmEl?napmEl.value.trim():null, obs=document.getElementById('co-obs').value.trim();
-    var completo=(eq&&nap), btxt=(completo?'✂️ Confirmar corte':'💾 Guardar (queda a medias)');
+    var eqmot=eqmEl?eqmEl.value.trim():'', napmot=napmEl?napmEl.value.trim():'', obs=document.getElementById('co-obs').value.trim();
+    if(!eq && !eqmot){ err.textContent='Poné el motivo de por qué no retiraste el equipo.'; return; }
+    if(!nap && !napmot){ err.textContent='Poné el motivo de por qué no cortaste la NAP.'; return; }
+    var completo=(eq&&nap), nada=(!eq&&!nap);
+    var btxt=(completo?'✂️ Confirmar corte':(nada?'✗ Registrar intento (no se pudo)':'💾 Guardar (queda a medias)'));
     var btn=document.getElementById('co-confirmar'); btn.disabled=true; btn.textContent='Guardando…';
     getGPS().then(function(g){
-      var ahora=new Date().toISOString();
-      var cierre={ cuadrilla_id:CUAD.id, recupero_equipo:eq, nap_cortada:nap, equipo_serial:(eq?serial:null), equipo_motivo:(!eq?(eqmot||null):null), nap_motivo:(!nap?(napmot||null):null), caja_nap:c.caja_nap||null, puerto:c.puerto||null, precinto:c.precinto||null, obs_tecnico:obs||null, foto_url:(CORTE.fotos[0]?CORTE.fotos[0].url:null), cerrado_por:CUAD.id, updated_at:ahora };
-      if(eq) cierre.equipo_retirado_at=ahora;
-      if(nap){ cierre.nap_cortada_at=ahora; cierre.corte_at=ahora; }
-      if(completo){ cierre.estado='PENDIENTE_ADMIN'; cierre.parte_pendiente=null; }
-      else { cierre.estado='PARCIAL'; cierre.parte_pendiente=(!eq?'EQUIPO':'NAP'); }
+      var ahora=new Date().toISOString(), hoy=new Date().toLocaleDateString('es-AR'), cuad=CUAD.nombre||'';
+      var _app=function(prev,mot){ var l='• '+hoy+' — '+mot+' ('+cuad+')'; var p=(prev||'').trim(); return (p?(p+'\n'):'')+l; };
+      var cierre={ cuadrilla_id:CUAD.id, recupero_equipo:eq, nap_cortada:nap, caja_nap:c.caja_nap||null, puerto:c.puerto||null, precinto:c.precinto||null, obs_tecnico:obs||null, foto_url:(CORTE.fotos[0]?CORTE.fotos[0].url:null), cerrado_por:CUAD.id, updated_at:ahora };
       if(g){ cierre.lat=g.lat; cierre.lng=g.lng; }
+      var eqMax=false;
+      if(eq){ cierre.equipo_serial=serial; cierre.equipo_retirado_at=ahora; cierre.equipo_motivo=null; }
+      else { var _ic=((CORTE.dx&&CORTE.dx.intentos_count)||0)+1; cierre.intentos_count=_ic; cierre.intentos_obs=_app(CORTE.dx&&CORTE.dx.intentos_obs,eqmot); cierre.ultimo_intento_at=ahora; cierre.equipo_motivo=eqmot; cierre.equipo_serial=null; eqMax=(_ic>=DESC_MAX_INT); }
+      if(nap){ cierre.nap_cortada_at=ahora; cierre.corte_at=ahora; cierre.nap_motivo=null; }
+      else { var _nic=((CORTE.dx&&CORTE.dx.nap_intentos_count)||0)+1; cierre.nap_intentos_count=_nic; cierre.nap_intentos_obs=_app(CORTE.dx&&CORTE.dx.nap_intentos_obs,napmot); cierre.nap_motivo=napmot; }
+      if(completo){ cierre.estado='PENDIENTE_ADMIN'; cierre.parte_pendiente=null; }
+      else if(!nada){ cierre.estado='PARCIAL'; cierre.parte_pendiente=(!eq?'EQUIPO':'NAP'); }
+      else if(eqMax){ cierre.estado='IMPOSIBLE'; cierre.resolucion='🚫 Imposible de retirar — '+cierre.intentos_count+' intentos'; cierre.resuelto_at=ahora; }
+      var finMsg=(completo?'Corte completo ✓ — pasa a administrativo':(nada?(eqMax?('🚫 '+cierre.intentos_count+' intentos — pasó a Imposibles'):'✗ Intento registrado'):('🔶 Guardado a medias — falta '+(!eq?'retirar el equipo':'cortar la NAP'))));
       var dxId=CORTE.dx&&CORTE.dx.id;
       var doWrite=function(body){ return dxId ? sbPatchOk('desconexiones?id=eq.'+dxId,body) : sbPostOk('desconexiones',Object.assign({cliente_id:c.id,cuadrilla_id:CUAD.id,origen:'manual'},body)); };
       function sideJobsAndDone(){
         var jobs=[];
         if(nap) jobs.push(sbPatch('clientes?id=eq.'+c.id,{estado:'desconectado'}));   // el servicio queda abajo solo si se cortó la NAP
         if(eq&&serial) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial),{estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}));
-        Promise.all(jobs).then(function(){ toast(completo?'Corte completo ✓ — pasa a administrativo':('🔶 Guardado a medias — falta '+(!eq?'retirar el equipo':'cortar la NAP'))); if(desconState.list&&dxId) desconState.list=desconState.list.filter(function(x){return !(x.id===dxId);}); CORTE=null; vDescon(); });
+        Promise.all(jobs).then(function(){ toast(finMsg); CORTE=null; vDescon(); });
       }
       doWrite(cierre).then(sideJobsAndDone).catch(function(){
         // Fallback: si faltan las columnas nuevas (SQL sin correr), cierra con el modelo clásico para no perder el corte.
