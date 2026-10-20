@@ -249,7 +249,8 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.78';
+  var VER='v3.79';
+  var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -654,7 +655,7 @@
       function clase(o){ if(_esFin(o)) return o.validado_admin_at?'val':'fval'; if(_esRech(o)) return 'nr'; if(o.estado==='EN_CURSO') return 'enc'; return 'sin'; }
       var G={val:0,fval:0,enc:0,sin:0,nr:0}; act.forEach(function(o){ G[clase(o)]++; });
       var total=act.length, fin=G.val+G.fval, pc=total?Math.round(fin/total*100):0;
-      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,rech:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(_esRech(o))p.rech++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
+      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,rech:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(_esRech(o))p.rech++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0&&ms<=_DUR_MAX_MS){ p.durSum+=ms; p.durN++; } else if(ms>_DUR_MAX_MS){ p.durSkip=(p.durSkip||0)+1; } } });
       var _cpc=(typeof cortesPorCuad!=='undefined')?cortesPorCuad:{};
       Object.keys(_cpc).forEach(function(cid){ if(!_act[cid]) return; var p=perf[cid]; if(!p){ p=perf[cid]={id:Number(cid),nombre:_cuadNombre(cid)||('Cuadrilla '+cid),total:0,fin:0,rech:0,durSum:0,durN:0}; } p.cortes=_cpc[cid]; });
       Object.keys(visitasPorCuad).forEach(function(cid){ if(!_act[cid]) return; var p=perf[cid]; if(!p){ p=perf[cid]={id:Number(cid),nombre:_cuadNombre(cid)||('Cuadrilla '+cid),total:0,fin:0,rech:0,durSum:0,durN:0}; } p.visitas=visitasPorCuad[cid]; });
@@ -669,7 +670,7 @@
       var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], ct=(p.cortes||0), pt=p.total+ct, pf=p.fin+ct, pcr=pt?Math.round(pf/pt*100):0, pcc=_pctCol(pcr), pcrTxt=pt?(pcr+'%'):'—';
         return '<div class="perf-row clk" data-cuad="'+p.id+'">'
           +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
-          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+(ct?(' · <span style="color:#0891b2;font-weight:700">🔌 '+ct+' corte'+(ct===1?'':'s')+' de desconexión</span>'):'')+((p.visitas||0)?(' · <span style="color:#b45309;font-weight:700">🔄 '+p.visitas+' visita'+(p.visitas===1?'':'s')+' s/éxito</span>'):'')+'</div></div>'
+          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en domicilio'):'')+((p.durSkip)?(' · <span style="color:#b45309" title="OT dejada abierta / cerrada tarde (+6h) — no se cuenta en el tiempo">⚠️ '+p.durSkip+' s/ tiempo fiable</span>'):'')+(ct?(' · <span style="color:#0891b2;font-weight:700">🔌 '+ct+' corte'+(ct===1?'':'s')+' de desconexión</span>'):'')+((p.visitas||0)?(' · <span style="color:#b45309;font-weight:700">🔄 '+p.visitas+' visita'+(p.visitas===1?'':'s')+' s/éxito</span>'):'')+'</div></div>'
           +'<div><div class="perf-big">'+pt+'</div><div class="perf-cap">del día</div>'+(ct?('<div style="font-size:11px;color:#0891b2;font-weight:700;margin-top:2px;white-space:nowrap">🔌 '+ct+' de '+pt+'</div>'):'')+'</div>'
           +'<div><div class="perf-big" style="color:#16a34a">'+pf+'</div><div class="perf-cap">finalizadas</div>'+(ct?('<div style="font-size:11px;color:#0891b2;font-weight:700;margin-top:2px;white-space:nowrap">🔌 incluye '+ct+'</div>'):'')+(p.durSum?('<div style="font-size:11px;color:#0f172a;font-weight:700;margin-top:3px;white-space:nowrap" title="Total de horas trabajadas en domicilios">🕐 '+_minTxt(p.durSum/60000)+' trab.</div>'):'')+'</div>'
           +'<div><div class="perf-big" style="color:'+pcc+'">'+pcrTxt+'</div><div class="perf-cap">avance</div></div>'
@@ -776,7 +777,7 @@
       function clase(o){ if(_esFin(o)) return o.validado_admin_at?'val':'fval'; if(_esRech(o)) return 'nr'; if(o.estado==='EN_CURSO') return 'enc'; return 'sin'; }
       var G={val:0,fval:0,enc:0,sin:0,nr:0}; act.forEach(function(o){ G[clase(o)]++; });
       var total=act.length, fin=G.val+G.fval, pc=total?Math.round(fin/total*100):0;
-      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,rech:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(_esRech(o))p.rech++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0){ p.durSum+=ms; p.durN++; } } });
+      var perf={}; act.forEach(function(o){ var id=o.cuadrilla_id, nm=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(id)||('Cuadrilla '+id); var p=perf[id]||(perf[id]={id:id,nombre:nm,total:0,fin:0,rech:0,durSum:0,durN:0}); p.total++; if(_esFin(o))p.fin++; if(_esRech(o))p.rech++; if(o.inicio_tec_at&&o.fin_tec_at){ var ms=new Date(o.fin_tec_at)-new Date(o.inicio_tec_at); if(ms>0&&ms<=_DUR_MAX_MS){ p.durSum+=ms; p.durN++; } else if(ms>_DUR_MAX_MS){ p.durSkip=(p.durSkip||0)+1; } } });
       var _cpc=(typeof cortesPorCuad!=='undefined')?cortesPorCuad:{};
       Object.keys(_cpc).forEach(function(cid){ if(!_act[cid]) return; var p=perf[cid]; if(!p){ p=perf[cid]={id:Number(cid),nombre:_cuadNombre(cid)||('Cuadrilla '+cid),total:0,fin:0,rech:0,durSum:0,durN:0}; } p.cortes=_cpc[cid]; });
       var perfArr=Object.keys(perf).map(function(k){return perf[k];}).sort(function(a,b){ return ((b.total+(b.cortes||0))-(a.total+(a.cortes||0)))||(b.fin-a.fin); });
@@ -787,7 +788,7 @@
       var perfRows=perfArr.length? perfArr.map(function(p,i){ var col=_CUADCOL[i%_CUADCOL.length], pcr=p.total?Math.round(p.fin/p.total*100):0, pcc=_pctCol(pcr), pcrTxt=p.total?(pcr+'%'):'—';
         return '<div class="perf-row clk" data-cuad="'+p.id+'">'
           +'<div class="perf-av" style="background:'+col+'">'+esc(_inic(p.nombre))+'</div>'
-          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en el cliente'):'')+'</div></div>'
+          +'<div><div style="font-weight:700;color:#0f172a">'+esc(p.nombre)+' <span style="color:#2563eb;font-size:11px;font-weight:600">▸ ver detalle</span></div><div style="font-size:11px;color:#94a3b8">'+p.total+' OT'+(p.total===1?'':'s')+(p.rech?(' · <span style="color:#b45309;font-weight:600">'+p.rech+' rechazada'+(p.rech===1?'':'s')+'</span>'):'')+(p.durN?(' · ⏱️ prom '+_minTxt(p.durSum/p.durN/60000)+' en el cliente'):'')+((p.durSkip)?(' · <span style="color:#b45309" title="OT dejada abierta / cerrada tarde (+6h) — no se cuenta en el tiempo">⚠️ '+p.durSkip+' s/ tiempo fiable</span>'):'')+'</div></div>'
           +'<div><div class="perf-big">'+p.total+'</div><div class="perf-cap">del día</div></div>'
           +'<div><div class="perf-big" style="color:#16a34a">'+p.fin+'</div><div class="perf-cap">finalizados</div>'+(p.durSum?('<div style="font-size:11px;color:#0f172a;font-weight:700;margin-top:3px;white-space:nowrap" title="Total de horas trabajadas en domicilios">🕐 '+_minTxt(p.durSum/60000)+' trab.</div>'):'')+'</div>'
           +'<div><div class="perf-big" style="color:'+pcc+'">'+pcrTxt+'</div><div class="perf-cap">avance</div></div>'
@@ -3441,7 +3442,7 @@
         a.exito++;
         if(o.validado_admin_at) a.valid++;
         var t=o.tipo||''; if(t==='INSTALACION')a.inst++; else if(t==='REPARACION')a.rep++; else a.otros++;
-        if(o.inicio_tec_at&&o.fin_tec_at){ var dm=(new Date(o.fin_tec_at)-new Date(o.inicio_tec_at))/60000; if(dm>0&&dm<1440){ a.tmin+=dm; a.tcount++; } }
+        if(o.inicio_tec_at&&o.fin_tec_at){ var dm=(new Date(o.fin_tec_at)-new Date(o.inicio_tec_at))/60000; if(dm>0&&dm<=360){ a.tmin+=dm; a.tcount++; } }
       });
       desc.forEach(function(x){ ag(x.cuadrilla_id).cortes++; });
       intentosDx.forEach(function(x){ ag(x.cuadrilla_id).visitas++; });
@@ -3694,7 +3695,7 @@
       d.forEach(function(o){ var k=o.cuadrilla_id||0, nom=o.cuadrillas?o.cuadrillas.nombre:'(sin asignar)';
         var c=byC[k]||(byC[k]={nombre:nom,fin:0,pend:0,nr:0,total:0,durSum:0,durN:0});
         var b=bucket(o.estado); c[b]++; c.total++; tot[b]++; tot.total++;
-        if(o.inicio_tec_at&&o.fin_tec_at){ var mins=(new Date(o.fin_tec_at)-new Date(o.inicio_tec_at))/60000; if(mins>0&&mins<1440){ c.durSum+=mins; c.durN++; tot.durSum+=mins; tot.durN++; } }
+        if(o.inicio_tec_at&&o.fin_tec_at){ var mins=(new Date(o.fin_tec_at)-new Date(o.inicio_tec_at))/60000; if(mins>0&&mins<=360){ c.durSum+=mins; c.durN++; tot.durSum+=mins; tot.durN++; } }
       });
       var durProm=tot.durN?Math.round(tot.durSum/tot.durN):0, pct=tot.total?Math.round(tot.fin/tot.total*100):0;
       var h='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'+_infKpi(tot.total,'OTs del período','#2563eb')+_infKpi(tot.fin,'Finalizadas/cerradas','#16a34a')+_infKpi(tot.pend,'Pendientes','#d97706')+_infKpi(tot.nr,'No realizadas','#dc2626')+_infKpi(pct+'%','Completitud','#0891b2')+_infKpi(durProm+' min','Duración prom.','#7c3aed')+'</div><div id="inf-rend-t"></div>';
@@ -4287,7 +4288,6 @@
     if(!_dxEsAdmin()){ view.innerHTML='<h1>Desconexiones</h1><div class="center">Solo disponible para administrativo, gerencial o superadmin.</div>'; return; }
     if(!window._dxState) window._dxState={ver:'PENDIENTE',q:'',origen:''};
     var st=window._dxState; loading();
-    if(window._dxIntMax==null){ window._dxIntMax=3; sbGet('config_comercial?id=eq.1&select=desc_max_intentos').then(function(d){ var v=Array.isArray(d)&&d[0]&&d[0].desc_max_intentos; if(v) window._dxIntMax=Number(v); }).catch(function(){}); }
     // Trae las desconexiones del tab activo y pinta. El mantenimiento NO corre acá (ver abajo).
     var _render=function(){
       if(st.ver==='cand'){ _dxCandidatos(); return; }
@@ -4310,7 +4310,7 @@
           +'<button class="btn '+(st.mapa?'btn-pri':'btn-2')+'" id="dx-mapbtn" title="Ver los cortes en el mapa">🗺️ Mapa</button>'
           +'<button class="btn btn-2" id="dx-refrescar" title="Re-procesa altas/bajas automáticas (esto es lo que tarda)">🔄 Actualizar</button>'
           +'<button class="btn btn-2" id="dx-csv">⬇️ Exportar CSV</button>'
-          +'<button class="btn btn-2" id="dx-cfgint" title="Cuántos intentos fallidos del técnico antes de pasar a Imposibles">⚙️ Intentos</button></div>'
+          +'</div>'
           +'<div id="dx-mapinfo" class="muted" style="font-size:12px;margin:2px 0 6px;display:'+(st.mapa?'block':'none')+'"></div>'
           +'<div id="dx-mapa" style="display:'+(st.mapa?'block':'none')+';height:520px;border:1px solid var(--bord);border-radius:12px;overflow:hidden;margin-bottom:8px"></div>'
           +'<div id="dx-tabla"'+(st.mapa?' style="display:none"':'')+'></div></div>';
@@ -4327,7 +4327,6 @@
         var _fh=document.getElementById('dx-fhasta'); if(_fh) _fh.addEventListener('change',function(){ st.fhasta=this.value; _dxPinta(); });
         var _fcl=document.getElementById('dx-fclear'); if(_fcl) _fcl.addEventListener('click',function(){ st.fcuad='';st.festado='';st.fdesde='';st.fhasta='';st.origen='';st.q='';st.fbarrio='';st.fresultado='';st.frec=''; _render(); });
         document.getElementById('dx-csv').addEventListener('click',_dxCSV);
-        var cib=document.getElementById('dx-cfgint'); if(cib) cib.addEventListener('click',_dxCfgIntentos);
         var rb=document.getElementById('dx-refrescar'); if(rb) rb.addEventListener('click',function(){ window._dxMaintDone=false; vDesconexiones(); });
         _dxWire();
         _dxPinta();
@@ -4475,7 +4474,7 @@
       cols.push({k:'quien',t:'Quién',sort:function(o){return _dxQuien(o);},r:function(o){return '<span style="font-size:12px">'+esc(_dxQuien(o))+'</span>';}});
     }
     if(window._dxState.ver==='gestion'){
-      cols.push({k:'intentos',t:'Intentos',sort:function(o){return Math.max(o.intentos_count||0,o.nap_intentos_count||0);},r:function(o){ var e=o.intentos_count||0, n=o.nap_intentos_count||0, max=(window._dxIntMax||3), tot=Math.max(e,n), col=tot>=max?'#b91c1c':(tot>=max-1?'#b45309':'#334155'), parts=[]; if(e)parts.push('📦 '+e); if(n)parts.push('✂️ '+n); var ult=o.ultimo_intento_at?(' <span class="muted" style="font-size:11px;white-space:nowrap">· últ. '+esc(fmtFecha(o.ultimo_intento_at))+'</span>'):''; return '<span style="font-weight:700;color:'+col+'">'+(parts.join(' · ')||'—')+'</span>'+ult+(tot>=max?' <span style="font-size:10px;background:#fef2f2;color:#b91c1c;padding:1px 6px;border-radius:99px;font-weight:800;white-space:nowrap">al límite</span>':''); }});
+      cols.push({k:'intentos',t:'Intentos',sort:function(o){return Math.max(o.intentos_count||0,o.nap_intentos_count||0);},r:function(o){ var e=o.intentos_count||0, n=o.nap_intentos_count||0, max=3, tot=Math.max(e,n), col=tot>=max?'#b91c1c':(tot>=max-1?'#b45309':'#334155'), parts=[]; if(e)parts.push('📦 '+e); if(n)parts.push('✂️ '+n); var ult=o.ultimo_intento_at?(' <span class="muted" style="font-size:11px;white-space:nowrap">· últ. '+esc(fmtFecha(o.ultimo_intento_at))+'</span>'):''; return '<span style="font-weight:700;color:'+col+'">'+(parts.join(' · ')||'—')+'</span>'+ult+(tot>=max?' <span style="font-size:10px;background:#fef2f2;color:#b91c1c;padding:1px 6px;border-radius:99px;font-weight:800;white-space:nowrap">al límite</span>':''); }});
     }
     cols.push({k:'info',t:'Detalle',sort:null,r:_dxInfo});
     cols.push({k:'acc',t:'Acciones',sort:null,fixed:true,r:_dxAcc});
@@ -4492,24 +4491,7 @@
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='desconexiones_'+window._dxState.ver+'.csv'; document.body.appendChild(a); a.click(); a.remove();
     toast('CSV exportado ('+rows.length+' filas)');
   }
-  // Config del umbral de intentos antes de "Imposible" (guardado en config_comercial.desc_max_intentos)
-  function _dxCfgIntentos(){
-    sbGet('config_comercial?id=eq.1&select=desc_max_intentos').then(function(d){
-      var cur=(Array.isArray(d)&&d[0]&&d[0].desc_max_intentos)||3;
-      modal('<h2>⚙️ Intentos antes de "Imposible"</h2>'
-        +'<p class="muted">Cuántas visitas fallidas puede registrar el técnico antes de que la desconexión pase sola a <b>🚫 Imposibles</b> y salga de su listado.</p>'
-        +'<label class="l">Cantidad de intentos</label><input id="ci-n" type="number" min="1" max="10" value="'+cur+'" style="width:120px">'
-        +'<div id="ci-err" style="color:var(--rojo);font-size:12px;min-height:14px"></div>'
-        +'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ok" id="ci-go">Guardar</button><button class="btn btn-2" id="ci-x">Cancelar</button></div>');
-      document.getElementById('ci-x').addEventListener('click',cerrarModal);
-      document.getElementById('ci-go').addEventListener('click',function(){
-        var n=parseInt(document.getElementById('ci-n').value,10);
-        if(!(n>=1&&n<=10)){ document.getElementById('ci-err').textContent='Poné un número entre 1 y 10.'; return; }
-        var b=this; b.disabled=true; b.textContent='Guardando…';
-        sbPatch('config_comercial?id=eq.1',{desc_max_intentos:n,updated_at:new Date().toISOString()}).then(function(){ logAct('Cambió umbral de intentos de desconexión a '+n,{entidad:'CONFIG'}); cerrarModal(); toast('⚙️ Ahora pasan a Imposibles a los '+n+' intentos'); }).catch(function(){ b.disabled=false; b.textContent='Guardar'; document.getElementById('ci-err').textContent='No se pudo guardar (¿corriste el SQL?).'; });
-      });
-    }).catch(function(){ toast('No se pudo leer la config.'); });
-  }
+  // El umbral para pasar a "Imposible" es fijo en 3 intentos (decisión Gastón, v3.79). Se evalúa en _dxDetalle (panel) y en la PWA.
   function _dxWire(){
     var w=document.getElementById('dx-wrap'); if(!w) return;
     w.addEventListener('click',function(e){
