@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.56</title>
+<title>Nexa · Técnico — v0.57</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -45,6 +45,8 @@
   .center{text-align:center;padding:30px;color:var(--gris)}
   .spin{width:30px;height:30px;border:3px solid var(--bord);border-top-color:var(--azul2);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto}
   @keyframes sp{to{transform:rotate(360deg)}}
+  @keyframes alarmPulse{0%,100%{background:#fef2f2}50%{background:#fde0e0}}
+  .alarma-abierta{animation:alarmPulse 1.1s ease-in-out infinite;color:#b91c1c;font-weight:800;font-size:13.5px;border:1px solid #fca5a5;border-radius:8px;padding:7px 10px;margin:4px 0}
   .err{color:var(--rojo);font-size:14px;min-height:18px;margin:8px 0}
   .logo{font-size:34px;font-weight:800;color:var(--azul2);text-align:center;letter-spacing:2px;margin-top:30px}
   .sublogo{text-align:center;color:var(--gris);margin-bottom:18px}
@@ -63,7 +65,8 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.56';
+  var VER='v0.57';
+  var _ALARM_MS=2*3600000; // OT en curso +2h = alarma (te olvidaste de cerrarla)
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -180,6 +183,7 @@
         return '<div class="ot"><div class="h"><div><span class="num">N° '+esc(o.numero)+'</span> · '+esc(o.tipo)+'</div>'+pillEstado(o.estado)+'</div>'
           +(o.fecha_agendada?'<div class="dir" style="font-weight:800;color:#2563eb;margin:2px 0">📅 '+esc(fmtFecha(o.fecha_agendada))+(o.hora_agendada?(' · 🕐 '+esc(String(o.hora_agendada).substring(0,5))+' hs'):'')+'</div>':'')
           +(_atrasoMin(o)?'<div style="background:#fef2f2;color:#b91c1c;font-weight:800;font-size:13.5px;border:1px solid #fecaca;border-radius:8px;padding:6px 9px;margin:4px 0">🔴 '+_atrasoTxt(_atrasoMin(o))+'</div>':'')
+          +((o.estado==='EN_CURSO'&&o.inicio_tec_at&&(Date.now()-Date.parse(o.inicio_tec_at))>=_ALARM_MS)?'<div class="alarma-abierta">⏰ Esta tarea lleva '+_hm(Date.now()-Date.parse(o.inicio_tec_at))+' abierta — cerrála o avisá a la oficina</div>':'')
           +'<div class="cli">'+esc(nom)+'</div>'+(dir?'<div class="dir">📍 '+dir+'</div>':'')
           +(cli&&cli.telefono?'<div class="dir">📞 '+esc(cli.telefono)+'</div>':'')
           +(o.tipos_trabajo?'<span class="badge-tt">'+esc(o.tipos_trabajo.nombre)+'</span>':'')
@@ -202,6 +206,8 @@
       } else {
         cont.innerHTML=d.map(cardOT).join('');
       }
+      // Alarma: si hay una OT en curso pasada de 2h (te la olvidaste abierta), vibrá para avisar
+      try{ if(navigator.vibrate && d.some(function(o){ return o.estado==='EN_CURSO'&&o.inicio_tec_at&&(Date.now()-Date.parse(o.inicio_tec_at))>=_ALARM_MS; })) navigator.vibrate([200,100,200,100,200]); }catch(_){}
       Array.prototype.forEach.call(cont.querySelectorAll('.ot-abrir'),function(b){ b.addEventListener('click',function(){ vDetalle(d.filter(function(x){return x.id==b.getAttribute('data-id');})[0]); }); });
     }).catch(function(){ cont.innerHTML='<div class="center">Error al cargar. Reintentá.</div>'; });
   }

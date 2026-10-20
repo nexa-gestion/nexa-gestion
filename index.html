@@ -94,6 +94,8 @@
   .muted{ color:var(--gris); } .center{ text-align:center; padding:30px; color:var(--gris); }
   .spin{ display:inline-block; width:26px; height:26px; border:3px solid #e2e8f0; border-top-color:var(--pri); border-radius:50%; animation:sp 1s linear infinite; }
   @keyframes sp{ to{ transform:rotate(360deg); } }
+  @keyframes alarmPulse{ 0%,100%{ background:#fef2f2; } 50%{ background:#fecaca; } }
+  .enc-alarma{ animation:alarmPulse 1.1s ease-in-out infinite; border:1px solid #fca5a5 !important; border-radius:8px; }
   #map{ height:calc(100vh - 170px); min-height:420px; border:1px solid var(--bord); border-radius:12px; }
   .leaflet-container{ font:inherit; }
   /* Dashboard estilo FG */
@@ -249,8 +251,9 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.79';
+  var VER='v3.80';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
+  var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -733,7 +736,7 @@
   }
   // ── Cronómetro EN VIVO de tareas en curso (tiempo corriendo desde que el técnico tocó «iniciar») ──
   function _liveHMS(iniIso){ var ms=Date.now()-Date.parse(iniIso); if(!(ms>0)) return '0:00:00'; var s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60, p=function(n){return (n<10?'0':'')+n;}; return h+':'+p(m)+':'+p(ss); }
-  function _svLiveTick(){ var els=document.querySelectorAll('.sv-live'); if(!els.length){ if(window._svLiveInt){ clearInterval(window._svLiveInt); window._svLiveInt=null; } return; } Array.prototype.forEach.call(els,function(e){ var ini=e.getAttribute('data-ini'); if(ini) e.textContent=_liveHMS(ini); }); }
+  function _svLiveTick(){ var els=document.querySelectorAll('.sv-live'); if(!els.length){ if(window._svLiveInt){ clearInterval(window._svLiveInt); window._svLiveInt=null; } return; } Array.prototype.forEach.call(els,function(e){ var ini=e.getAttribute('data-ini'); if(!ini) return; e.textContent=_liveHMS(ini); var row=e.closest('.enc-live'); if(row){ row.classList.toggle('enc-alarma',(Date.now()-Date.parse(ini))>=_ALARM_MS); } }); }
   // ── Tarjeta "🔴 En curso ahora" (dashboard) — se AUTO-REFRESCA: re-consulta la base cada 30s (poll auto-perpetuante) ──
   // así las OTs que el técnico ya cerró se caen solas. El cronómetro H:MM:SS tickea cada 1s. Se corta solo al salir del dashboard.
   function _dashEnCurso(){
@@ -746,7 +749,7 @@
     if(window._svRefreshTO) clearTimeout(window._svRefreshTO);
     window._svRefreshTO=setTimeout(_dashEnCurso,30000); // se re-arma en cada corrida
     var card=function(arr,area){ if(!arr.length) return '';
-      return '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 14px;margin:8px 0"><div style="font-weight:800;color:#1e3a8a;margin-bottom:8px">🔴 En curso ahora ('+arr.length+')</div>'+arr.map(function(o){ var cuad=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(o.cuadrilla_id)||'—', cli=(area==='SERVICIOS')?((o.clientes_servicios&&o.clientes_servicios.nombre)||'(cliente)'):(((o.clientes&&o.clientes.nombre||'')+' '+(o.clientes&&o.clientes.apellido||'')).trim()||'(cliente)'); return '<div class="pd-row enc-live" data-otv="'+o.id+'" data-area="'+area+'" style="cursor:pointer;align-items:center"><span>'+(area==='SERVICIOS'?'🔧':'🛠️')+' <b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo||'')+' · '+esc(cli)+' <span class="muted">· '+esc(cuad)+'</span></span><span style="white-space:nowrap;font-weight:800;color:#dc2626;font-size:15px">⏱️ <span class="sv-live" data-ini="'+esc(o.inicio_tec_at)+'" style="font-variant-numeric:tabular-nums">'+_liveHMS(o.inicio_tec_at)+'</span></span></div>'; }).join('')+'<div style="font-size:11px;color:#64748b;margin-top:4px">⏱️ corre desde que el técnico tocó «iniciar» · se actualiza solo · tocá para ver la OT</div></div>';
+      return '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 14px;margin:8px 0"><div style="font-weight:800;color:#1e3a8a;margin-bottom:8px">🔴 En curso ahora ('+arr.length+')</div>'+arr.map(function(o){ var cuad=(o.cuadrillas&&o.cuadrillas.nombre)||_cuadNombre(o.cuadrilla_id)||'—', cli=(area==='SERVICIOS')?((o.clientes_servicios&&o.clientes_servicios.nombre)||'(cliente)'):(((o.clientes&&o.clientes.nombre||'')+' '+(o.clientes&&o.clientes.apellido||'')).trim()||'(cliente)'); var _al=(o.inicio_tec_at&&(Date.now()-Date.parse(o.inicio_tec_at))>=_ALARM_MS); return '<div class="pd-row enc-live'+(_al?' enc-alarma':'')+'" data-otv="'+o.id+'" data-area="'+area+'" style="cursor:pointer;align-items:center"><span>'+(_al?'<span title="Lleva más de 2 horas abierta — el técnico quizá se olvidó de cerrarla" style="font-weight:800;color:#b91c1c">⏰ +2h · </span>':'')+(area==='SERVICIOS'?'🔧':'🛠️')+' <b>OT '+esc(o.numero)+'</b> · '+esc(o.tipo||'')+' · '+esc(cli)+' <span class="muted">· '+esc(cuad)+'</span></span><span style="white-space:nowrap;font-weight:800;color:#dc2626;font-size:15px">⏱️ <span class="sv-live" data-ini="'+esc(o.inicio_tec_at)+'" style="font-variant-numeric:tabular-nums">'+_liveHMS(o.inicio_tec_at)+'</span></span></div>'; }).join('')+'<div style="font-size:11px;color:#64748b;margin-top:4px">⏱️ corre desde que el técnico tocó «iniciar» · se actualiza solo · ⏰ +2h = alarma (avisá a la cuadrilla) · tocá para ver la OT</div></div>';
     };
     Promise.all([
       sbGet('ordenes_trabajo?estado=eq.EN_CURSO&area=eq.INTERNET&inicio_tec_at=not.is.null&select=id,numero,tipo,inicio_tec_at,cuadrilla_id,cuadrillas(nombre),clientes(nombre,apellido,barrio)&order=inicio_tec_at.asc&limit=200').catch(function(){return [];}),
