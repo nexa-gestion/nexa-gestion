@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.80';
+  var VER='v3.81';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
@@ -4316,6 +4316,7 @@
           +'</div>'
           +'<div id="dx-mapinfo" class="muted" style="font-size:12px;margin:2px 0 6px;display:'+(st.mapa?'block':'none')+'"></div>'
           +'<div id="dx-mapa" style="display:'+(st.mapa?'block':'none')+';height:520px;border:1px solid var(--bord);border-radius:12px;overflow:hidden;margin-bottom:8px"></div>'
+          +'<div id="dx-resumen"></div>'
           +'<div id="dx-tabla"'+(st.mapa?' style="display:none"':'')+'></div></div>';
         view.innerHTML=h; _dxBadge();
         document.getElementById('dx-q').addEventListener('input',function(){ st.q=this.value; _dxPinta(); });
@@ -4460,6 +4461,23 @@
     if(window._dxState&&window._dxState.mapa) _dxRenderMapa();
     var cont=document.getElementById('dx-tabla'); if(!cont) return;
     var rows=_dxFiltrados();
+    // Resumen del tab "En gestión": estados de los intentos de un vistazo (se calcula de las filas ya cargadas)
+    var _res=document.getElementById('dx-resumen');
+    if(_res){
+      if(window._dxState.ver==='gestion'){
+        var _n=rows.length, _lim=0, _ret=0, _cor=0, _ambos=0;
+        rows.forEach(function(o){ var e=o.intentos_count||0, nn=o.nap_intentos_count||0; if(Math.max(e,nn)>=2) _lim++; if(e>0) _ret++; if(nn>0) _cor++; if(e>0&&nn>0) _ambos++; });
+        var _card=function(v,t,c){ return '<div style="flex:1;min-width:120px;background:#fff;border:1px solid var(--bord);border-radius:10px;padding:10px 12px"><div style="font-size:22px;font-weight:800;color:'+c+'">'+v+'</div><div style="font-size:11.5px;color:#64748b;margin-top:2px">'+t+'</div></div>'; };
+        _res.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px">'
+          +_card(_n,'🔄 En gestión (con intentos)','#0f172a')
+          +_card(_lim,'⚠️ Al límite (2 intentos)','#b91c1c')
+          +_card(_ret,'📦 Con intento de retiro','#334155')
+          +_card(_cor,'✂️ Con intento de corte NAP','#334155')
+          +'</div>'
+          +'<div style="font-size:12px;color:#64748b;margin:-4px 0 8px">Los que llegaron a <b>3 intentos</b> ya pasaron a <b>🚫 Imposibles</b> · el detalle de cada llamado/visita (quién y cuándo) está en la ficha del cliente y en el detalle de la desconexión. <button class="btn btn-2" id="dx-go-imp" style="padding:3px 9px;font-size:11.5px;margin-left:4px">Ver 🚫 Imposibles</button></div>';
+        var _gi=document.getElementById('dx-go-imp'); if(_gi) _gi.addEventListener('click',function(){ window._dxState.ver='IMPOSIBLE'; vDesconexiones(); });
+      } else _res.innerHTML='';
+    }
     var cols=[
       {k:'num',t:'N°',sort:function(o){return (o.clientes&&o.clientes.numero_cliente)||0;},r:function(o){return '<b>'+esc((o.clientes&&o.clientes.numero_cliente)||'')+'</b>';}},
       {k:'isp',t:'Cód ISP',sort:function(o){return (o.clientes&&o.clientes.codigo_ispcube)||'';},r:function(o){return esc((o.clientes&&o.clientes.codigo_ispcube)||'—');}},
