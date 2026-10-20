@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.88';
+  var VER='v3.89';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -4410,7 +4410,7 @@
       if(st.ver==='cand'){ _dxCandidatos(); return; }
       var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':(st.ver==='compromiso'?'estado=eq.COMPROMISO_PAGO':(st.ver==='gestion'?'estado=in.(PENDIENTE,ASIGNADA,PARCIAL)&or=(intentos_count.gt.0,nap_intentos_count.gt.0)':'estado=eq.'+st.ver));
       var _ord=(st.ver==='gestion')?'order=intentos_count.desc,nap_intentos_count.desc,ultimo_intento_at.desc.nullslast':'order=created_at.desc';
-      sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,nodo,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado,bloqueado_desde)&'+_ord+'&limit=2000').then(function(d){
+      sbGetAll('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,nodo,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado,bloqueado_desde)&'+_ord).then(function(d){
         _dxData=Array.isArray(d)?d:[];
         var _bars={}; _dxData.forEach(function(o){ var bz=(o.clientes&&o.clientes.barrio)||'(sin barrio)'; _bars[bz]=(_bars[bz]||0)+1; });
         var _barOpts=Object.keys(_bars).sort(function(a,b){return _bars[b]-_bars[a];}).map(function(k){return '<option value="'+esc(k)+'"'+(st.fbarrio===k?' selected':'')+'>'+esc(k)+' ('+_bars[k]+')</option>';}).join('');
