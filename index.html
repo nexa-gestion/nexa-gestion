@@ -249,7 +249,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.75';
+  var VER='v3.76';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -642,7 +642,7 @@
     Promise.all([
       sbGet('ordenes_trabajo?or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+_nx+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,cuadrilla_id,fecha_agendada,validado_admin_at,inicio_tec_at,fin_tec_at,cuadrillas(nombre),clientes(nombre,apellido,barrio)&limit=2000'),
       sbGet('desconexiones?corte_at=gte.'+dia+'T03:00:00Z&corte_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000'),
-      sbGet('desconexiones?ultimo_intento_at=gte.'+dia+'T03:00:00Z&ultimo_intento_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000').catch(function(){return [];}),
+      sbGet('desconexion_intentos?created_at=gte.'+dia+'T03:00:00Z&created_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000').catch(function(){return [];}),
       sbGet('desconexiones?estado=eq.PARCIAL&updated_at=gte.'+dia+'T03:00:00Z&updated_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000').catch(function(){return [];})
     ]).then(function(_rr){
       var d=Array.isArray(_rr[0])?_rr[0]:[];
@@ -1385,7 +1385,7 @@
         +'<div class="muted" style="font-size:11px;margin-top:9px">Saldo y datos de ISPcube (último sync). El <b>detalle de facturas y cobranzas</b> (cta cte) se sumará cuando ISPcube habilite el endpoint por API.</div></div>';
       modal('<h2>Cliente N° '+esc(c.numero_cliente)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+esc(cNom)+' · '+pill(c.estado)+(c.telefono?waLink(c.telefono,cNom,'',c.domicilio_full,'WhatsApp'):'')+'</p>'
         +cuentaHtml
-        +'<div class="fichagrid">'+fr('Empresa',c.empresa)+fr('Documento',(c.tipo_doc||'')+' '+(c.doc_numero||''))+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(c.telefono||'—')+' '+waLink(c.telefono,cNom,'',_domLimpio(c.domicilio_full))+'</span></div>'+fr('Email',c.email)
+        +'<div class="fichagrid">'+fr('Empresa',c.empresa)+fr('Documento',(c.tipo_doc||'')+' '+(c.doc_numero||''))+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(c.telefono||'—')+' '+waLink(c.telefono,cNom,'',_domLimpio(c.domicilio_full))+'</span></div>'+'<div class="ficha-row"><span class="k">Tel. alternativo</span><span class="v">'+(c.telefono_alt?(esc(c.telefono_alt)+' '+waLink(c.telefono_alt,cNom,'',_domLimpio(c.domicilio_full))):'<span style="color:#dc2626">— falta 2° número</span>')+'</span></div>'+fr('Email',c.email)
         +fr('Domicilio',_domLimpio(c.domicilio_full))+fr('Barrio',c.barrio)
         +'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(c.lat,c.lng)+'</span></div>'+fr('Nodo',c.nodo)
         +fr('Tecnología',c.tecnologia)+fr('TV / Fútbol',(c.tv_online?'TV ':'')+(c.pack_futbol?'Fútbol':'')||'No')+'</div>'
@@ -1433,9 +1433,10 @@
       sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,inicio_tec_at,created_at,observaciones_tec,motivo_cancelacion,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100'),
       sbGet('interacciones_cliente?cliente_id=eq.'+cliId+'&select=*&order=created_at.desc&limit=100').catch(function(){return [];}),
       sbGet('desconexiones?cliente_id=eq.'+cliId+'&select=id,estado,origen,intentos_count,intentos_obs,nap_intentos_count,nap_intentos_obs,parte_pendiente,gestion_obs,compromiso_obs,obs_tecnico,recupero_equipo,nap_cortada,corte_at,created_at,updated_at,cuadrillas(nombre)&order=created_at.desc&limit=50').catch(function(){return [];}),
-      sbGet('usuarios?select=id,nombre&limit=100').catch(function(){return [];})
+      sbGet('usuarios?select=id,nombre&limit=100').catch(function(){return [];}),
+      sbGet('desconexion_intentos?cliente_id=eq.'+cliId+'&select=id,tipo,resultado,obs,creado_por,cuadrilla_id,canal,created_at,cuadrillas(nombre)&order=created_at.desc&limit=100').catch(function(){return [];})
     ]).then(function(r){
-      var d=Array.isArray(r[0])?r[0]:[], inter=Array.isArray(r[1])?r[1]:[], dxs=Array.isArray(r[2])?r[2]:[];
+      var d=Array.isArray(r[0])?r[0]:[], inter=Array.isArray(r[1])?r[1]:[], dxs=Array.isArray(r[2])?r[2]:[], dxInt=Array.isArray(r[4])?r[4]:[];
       var umap={}; (Array.isArray(r[3])?r[3]:[]).forEach(function(u){ umap[u.id]=u.nombre; });
       var _uname=function(id){ return umap[id]||(id?('Usuario '+id):'—'); };
       // ── Gestiones e historial (interacciones) ──
@@ -1468,6 +1469,14 @@
             +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:#64748b"><span><b style="color:#334155">'+esc(fmtFecha(x.created_at))+'</b> · '+esc(x.cuadrillas?x.cuadrillas.nombre:'—')+'</span><span>'+_dxEst(x.estado)+'</span></div>'
             +(det.length?('<div style="margin-top:5px;display:flex;flex-direction:column;gap:3px">'+det.join('')+'</div>'):'<div class="muted" style="font-size:12px;margin-top:3px">(sin notas)</div>')
           +'</div>'; }).join('')+'</div>';
+      }
+      // ── Intentos de recuperación (llamados + visitas, con quién/cuándo/resultado) ──
+      if(dxInt.length){
+        h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:#1d4ed8">📞 Intentos de recuperación <span class="muted" style="font-weight:400;font-size:13px">('+dxInt.length+')</span></h3>';
+        h+=dxInt.map(function(it){ var quien=(it.cuadrillas&&it.cuadrillas.nombre)||_uname(it.creado_por); var ico=(it.tipo==='LLAMADO'?'📞':(it.tipo==='VISITA'?'🚶':'•'));
+          return '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 10px;margin-bottom:5px">'
+            +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:#64748b"><span><b style="color:#334155">'+esc(fmtFechaHora(it.created_at))+'</b> · 👤 '+esc(quien)+(it.canal?(' · '+esc(it.canal)):'')+'</span><span>'+ico+' '+esc(it.tipo||'')+'</span></div>'
+            +'<div style="font-size:13px;color:#1e293b;margin-top:3px">'+esc(it.resultado||'')+(it.obs?(' <span class="muted">· '+esc(it.obs)+'</span>'):'')+'</div></div>'; }).join('')+'</div>';
       }
       // ── Historial de servicios (OTs) ──
       var hechos=d.filter(function(o){return o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO';}).length;
@@ -3407,8 +3416,8 @@
     Promise.all([
       sbGetAll('ordenes_trabajo?fin_tec_at=gte.'+rk.desde+'&fin_tec_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id,tipo,estado,inicio_tec_at,fin_tec_at,validado_admin_at'),
       sbGetAll('desconexiones?finalizado_at=gte.'+rk.desde+'&finalizado_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id,finalizado_at').catch(function(){return [];}),
-      // VISITAS SIN ÉXITO: intentos de retiro (ultimo_intento_at) + parciales en el período (toda actividad del técnico cuenta)
-      sbGetAll('desconexiones?ultimo_intento_at=gte.'+rk.desde+'&ultimo_intento_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id').catch(function(){return [];}),
+      // VISITAS SIN ÉXITO: cada intento de recuperación (llamado/visita) registrado por la cuadrilla + parciales (toda actividad cuenta)
+      sbGetAll('desconexion_intentos?created_at=gte.'+rk.desde+'&created_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id').catch(function(){return [];}),
       sbGetAll('desconexiones?estado=eq.PARCIAL&updated_at=gte.'+rk.desde+'&updated_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id').catch(function(){return [];})
     ]).then(function(r){
       var ots=Array.isArray(r[0])?r[0]:[], desc=Array.isArray(r[1])?r[1]:[], intentosDx=Array.isArray(r[2])?r[2]:[], parcialesDx=Array.isArray(r[3])?r[3]:[];
@@ -4528,6 +4537,10 @@
         +(o.gestion_at?('<div class="muted" style="font-size:11.5px;margin-top:6px">Última gestión registrada: '+esc(fmtFechaHora(o.gestion_at))+'</div>'):'')
         +'<button class="btn btn-pri" id="dg-save" style="margin-top:10px">💾 Guardar gestión</button>'
         +'<button class="btn btn-2" id="dg-motbaja" style="margin-top:8px;border-color:#7c3aed;color:#6d28d9">📉 Registrar motivo de baja</button>'
+        +'<div style="border-top:1px dashed #bae6fd;margin-top:11px;padding-top:9px"><label class="l">📞 Registrar llamado / intento <span class="muted">(suma a los 3 intentos de recuperación)</span></label>'
+          +'<select id="dg-ires" style="width:100%">'+['Sin contacto / no atiende','Ya no vive ahí','El equipo ya se retiró','Pidió otro día','No se encontró el domicilio','Se niega / no entrega','Otro'].map(function(m){return '<option>'+esc(m)+'</option>';}).join('')+'</select>'
+          +'<input id="dg-iobs" placeholder="Observación (opcional)" style="margin-top:6px">'
+          +'<button class="btn btn-2" id="dg-iok" style="margin-top:8px;border-color:#2563eb;color:#1d4ed8">📞 Registrar intento</button></div>'
       +'</div>';
     }
     else if(o.gestion_obs||o.telefono_contacto){ h+='<div class="muted" style="margin-top:8px;font-size:13px">📋 Gestión: '+esc(o.gestion_obs||'—')+(o.telefono_contacto?(' · 📞 extra '+esc(o.telefono_contacto)):'')+'</div>'; }
@@ -4562,6 +4575,20 @@
     g('d-x').addEventListener('click',cerrarModal);
     // Guardar la gestión con el cliente (contacto + nota + teléfono extra)
     if(g('dg-motbaja')) g('dg-motbaja').addEventListener('click',function(){ cerrarModal(); _bjDesdeDescon(c); });
+    if(g('dg-iok')) g('dg-iok').addEventListener('click',function(){
+      var res=(document.getElementById('dg-ires')||{}).value, iobs=((document.getElementById('dg-iobs')||{}).value||'').trim();
+      var bb=this; bb.disabled=true; bb.textContent='Guardando…';
+      var ahora=new Date().toISOString(), hoy=new Date().toLocaleDateString('es-AR'), MAX=3;
+      var ic=((o.intentos_count)||0)+1, ultimo=(ic>=MAX);
+      var linea='• '+hoy+' — 📞 Llamado (oficina): '+res+(iobs?(' ('+iobs+')'):'')+' ('+(USER.nombre||'admin')+')';
+      var obsAcum=((o.intentos_obs||'').trim()); obsAcum=(obsAcum?(obsAcum+'\n'):'')+linea;
+      var body={ intentos_count:ic, intentos_obs:obsAcum, ultimo_intento_at:ahora, updated_at:ahora };
+      if(ultimo){ body.estado='IMPOSIBLE'; body.resolucion='🚫 Imposible de recuperar — '+ic+' intentos'; body.resuelto_at=ahora; }
+      Promise.all([
+        sbPost('desconexion_intentos',{desconexion_id:id,cliente_id:c.id,tipo:'LLAMADO',resultado:res,obs:iobs||null,creado_por:USER.id,canal:'PANEL'}).catch(function(){}),
+        sbPatch('desconexiones?id=eq.'+id,body)
+      ]).then(function(){ logAct('📞 Llamado al cliente (desconexión)',{entidad:'DESCONEXION',entidad_id:id,detalle:res+(iobs?(': '+iobs):'')}); cerrarModal(); toast(ultimo?('🚫 '+ic+' intentos — pasó a Imposibles'):('📞 Intento registrado ('+ic+'/'+MAX+')')); vDesconexiones(); }).catch(function(){ bb.disabled=false; bb.textContent='📞 Registrar intento'; toast('No se pudo registrar.'); });
+    });
     if(g('dg-save')) g('dg-save').addEventListener('click',function(){
       var cont=(document.getElementById('dg-contacto')||{}).value||null;
       var obs=((document.getElementById('dg-obs')||{}).value||'').trim()||null;

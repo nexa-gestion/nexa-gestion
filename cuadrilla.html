@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.55</title>
+<title>Nexa · Técnico — v0.56</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -63,7 +63,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.55';
+  var VER='v0.56';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -891,7 +891,7 @@
     var qq=q.replace(/[(),]/g,' ');
     var ors=['nombre.ilike.*'+qq+'*','apellido.ilike.*'+qq+'*','doc_numero.ilike.*'+qq+'*'];
     if(/^\d+$/.test(q)){ ors.push('numero_cliente.eq.'+q); ors.push('codigo_ispcube.eq.'+q); ors.push('codigo_ispcube.eq.'+('000000'+q).slice(-6)); }
-    sbGet('clientes?or=('+ors.join(',')+')&select=id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,estado,caja_nap,puerto,precinto,lat,lng,codigo_ispcube&limit=30').then(function(d){
+    sbGet('clientes?or=('+ors.join(',')+')&select=id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,telefono_alt,estado,caja_nap,puerto,precinto,lat,lng,codigo_ispcube&limit=30').then(function(d){
       d=Array.isArray(d)?d:[];
       if(!d.length){ res.innerHTML='<div class="center">Sin resultados.</div>'; return; }
       res.innerHTML='<div class="muted" style="margin:6px 0">'+d.length+' resultado(s)</div>'+d.map(cliCard).join('');
@@ -955,7 +955,7 @@
     if(desconState.list) renderDescon(); else cargarDescon();
   }
   function cargarDescon(){
-    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PARCIAL)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,gestion_obs,telefono_contacto,intentos_count,intentos_obs,nap_cortada,recupero_equipo,parte_pendiente,equipo_serial,equipo_motivo,nap_motivo,nap_intentos_count,nap_intentos_obs,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
+    sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PARCIAL)&clientes.estado=neq.eliminado&select=id,cliente_id,estado,cuadrilla_id,fecha_agendada,compromiso_count,gestion_obs,telefono_contacto,intentos_count,intentos_obs,nap_cortada,recupero_equipo,parte_pendiente,equipo_serial,equipo_motivo,nap_motivo,nap_intentos_count,nap_intentos_obs,clientes!inner(id,numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,telefono_alt,caja_nap,puerto,precinto,lat,lng,codigo_ispcube)&limit=2000').then(function(d){
       d=Array.isArray(d)?d:[];
       desconState.list=d; renderDescon();
       _dxOrdenarGPS(true);   // intento automático de ordenar por cercanía (no bloquea la lista)
@@ -1000,6 +1000,7 @@
       +'<div class="dir" style="margin-top:4px">📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
       +'<div class="acc">'+((c.lat!=null||c.domicilio_full)?'<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(c)+'">🚗 Ir</a>':'')
       +(c.telefono?'<a class="btn btn-2 btn-sm" href="tel:'+esc(String(c.telefono).replace(/[^\d+]/g,''))+'">📞</a><a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(c.telefono)+'">💬</a>':'')
+      +(c.telefono_alt?'<a class="btn btn-2 btn-sm" href="tel:'+esc(String(c.telefono_alt).replace(/[^\d+]/g,''))+'" title="2º número">📞²</a><a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(c.telefono_alt)+'" title="2º número">💬²</a>':'')
       +'<button class="btn btn-ok btn-sm dx-cortar">✂️ Cortar</button></div></div>';
   }
   function renderDescon(){
@@ -1032,6 +1033,11 @@
       +_intAviso
       +'<div class="card"><div class="muted" style="font-size:13px">Registrás el corte y la baja pasa a <b>pendiente administrativo</b> (soporte y comercial la cierran en ISPcube).</div></div>'
       +((CORTE.dx&&(CORTE.dx.gestion_obs||CORTE.dx.telefono_contacto))?('<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd"><div class="label" style="color:#0369a1">📋 Nota del administrativo</div>'+(CORTE.dx.gestion_obs?('<div style="font-size:13.5px;margin-top:3px">'+esc(CORTE.dx.gestion_obs)+'</div>'):'')+(CORTE.dx.telefono_contacto?('<div style="margin-top:7px">📞 Tel. extra para coordinar: <a href="tel:'+esc(String(CORTE.dx.telefono_contacto).replace(/[^\d+]/g,''))+'" style="font-weight:700">'+esc(CORTE.dx.telefono_contacto)+'</a></div>'):'')+'</div>'):'')
+      +'<div class="card"><div class="label">📞 Teléfonos del cliente</div>'
+        +(c.telefono?'<div class="row2" style="margin-top:4px"><a class="btn btn-2" href="tel:'+esc(String(c.telefono).replace(/[^\d+]/g,''))+'">📞 '+esc(c.telefono)+'</a><a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(c.telefono)+'">💬</a></div>':'')
+        +(c.telefono_alt?'<div class="row2" style="margin-top:6px"><a class="btn btn-2" href="tel:'+esc(String(c.telefono_alt).replace(/[^\d+]/g,''))+'">📞 '+esc(c.telefono_alt)+' <span style="font-size:10px;color:var(--gris)">(2º)</span></a><a class="btn btn-2" target="_blank" href="https://wa.me/'+waNum(c.telefono_alt)+'">💬</a></div>':(c.telefono?'<div class="muted" style="font-size:11px;margin-top:5px">Sin 2º número cargado.</div>':''))
+        +(!c.telefono&&!c.telefono_alt?'<div class="muted" style="font-size:12px">Sin teléfonos cargados.</div>':'')
+        +'<button class="btn btn-2" id="co-llamado" style="margin-top:9px;border-color:#2563eb;color:#1d4ed8">📞 Registrar llamado / intento</button></div>'
       +'<div class="card"><div class="label">📡 Conexión</div>'+fila('Caja (NAP)',c.caja_nap)+fila('Puerto',c.puerto)+fila('Precinto',c.precinto)+'</div>'
       +'<div class="card"><div class="label">📦 ¿Retiraste el equipo?</div><div style="display:flex;gap:8px;margin-top:4px"><button class="btn '+(CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-si">Sí</button><button class="btn '+(!CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-no">No pude</button></div>'
         +(CORTE.recupero
@@ -1050,6 +1056,7 @@
       +'<button class="btn btn-2" id="co-volver" style="margin-top:10px">← Cancelar</button></div>';
     wireTop();
     document.getElementById('co-volver').addEventListener('click',vDescon);
+    var _cll=document.getElementById('co-llamado'); if(_cll) _cll.addEventListener('click',registrarLlamado);
     document.getElementById('co-rec-si').addEventListener('click',function(){ CORTE.recupero=true; renderCortar(); });
     document.getElementById('co-rec-no').addEventListener('click',function(){ CORTE.recupero=false; renderCortar(); });
     document.getElementById('co-nap-si').addEventListener('click',function(){ CORTE.napCortada=true; renderCortar(); });
@@ -1104,6 +1111,8 @@
         var jobs=[];
         if(nap) jobs.push(sbPatch('clientes?id=eq.'+c.id,{estado:'desconectado'}));   // el servicio queda abajo solo si se cortó la NAP
         if(eq&&serial) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial),{estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}));
+        // si no pudo retirar = una VISITA sin éxito → queda registrada como intento de recuperación
+        if(!eq && dxId) jobs.push(sbPost('desconexion_intentos',{desconexion_id:dxId,cliente_id:c.id,tipo:'VISITA',resultado:(eqmot||'No se pudo retirar'),obs:(obs||null),cuadrilla_id:CUAD.id,canal:'PWA'}).catch(function(){}));
         Promise.all(jobs).then(function(){ toast(finMsg); CORTE=null; vDescon(); });
       }
       doWrite(cierre).then(sideJobsAndDone).catch(function(){
@@ -1114,6 +1123,42 @@
         doWrite(legacy).then(sideJobsAndDone).catch(function(){ err.textContent='Error al registrar.'; btn.disabled=false; btn.textContent=btxt; });
       });
     });
+  }
+  // ── Registrar un LLAMADO (intento de contacto telefónico) ── suma a los intentos de recuperación
+  var RESULT_OPTS=['Sin contacto / no atiende','Ya no vive ahí','El equipo ya se retiró','Pidió otro día','No se encontró el domicilio','Se niega / no entrega','Otro'];
+  function registrarLlamado(){ if(!(CORTE&&CORTE.dx&&CORTE.dx.id)){ toast('Este corte todavía no está en el sistema; no se puede registrar el llamado.'); return; } renderLlamado(); }
+  function renderLlamado(){
+    var c=CORTE.c, nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
+    var _ic=(CORTE.dx.intentos_count)||0;
+    app.innerHTML=topBar('Llamado N° '+c.numero_cliente, nom)+'<div class="wrap">'
+      +'<div class="card"><div class="muted" style="font-size:13px">Registrá un intento de contacto por teléfono. Suma a los intentos de recuperación — al <b>'+DESC_MAX_INT+'°</b> intento la baja pasa a <b>Imposibles</b>.'+(_ic>0?(' Ya hay <b>'+_ic+'</b> intento'+(_ic>1?'s':'')+'.'):'')+'</div></div>'
+      +(c.telefono?'<div class="card"><div class="label">📞 Teléfonos</div><div class="row2" style="margin-top:4px"><a class="btn btn-2" href="tel:'+esc(String(c.telefono).replace(/[^\d+]/g,''))+'">📞 '+esc(c.telefono)+'</a>'+(c.telefono_alt?'<a class="btn btn-2" href="tel:'+esc(String(c.telefono_alt).replace(/[^\d+]/g,''))+'">📞 '+esc(c.telefono_alt)+' (2º)</a>':'')+'</div></div>':'')
+      +'<div class="card"><div class="label">Resultado del llamado</div><select id="ll-res" style="width:100%">'+RESULT_OPTS.map(function(m){return '<option>'+esc(m)+'</option>';}).join('')+'</select></div>'
+      +'<div class="card"><div class="label">Observación (opcional)</div><textarea id="ll-obs" rows="2" style="width:100%"></textarea></div>'
+      +'<div class="err" id="ll-err"></div>'
+      +'<button class="btn btn-ok" id="ll-ok" style="background:#2563eb">📞 Guardar llamado</button>'
+      +'<button class="btn btn-2" id="ll-volver" style="margin-top:10px">← Volver</button></div>';
+    wireTop();
+    document.getElementById('ll-volver').addEventListener('click',renderCortar);
+    document.getElementById('ll-ok').addEventListener('click',confirmarLlamado);
+  }
+  function confirmarLlamado(){
+    var c=CORTE.c, dxId=CORTE.dx.id, res=document.getElementById('ll-res').value, obs=document.getElementById('ll-obs').value.trim();
+    var btn=document.getElementById('ll-ok'); btn.disabled=true; btn.textContent='Guardando…';
+    var ahora=new Date().toISOString(), hoy=new Date().toLocaleDateString('es-AR');
+    var ic=((CORTE.dx.intentos_count)||0)+1, ultimo=(ic>=DESC_MAX_INT);
+    var linea='• '+hoy+' — 📞 Llamado: '+res+(obs?(' ('+obs+')'):'')+' ('+CUAD.nombre+')';
+    var obsAcum=((CORTE.dx.intentos_obs||'').trim()); obsAcum=(obsAcum?(obsAcum+'\n'):'')+linea;
+    var body={ intentos_count:ic, intentos_obs:obsAcum, ultimo_intento_at:ahora, updated_at:ahora };
+    if(ultimo){ body.estado='IMPOSIBLE'; body.resolucion='🚫 Imposible de recuperar — '+ic+' intentos'; body.resuelto_at=ahora; body.cerrado_por=CUAD.id; }
+    Promise.all([
+      sbPost('desconexion_intentos',{desconexion_id:dxId,cliente_id:c.id,tipo:'LLAMADO',resultado:res,obs:obs||null,cuadrilla_id:CUAD.id,canal:'PWA'}).catch(function(){}),
+      sbPatchOk('desconexiones?id=eq.'+dxId,body)
+    ]).then(function(){
+      sbPost('actividad_log',{accion:(ultimo?'🚫 Desconexión IMPOSIBLE ('+ic+' intentos)':'📞 Llamado al cliente ('+ic+'/'+DESC_MAX_INT+')'),entidad:'DESCONEXION',entidad_id:dxId,detalle:'Cliente N° '+(c.numero_cliente||'')+' — '+res+(obs?(': '+obs):''),cuadrilla_id:CUAD.id,cuadrilla_nombre:CUAD.nombre}).catch(function(){});
+      toast(ultimo?('🚫 '+ic+' intentos — pasó a Imposibles'):('📞 Llamado registrado ('+ic+'/'+DESC_MAX_INT+')'));
+      CORTE=null; vDescon();
+    }).catch(function(){ document.getElementById('ll-err').textContent='No se pudo guardar.'; btn.disabled=false; btn.textContent='📞 Guardar llamado'; });
   }
   // El técnico fue al domicilio y NO pudo retirar (no había nadie, no lo entregan, pidió otro día, no encontró).
   // Registra el intento con el motivo. Al 3er intento la baja pasa a IMPOSIBLE y sale del PWA (la ve el admin aparte).
