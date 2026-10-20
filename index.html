@@ -249,7 +249,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.76';
+  var VER='v3.77';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1965,7 +1965,7 @@
     document.getElementById('ec-save').addEventListener('click',function(){
       var b={ nombre:document.getElementById('ec-nom').value.trim()||null, apellido:document.getElementById('ec-ape').value.trim()||null, tipo_doc:document.getElementById('ec-tdoc').value, doc_numero:document.getElementById('ec-doc').value.trim()||null, email:document.getElementById('ec-mail').value.trim()||null, telefono:document.getElementById('ec-tel').value.trim()||null, telefono_alt:document.getElementById('ec-tel2').value.trim()||null, domicilio_full:document.getElementById('ec-dom').value.trim()||null, barrio:document.getElementById('ec-barr').value.trim()||null };
       var btn=this; btn.disabled=true; btn.textContent='Guardando…';
-      sbPatch('clientes?id=eq.'+c.id,b).then(function(){ logOT(o.id,'EDITADA',{detalle:'Editó datos del cliente'}); toast('Datos del cliente guardados ✓'); detalleOT(o.id); }).catch(function(){ btn.disabled=false; btn.textContent='💾 Guardar'; document.getElementById('ec-err').textContent='No se pudo guardar (¿DNI duplicado?).'; });
+      sbPatch('clientes?id=eq.'+c.id,b).then(function(){ logOT(o.id,'EDITADA',{detalle:'Editó datos del cliente'}); if(c.id) sbPost('interacciones_cliente',{cliente_id:Number(c.id),tipo:'nota',titulo:'✏️ Editó los datos del cliente',detalle:'Nombre/Doc/Tel/Domicilio actualizados.',creado_por:USER.id}).catch(function(){}); toast('Datos del cliente guardados ✓'); detalleOT(o.id); }).catch(function(){ btn.disabled=false; btn.textContent='💾 Guardar'; document.getElementById('ec-err').textContent='No se pudo guardar (¿DNI duplicado?).'; });
     });
   }
   function detalleOT(id){
