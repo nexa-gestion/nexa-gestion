@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.83';
+  var VER='v3.84';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3088,7 +3088,8 @@
         +hero('🟢','Deuda de activos',_money(sum(dAct)),dAct.length+' · siguen conectados (cobrable)','#16a34a','filt:estado:activo')
         +hero('⛔','Deuda de bloqueados',_money(sum(dBloq)),dBloq.length+' · '+dBloqViejo.length+' de +'+CB_VIEJO+'d'+(excl?' · EXCLUIDA':' · en riesgo'),'#d97706',(excl?'':'filt:estado:bloqueado'),excl)
         +hero('📉','Deuda de bajas',_money(sum(dBaja)),dBaja.length+' · difícil de recuperar','#64748b','filt:estado:baja')
-      +'</div>';
+      +'</div>'
+      +'<div id="cb-pagos" style="margin-bottom:14px"></div>';
     // ── Por empresa que factura (FG Conexiones / NOR-TEL / NEXA SAS) ── (filas clicables)
     var ekey=function(e){ return (e&&String(e).trim())||'(sin empresa)'; };
     var emp={}, get=function(e){ return emp[e]||(emp[e]={fact:0,conx:0,deuda:0,deud:0}); };
@@ -3111,6 +3112,29 @@
     Array.prototype.forEach.call(view.querySelectorAll('.cb-card[data-act]'),function(el){ el.addEventListener('click',function(){ _cbCardClick(el.getAttribute('data-act')); }); });
     _cbTablaDeudores(deud);
     _cbMorosos();
+    _cbPagos();
+  }
+  // Recaudación: pagos detectados por el sync (la deuda del cliente pasó de >0 a 0 entre corridas).
+  // Es el EVENTO de pago (quién y cuándo), no el monto exacto → la recaudación es estimada por plan_precio.
+  function _cbPagos(){
+    var cont=document.getElementById('cb-pagos'); if(!cont) return;
+    var hoy=new Date(), mIni=hoy.getFullYear()+'-'+('0'+(hoy.getMonth()+1)).slice(-2)+'-01';
+    var hoyISO=_hoyISO();
+    cont.innerHTML='<div class="card"><div class="label">💵 Recaudación — pagos detectados</div><div class="center"><div class="spin"></div></div></div>';
+    sbGetAll('clientes?pago_detectado_at=gte.'+mIni+'T00:00:00Z&select=numero_cliente,nombre,apellido,barrio,empresa,estado,plan_precio,deuda,pago_detectado_at&order=pago_detectado_at.desc').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var mes=d.length, estMes=0, hoyN=0;
+      d.forEach(function(c){ estMes+=Number(c.plan_precio||0); if(String(c.pago_detectado_at||'').slice(0,10)===hoyISO) hoyN++; });
+      var mini=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">'+ico+' '+lab+'</div><div style="font-size:23px;font-weight:800;color:'+col+';margin:2px 0;line-height:1.1">'+val+'</div><div style="font-size:11.5px;color:#94a3b8">'+sub+'</div></div>'; };
+      var filas=d.slice(0,40).map(function(c){ var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)'; return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px;font-weight:700">'+esc(c.numero_cliente||'')+'</td><td style="padding:5px">'+esc(nom)+'</td><td style="padding:5px" class="muted">'+esc(c.barrio||'—')+'</td><td style="padding:5px;text-align:right;color:#16a34a;font-weight:700">'+_money(Number(c.plan_precio||0))+'</td><td style="padding:5px;text-align:right" class="muted">'+esc(fmtFecha(c.pago_detectado_at))+'</td></tr>'; }).join('');
+      cont.innerHTML='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">'
+        +mini('✅','Pagos detectados (mes)',mes.toLocaleString('es-AR'),'clientes que se pusieron al día','#16a34a')
+        +mini('📅','Detectados hoy',hoyN.toLocaleString('es-AR'),'se pusieron al día hoy','#2563eb')
+        +mini('💵','Recaudación estimada',_money(estMes),'≈ aprox (1 mes c/u)','#7c3aed')
+        +'</div>'
+        +(mes?('<div class="card"><div class="label">Últimos pagos detectados <span class="muted" style="font-weight:400;font-size:12px">· '+Math.min(40,mes)+' de '+mes+'</span></div><div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:5px">N°</th><th style="padding:5px">Cliente</th><th style="padding:5px">Barrio</th><th style="padding:5px;text-align:right">Plan</th><th style="padding:5px;text-align:right">Fecha pago</th></tr></thead><tbody>'+filas+'</tbody></table></div></div>'):'<div class="card muted" style="font-size:13px">Todavía no se detectaron pagos este mes (el sync marca el pago cuando la deuda de un cliente pasa a 0).</div>')
+        +'<div class="muted" style="font-size:11.5px;margin-top:6px">⚠️ Detectamos el <b>evento</b> de pago (la deuda del cliente pasó a 0 entre dos corridas del sync), no el <b>monto exacto</b>. La "recaudación estimada" usa el precio del plan (1 mes) — si el cliente pagó varios meses o parcial, el real difiere. Para el monto exacto haría falta la cuenta corriente de ISPcube.</div>';
+    }).catch(function(){ cont.innerHTML='<div class="card muted" style="font-size:13px">No se pudieron cargar los pagos detectados.</div>'; });
   }
   // Barrio/zona del cliente: usa barrio; si está vacío, lo deriva del domicilio (saca la altura final)
   function _cbBarrio(c){
