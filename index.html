@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.85';
+  var VER='v3.86';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -273,7 +273,7 @@
       el.innerHTML='🕓 '+ult+prox;
     }).catch(function(){ el.innerHTML='🕓 '+prox; });
   }
-  function pedirSyncISP(btn){
+  function pedirSyncISP(btn,onDone){
     if(!SYNC_PROXY){ toast('Falta configurar el proxy de sync (SYNC_PROXY).'); return; }
     var t0=new Date(Date.now()-15000).toISOString(), info=document.getElementById('cl-syncinfo');
     if(btn){ btn.disabled=true; btn.textContent='Iniciando…'; }
@@ -287,7 +287,7 @@
         (function poll(){ if(done)return; tries++;
           sbGet('sync_log?select=finished_at,actualizados,nuevos,eliminados&started_at=gte.'+encodeURIComponent(t0)+'&estado=eq.ok&order=started_at.desc&limit=1').then(function(d){
             var r=Array.isArray(d)&&d[0];
-            if(r&&r.finished_at){ done=true; var camb=(r.actualizados||0)+(r.nuevos||0)+(r.eliminados||0); toast('✅ ISPcube actualizado · '+camb+' cambios'); if(btn){btn.disabled=false;btn.textContent='🔄 Actualizar de ISPcube';} _clStats=null; cargarStatsCl(); cargarClientes(); cargarSyncInfo(); return; }
+            if(r&&r.finished_at){ done=true; var camb=(r.actualizados||0)+(r.nuevos||0)+(r.eliminados||0); toast('✅ ISPcube actualizado · '+camb+' cambios'); if(btn){btn.disabled=false;btn.textContent='🔄 Actualizar de ISPcube';} if(typeof onDone==='function'){ try{onDone();}catch(e){} } else { _clStats=null; cargarStatsCl(); cargarClientes(); cargarSyncInfo(); } return; }
             if(tries<40) setTimeout(poll,5000); else { done=true; if(btn){btn.disabled=false;btn.textContent='🔄 Actualizar de ISPcube';} cargarSyncInfo(); toast('La actualización está tardando; se reflejará en un rato.'); }
           }).catch(function(){ if(tries<40) setTimeout(poll,5000); });
         })();
@@ -3075,6 +3075,8 @@
     var hero=function(ico,lab,val,sub,col,act,dim){ var cl=act?' cb-card':''; var cur=act?';cursor:pointer':''; var da=act?(' data-act="'+esc(act)+'"'):''; var ti=act?' title="Clic para ver el detalle"':'';
       return '<div class="hero'+cl+'"'+da+ti+' style="flex:1;min-width:170px;background:#fff;border:1px solid var(--bord);border-radius:14px;padding:15px 18px;box-shadow:var(--card-shadow)'+cur+(dim?';opacity:.5':'')+'"><div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+ico+' '+lab+(act?' <span style="color:#cbd5e1">›</span>':'')+'</div><div style="font-size:27px;font-weight:800;color:'+col+';margin:3px 0;line-height:1.1">'+val+'</div><div style="font-size:12px;color:#94a3b8">'+sub+'</div></div>'; };
     var h='<h1>💰 Cobranza y facturación</h1><p class="sub">🔒 Visible solo para Gastón, Javier y Fernando. <span class="muted">Tocá cualquier tarjeta para ver el detalle abajo.</span></p>'
+      +'<div class="toolbar" style="margin-bottom:10px;align-items:center;gap:10px"><button class="btn btn-pri" id="cb-sync">🔄 Actualizar de ISPcube</button><span id="cb-syncinfo" class="muted" style="font-size:12.5px">Trae deuda + cobranza real junto con los clientes.</span></div>'
+      +'<div id="cb-recaud" style="margin-bottom:14px"></div>'
       +'<div class="card" style="padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
         +'<label class="l" style="display:flex;align-items:center;gap:7px;margin:0;font-size:13px;font-weight:700"><input type="checkbox" id="cb-exbloq"'+(excl?' checked':'')+' style="width:auto"> Excluir bloqueados de la deuda</label>'
         +'<span class="muted" style="font-size:12px">'+(excl?('Mostrando solo deuda de activos y bajas. '):'')+'Hay <b>'+dBloqViejo.length+'</b> bloqueados de +'+CB_VIEJO+' días ('+_money(sum(dBloqViejo))+') — probablemente ya no pagan, esperan retiro.</span>'
@@ -3110,9 +3112,35 @@
     view.innerHTML=h;
     var xb=document.getElementById('cb-exbloq'); if(xb) xb.addEventListener('change',function(){ window._cbExclBloq=this.checked; _cbRender(); });
     Array.prototype.forEach.call(view.querySelectorAll('.cb-card[data-act]'),function(el){ el.addEventListener('click',function(){ _cbCardClick(el.getAttribute('data-act')); }); });
+    var sb=document.getElementById('cb-sync'); if(sb) sb.addEventListener('click',function(){ pedirSyncISP(sb,function(){ toast('✅ Actualizado — recargando cobranza'); vCobranza(); }); var si=document.getElementById('cb-syncinfo'); if(si) si.textContent='Actualizando ISPcube… (~1 min)'; });
+    _cbRecaudacion();
     _cbTablaDeudores(deud);
     _cbMorosos();
     _cbPagos();
+  }
+  // Recaudación REAL de ISPcube (tabla cobranzas_isp, la trae el sync desde /cash/cash_list). Esto SÍ es lo cobrado.
+  function _cbRecaudacion(){
+    var cont=document.getElementById('cb-recaud'); if(!cont) return;
+    var hoy=new Date(), mIni=hoy.getFullYear()+'-'+('0'+(hoy.getMonth()+1)).slice(-2)+'-01', hoyISO=_hoyISO();
+    cont.innerHTML='<div class="card"><div class="label">💵 Recaudación real (ISPcube)</div><div class="center"><div class="spin"></div></div></div>';
+    sbGetAll('cobranzas_isp?fecha=gte.'+mIni+'&select=total,fecha&order=fecha.desc&limit=20000').then(function(d){
+      d=Array.isArray(d)?d:[];
+      if(!d.length){ cont.innerHTML='<div class="card" style="background:#f8fafc"><div class="label">💵 Recaudación real (ISPcube)</div><div class="muted" style="font-size:13px">Todavía no hay datos de recaudación. Corré el SQL <code>nexa_cobranzas_isp.sql</code> y tocá <b>🔄 Actualizar de ISPcube</b> para traer lo cobrado real (último 30 días).</div></div>'; return; }
+      var totMes=0, totHoy=0, porDia={}, nMes=d.length, nHoy=0;
+      d.forEach(function(x){ var t=Number(x.total||0), f=String(x.fecha||'').slice(0,10); totMes+=t; porDia[f]=(porDia[f]||0)+t; if(f===hoyISO){ totHoy+=t; nHoy++; } });
+      var dias=Object.keys(porDia).sort(), nd=dias.length, prom=nd?totMes/nd:0;
+      var mejor=dias.slice().sort(function(a,b){return porDia[b]-porDia[a];})[0];
+      var mini=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:160px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:13px 16px"><div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">'+ico+' '+lab+'</div><div style="font-size:25px;font-weight:800;color:'+col+';margin:2px 0;line-height:1.1">'+val+'</div><div style="font-size:11.5px;color:#94a3b8">'+sub+'</div></div>'; };
+      var ult=dias.slice(-14), maxD=ult.reduce(function(a,k){return Math.max(a,porDia[k]);},1);
+      var barras=ult.map(function(k){ var p=String(k).split('-'); return '<div style="display:flex;align-items:center;gap:8px;margin:2px 0;font-size:12px"><span style="width:52px;flex-shrink:0;color:#64748b">'+p[2]+'/'+p[1]+'</span><div style="flex:1;background:#eef2f7;border-radius:5px;height:14px;overflow:hidden"><div style="width:'+Math.round(porDia[k]/maxD*100)+'%;background:#16a34a;height:100%"></div></div><b style="width:110px;text-align:right">'+_money(porDia[k])+'</b></div>'; }).join('');
+      cont.innerHTML='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">'
+        +mini('📅','Recaudado hoy',_money(totHoy),nHoy+' cobro'+(nHoy===1?'':'s')+' · '+esc(fmtFecha(hoyISO)),'#16a34a')
+        +mini('💰','Recaudado este mes',_money(totMes),nMes.toLocaleString('es-AR')+' cobros · prom '+_money(prom)+'/día','#2563eb')
+        +mini('🏆','Mejor día del mes',mejor?_money(porDia[mejor]):'—',mejor?esc(fmtFecha(mejor)):'','#7c3aed')
+        +'</div>'
+        +'<div class="card"><div class="label">📈 Recaudación por día <span class="muted" style="font-weight:400;font-size:12px">· últimos '+ult.length+' días con cobros</span></div>'+barras+'</div>'
+        +'<div class="muted" style="font-size:11.5px;margin-top:6px">✅ Dato REAL del dashboard de ISPcube (<code>/cash/cash_list</code>, lo efectivamente cobrado). Se actualiza con el botón 🔄 de arriba (junto con la deuda y los clientes).</div>';
+    }).catch(function(){ cont.innerHTML='<div class="card muted" style="font-size:13px">No se pudo cargar la recaudación (¿corriste el SQL de cobranzas_isp?).</div>'; });
   }
   // Recaudación: pagos detectados por el sync (la deuda del cliente pasó de >0 a 0 entre corridas).
   // Es el EVENTO de pago (quién y cuándo), no el monto exacto → la recaudación es estimada por plan_precio.

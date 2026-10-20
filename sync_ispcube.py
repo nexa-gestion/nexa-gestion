@@ -279,6 +279,47 @@ def pull_tickets(token, isp=None):
         except Exception as e: print(f"  ERROR insert tickets lote {i}: {e}")
     print(f"🎫 Tickets ISPcube: {len(nuevos)} nuevos importados (de {len(rows)} creados por cliente; {huerfanos} huérfanos salteados)")
 
+def pull_cobranzas(token):
+    # Trae la CAJA de los últimos 30 días de ISPcube (/cash/cash_list) → tabla cobranzas_isp.
+    # Es la recaudación REAL (lo COBRADO, no la deuda). UNA sola llamada. Inserta solo las nuevas (por id de ISPcube).
+    H = {"api-key": APIKEY, "client-id": CLIENTID, "login-type": "api",
+         "username": USER, "Authorization": "Bearer " + token}
+    try:
+        arr = json.load(_req(BASE + "/cash/cash_list", headers=H))
+    except Exception as e:
+        print("WARN pull_cobranzas:", e); return
+    if not isinstance(arr, list):
+        arr = (arr.get("data") if isinstance(arr, dict) else None) or []
+    rows = []
+    for x in arr:
+        try: total = float(x.get("total") or 0)
+        except Exception: total = 0.0
+        rows.append({
+            "id": x.get("id"),
+            "total": total,
+            "customer_id": x.get("customer_id"),
+            "fecha": (str(x.get("date") or "")[:10] or None),
+            "real_date": x.get("real_date"),
+            "tipo": x.get("type"),
+            "medio_id": x.get("destiny_id"),
+            "comentario": (x.get("comment") or None),
+            "cobrador": x.get("collector_name"),
+            "vendedor": x.get("seller_name"),
+        })
+    if DRY:
+        tot = sum(r["total"] for r in rows)
+        print(f"💵 Cobranzas ISPcube (DRY): {len(rows)} movimientos, total ${tot:,.0f} (no escribo)"); return
+    try:
+        ya = sb_get("cobranzas_isp?select=id&limit=50000")
+        existentes = {r["id"] for r in (ya or [])}
+    except Exception:
+        existentes = set()
+    nuevos = [r for r in rows if r["id"] not in existentes]
+    for i in range(0, len(nuevos), 200):
+        try: sb_post("cobranzas_isp", nuevos[i:i+200])
+        except Exception as e: print(f"  ERROR insert cobranzas lote {i}: {e}")
+    print(f"💵 Cobranzas ISPcube: {len(nuevos)} nuevas (de {len(rows)} en 30 días)")
+
 def close_tickets(token):
     # Cierra en ISPcube (estado=Cerrado, 3) los tickets que en Nexa ya terminaron su ciclo:
     #   - convertido + OT FINALIZADA (trabajo hecho)
@@ -843,6 +884,9 @@ def main():
     pull_tickets(token, isp)
     # Cerrar en ISPcube los tickets cuya OT ya quedó finalizada (cierra el círculo)
     close_tickets(token)
+    # Traer la caja/recaudación real de los últimos 30 días (lo cobrado) → cobranzas_isp
+    try: pull_cobranzas(token)
+    except Exception as e: print("WARN pull_cobranzas:", e)
 
     if DRY:
         print("\n[DRY] No se escribió nada.")
