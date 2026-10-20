@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.57</title>
+<title>Nexa · Técnico — v0.58</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -65,8 +65,11 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.57';
+  var VER='v0.58';
   var _ALARM_MS=2*3600000; // OT en curso +2h = alarma (te olvidaste de cerrarla)
+  // Íconos SVG del rubro (no cartón): caja NAP (bocas de fibra) y ONU (equipo con antena)
+  function _icoNap(sz){ var s=sz||15; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block"><rect x="3" y="4" width="18" height="16" rx="2.5" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/><line x1="3.6" y1="9" x2="20.4" y2="9" stroke="#2563eb" stroke-width="1.2"/><circle cx="8" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="12" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="16" cy="14.6" r="1.4" fill="#2563eb"/></svg>'; }
+  function _icoOnu(sz){ var s=sz||15; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block"><rect x="3" y="11" width="18" height="8" rx="2" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/><circle cx="6.8" cy="15" r="1.3" fill="#16a34a"/><circle cx="10.4" cy="15" r="1.1" fill="#94a3b8"/><line x1="16.5" y1="11" x2="16.5" y2="5" stroke="#475569" stroke-width="1.5"/><circle cx="16.5" cy="4.2" r="1.4" fill="#475569"/></svg>'; }
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
   var app=document.getElementById('app');
   var CUAD=null, listState={ filtro:'activas' };
@@ -997,13 +1000,13 @@
     var ic=o.intentos_count||0;
     var semCol=(ic>=2?'#f97316':(ic===1?'#eab308':'#16a34a'));
     var nic=o.nap_intentos_count||0;
-    var semBadge=(ic>0?('<span class="badge-tt" style="background:'+(ic>=2?'#ffedd5':'#fef9c3')+';color:'+(ic>=2?'#9a3412':'#854d0e')+'">📦✗ '+ic+'</span>'):'')
+    var semBadge=(ic>0?('<span class="badge-tt" style="background:'+(ic>=2?'#ffedd5':'#fef9c3')+';color:'+(ic>=2?'#9a3412':'#854d0e')+'">'+_icoOnu(13)+'✗ '+ic+'</span>'):'')
       +(nic>0?('<span class="badge-tt" style="background:#ffedd5;color:#9a3412">✂️✗ '+nic+'</span>'):'');
     var mediaBadge=(o.estado==='PARCIAL'?('<span class="badge-tt" style="background:#ffedd5;color:#9a3412">🔶 a medias · falta '+(o.parte_pendiente==='NAP'?'cortar NAP':'retirar equipo')+'</span>'):'');
     if(o.estado==='PARCIAL') semCol='#ea580c';
     return '<div class="ot cli-card" data-id="'+o.id+'" style="border-left:5px solid '+semCol+'"><div class="h"><div><span class="num">N° '+esc(c.numero_cliente)+'</span> '+dist+' '+mediaBadge+' '+semBadge+' '+sinUbic+'</div></div>'
       +'<div class="cli">'+esc(nom)+'</div>'+(c.domicilio_full?'<div class="dir">📍 '+esc(c.domicilio_full)+'</div>':'')+(c.barrio?'<div class="dir">'+esc(c.barrio)+'</div>':'')
-      +'<div class="dir" style="margin-top:4px">📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
+      +'<div class="dir" style="margin-top:4px">'+_icoNap()+' Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
       +'<div class="acc">'+((c.lat!=null||c.domicilio_full)?'<a class="btn btn-2 btn-sm" target="_blank" href="'+mapsUrl(c)+'">🚗 Ir</a>':'')
       +(c.telefono?'<a class="btn btn-2 btn-sm" href="tel:'+esc(String(c.telefono).replace(/[^\d+]/g,''))+'">📞</a><a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(c.telefono)+'">💬</a>':'')
       +(c.telefono_alt?'<a class="btn btn-2 btn-sm" href="tel:'+esc(String(c.telefono_alt).replace(/[^\d+]/g,''))+'" title="2º número">📞²</a><a class="btn btn-2 btn-sm" target="_blank" href="https://wa.me/'+waNum(c.telefono_alt)+'" title="2º número">💬²</a>':'')
@@ -1045,7 +1048,7 @@
         +(!c.telefono&&!c.telefono_alt?'<div class="muted" style="font-size:12px">Sin teléfonos cargados.</div>':'')
         +'<button class="btn btn-2" id="co-llamado" style="margin-top:9px;border-color:#2563eb;color:#1d4ed8">📞 Registrar llamado / intento</button></div>'
       +'<div class="card"><div class="label">📡 Conexión</div>'+fila('Caja (NAP)',c.caja_nap)+fila('Puerto',c.puerto)+fila('Precinto',c.precinto)+'</div>'
-      +'<div class="card"><div class="label">📦 ¿Retiraste el equipo?</div><div style="display:flex;gap:8px;margin-top:4px"><button class="btn '+(CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-si">Sí</button><button class="btn '+(!CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-no">No pude</button></div>'
+      +'<div class="card"><div class="label">'+_icoOnu()+' ¿Retiraste el equipo?</div><div style="display:flex;gap:8px;margin-top:4px"><button class="btn '+(CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-si">Sí</button><button class="btn '+(!CORTE.recupero?'btn-ok':'btn-2')+'" id="co-rec-no">No pude</button></div>'
         +(CORTE.recupero
            ? '<input id="co-serial" placeholder="Serial o MAC del equipo retirado" style="margin-top:8px" value="'+esc((CORTE.dx&&CORTE.dx.equipo_serial)||'')+'">'
            : '<input id="co-eqmot" placeholder="¿Por qué no? (no hay nadie / no encontré la casa)" style="margin-top:8px" value="'+esc((CORTE.dx&&CORTE.dx.equipo_motivo)||'')+'">')+'</div>'

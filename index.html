@@ -251,9 +251,12 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.81';
+  var VER='v3.82';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
+  // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
+  function _icoNap(sz){ var s=sz||14; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block" aria-label="caja NAP"><rect x="3" y="4" width="18" height="16" rx="2.5" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/><line x1="3.6" y1="9" x2="20.4" y2="9" stroke="#2563eb" stroke-width="1.2"/><circle cx="8" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="12" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="16" cy="14.6" r="1.4" fill="#2563eb"/></svg>'; }
+  function _icoOnu(sz){ var s=sz||14; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block" aria-label="equipo ONU"><rect x="3" y="11" width="18" height="8" rx="2" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/><circle cx="6.8" cy="15" r="1.3" fill="#16a34a"/><circle cx="10.4" cy="15" r="1.1" fill="#94a3b8"/><line x1="16.5" y1="11" x2="16.5" y2="5" stroke="#475569" stroke-width="1.5"/><circle cx="16.5" cy="4.2" r="1.4" fill="#475569"/></svg>'; }
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -1475,7 +1478,7 @@
         h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:#b91c1c">🔌 Desconexiones · intentos de retiro y contactos <span class="muted" style="font-weight:400;font-size:13px">('+dxs.length+')</span></h3>';
         h+=dxs.map(function(x){
           var det=[];
-          if(x.intentos_count>0) det.push('<div style="font-size:12.5px;color:#92400e"><b>📦⚠️ '+x.intentos_count+' intento(s) de retiro</b>'+(x.intentos_obs?('<div style="white-space:pre-line;color:#475569;margin-top:2px">'+esc(x.intentos_obs)+'</div>'):'')+'</div>');
+          if(x.intentos_count>0) det.push('<div style="font-size:12.5px;color:#92400e"><b>'+_icoOnu()+' ⚠️ '+x.intentos_count+' intento(s) de retiro</b>'+(x.intentos_obs?('<div style="white-space:pre-line;color:#475569;margin-top:2px">'+esc(x.intentos_obs)+'</div>'):'')+'</div>');
           if(x.nap_intentos_count>0) det.push('<div style="font-size:12.5px;color:#9a3412"><b>✂️⚠️ '+x.nap_intentos_count+' intento(s) de corte de NAP</b>'+(x.nap_intentos_obs?('<div style="white-space:pre-line;color:#475569;margin-top:2px">'+esc(x.nap_intentos_obs)+'</div>'):'')+'</div>');
           if(x.estado==='PARCIAL'&&x.parte_pendiente) det.push('<div style="font-size:12.5px;color:#9a3412">🔶 <b>A medias</b> — falta '+(x.parte_pendiente==='NAP'?'cortar la NAP':'retirar el equipo')+'</div>');
           if(x.gestion_obs) det.push('<div style="font-size:12.5px">📞 <b>Gestión:</b> '+esc(x.gestion_obs)+'</div>');
@@ -4391,13 +4394,13 @@
   function _dxFechaAR(iso){ if(!iso) return ''; try{ return new Date(new Date(iso).getTime()-10800000).toISOString().substring(0,10); }catch(e){ return String(iso).substring(0,10); } }
   function _dxInfo(o){
     if(o.estado==='ASIGNADA') return '🔧 '+esc(_cuadNombre(o.cuadrilla_id)||'—')+(o.fecha_agendada?('<br><span class="muted">📅 '+fmtFecha(o.fecha_agendada)+'</span>'):'');
-    if(o.estado==='PARCIAL'){ var _f=(o.parte_pendiente==='NAP')?'✂️ cortar NAP (puerto ocupado)':'📦 retirar equipo'; var _h=(o.parte_pendiente==='NAP')?'equipo retirado ✓':'NAP cortada ✓'; var _m=(o.parte_pendiente==='NAP'?o.nap_motivo:o.equipo_motivo); return '🔶 <b>A medias</b><br><span style="font-size:11px;color:#9a3412">Falta: '+_f+'</span><br><span class="muted" style="font-size:11px">'+_h+(_m?(' · '+esc(_m)):'')+'</span>'; }
+    if(o.estado==='PARCIAL'){ var _f=(o.parte_pendiente==='NAP')?'✂️ cortar NAP (puerto ocupado)':(_icoOnu()+' retirar equipo'); var _h=(o.parte_pendiente==='NAP')?'equipo retirado ✓':'NAP cortada ✓'; var _m=(o.parte_pendiente==='NAP'?o.nap_motivo:o.equipo_motivo); return '🔶 <b>A medias</b><br><span style="font-size:11px;color:#9a3412">Falta: '+_f+'</span><br><span class="muted" style="font-size:11px">'+_h+(_m?(' · '+esc(_m)):'')+'</span>'; }
     if(o.estado==='PENDIENTE_ADMIN'){ var rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':'—'); return rec+'<br><span style="font-size:11px">'+(o.deposito_hecho?'<span style="color:#166534">✓Depósito</span>':'<span class="muted">☐Depósito</span>')+' '+(o.soporte_hecho?'<span style="color:#166534">✓Soporte</span>':'<span class="muted">☐Soporte</span>')+' '+(o.comercial_hecho?'<span style="color:#166534">✓Comercial</span>':'<span class="muted">☐Comercial</span>')+'</span>'; }
     if(o.estado==='COMPROMISO_PAGO'){ var dr=_dxDiasRest(o.compromiso_vence), q=(o.compromiso_count>=2?'2° (último)':'1er'); return '🤝 <b>'+q+' compromiso</b><br><span style="font-size:11px">'+((dr==null)?'—':(dr<0?'<span style="color:var(--rojo);font-weight:700">⏰ vencido</span>':('faltan <b>'+dr+'</b> día'+(dr===1?'':'s'))))+(o.compromiso_vence?(' · vence '+fmtFecha(o.compromiso_vence)):'')+'</span>'+(o.compromiso_obs?('<br><span class="muted" style="font-size:11px">🗣️ '+esc(o.compromiso_obs)+'</span>'):''); }
     if(o.estado==='EN_REVISION') return '⏸️ '+esc(o.resolucion||'a revisar');
     if(o.estado==='FINALIZADO') return '✅ '+(o.finalizado_at?fmtFecha(o.finalizado_at):'')+(o.tenia_deuda?('<br><span class="muted">NC '+esc(o.nota_credito||'')+'</span>'):'');
     if(o.estado==='ANULADA_PAGO'||o.estado==='CANCELADA') return '<span class="muted" style="font-size:12px">'+_dxEstadoTxt(o.estado)+(o.resolucion?('<br>'+esc(o.resolucion)):'')+'</span>';
-    var c=o.clientes||{}; return '<span class="muted" style="font-size:12px">📦 '+esc(c.caja_nap||'—')+(c.puerto?(' · P'+esc(c.puerto)):'')+(c.precinto?(' · Prec '+esc(c.precinto)):'')+'</span>';
+    var c=o.clientes||{}; return '<span class="muted" style="font-size:12px">'+_icoNap()+' '+esc(c.caja_nap||'—')+(c.puerto?(' · P'+esc(c.puerto)):'')+(c.precinto?(' · Prec '+esc(c.precinto)):'')+'</span>';
   }
   function _bx(cls,id,txt){ return '<button class="'+cls+'" data-id="'+id+'" style="padding:4px 10px;font-size:12px;width:auto;display:inline-block;margin:1px">'+txt+'</button>'; }
   function _dxAcc(o){
@@ -4471,7 +4474,7 @@
         _res.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px">'
           +_card(_n,'🔄 En gestión (con intentos)','#0f172a')
           +_card(_lim,'⚠️ Al límite (2 intentos)','#b91c1c')
-          +_card(_ret,'📦 Con intento de retiro','#334155')
+          +_card(_ret,_icoOnu()+' Con intento de retiro','#334155')
           +_card(_cor,'✂️ Con intento de corte NAP','#334155')
           +'</div>'
           +'<div style="font-size:12px;color:#64748b;margin:-4px 0 8px">Los que llegaron a <b>3 intentos</b> ya pasaron a <b>🚫 Imposibles</b> · el detalle de cada llamado/visita (quién y cuándo) está en la ficha del cliente y en el detalle de la desconexión. <button class="btn btn-2" id="dx-go-imp" style="padding:3px 9px;font-size:11.5px;margin-left:4px">Ver 🚫 Imposibles</button></div>';
@@ -4495,7 +4498,7 @@
       cols.push({k:'quien',t:'Quién',sort:function(o){return _dxQuien(o);},r:function(o){return '<span style="font-size:12px">'+esc(_dxQuien(o))+'</span>';}});
     }
     if(window._dxState.ver==='gestion'){
-      cols.push({k:'intentos',t:'Intentos',sort:function(o){return Math.max(o.intentos_count||0,o.nap_intentos_count||0);},r:function(o){ var e=o.intentos_count||0, n=o.nap_intentos_count||0, max=3, tot=Math.max(e,n), col=tot>=max?'#b91c1c':(tot>=max-1?'#b45309':'#334155'), parts=[]; if(e)parts.push('📦 '+e); if(n)parts.push('✂️ '+n); var ult=o.ultimo_intento_at?(' <span class="muted" style="font-size:11px;white-space:nowrap">· últ. '+esc(fmtFecha(o.ultimo_intento_at))+'</span>'):''; return '<span style="font-weight:700;color:'+col+'">'+(parts.join(' · ')||'—')+'</span>'+ult+(tot>=max?' <span style="font-size:10px;background:#fef2f2;color:#b91c1c;padding:1px 6px;border-radius:99px;font-weight:800;white-space:nowrap">al límite</span>':''); }});
+      cols.push({k:'intentos',t:'Intentos',sort:function(o){return Math.max(o.intentos_count||0,o.nap_intentos_count||0);},r:function(o){ var e=o.intentos_count||0, n=o.nap_intentos_count||0, max=3, tot=Math.max(e,n), col=tot>=max?'#b91c1c':(tot>=max-1?'#b45309':'#334155'), parts=[]; if(e)parts.push(_icoOnu()+' '+e); if(n)parts.push('✂️ '+n); var ult=o.ultimo_intento_at?(' <span class="muted" style="font-size:11px;white-space:nowrap">· últ. '+esc(fmtFecha(o.ultimo_intento_at))+'</span>'):''; return '<span style="font-weight:700;color:'+col+'">'+(parts.join(' · ')||'—')+'</span>'+ult+(tot>=max?' <span style="font-size:10px;background:#fef2f2;color:#b91c1c;padding:1px 6px;border-radius:99px;font-weight:800;white-space:nowrap">al límite</span>':''); }});
     }
     cols.push({k:'info',t:'Detalle',sort:null,r:_dxInfo});
     cols.push({k:'acc',t:'Acciones',sort:null,fixed:true,r:_dxAcc});
@@ -4536,7 +4539,7 @@
       +'<div class="muted" style="margin-top:-6px">N° '+esc(c.numero_cliente||'')+(c.codigo_ispcube?(' · ISP '+esc(c.codigo_ispcube)):'')+' · '+esc(_dxEstadoTxt(o.estado))+'</div>'
       +'<div style="background:#f8fafc;border:1px solid var(--bord);border-radius:8px;padding:10px;font-size:13px;margin-top:10px">'
         +'<div>📍 <b>'+esc(c.domicilio_full||'—')+'</b>'+(c.barrio?(' · '+esc(c.barrio)):'')+'</div>'
-        +'<div>📦 Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
+        +'<div>'+_icoNap()+' Caja '+esc(c.caja_nap||'—')+' · Puerto '+esc(c.puerto||'—')+' · Precinto '+esc(c.precinto||'—')+'</div>'
         +(c.telefono?('<div>📞 '+esc(c.telefono)+'</div>'):'')
         +'<div>'+(deuda>0?('💲 Deuda <b style="color:#991b1b">$'+deuda.toLocaleString('es-AR')+'</b>'):'💲 Sin deuda')+' · origen: '+esc(_dxOrigen(o.origen))+'</div>'
         +((c.lat!=null&&c.lng!=null)?('<div style="margin-top:4px"><a class="btn btn-2" target="_blank" style="padding:3px 10px;font-size:12px;width:auto;display:inline-block" href="https://www.google.com/maps?q='+c.lat+','+c.lng+'">🗺️ Ver en el mapa</a></div>'):'')
@@ -5465,7 +5468,7 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
         ? '<span style="color:#dc2626">⚠️ '+o.total+' conectados superan la capacidad estimada ('+CAP+') — revisar</span>'
         : 'Capacidad est.: '+CAP+' → <b>'+libres+' puertos libres</b>';
       L.circleMarker([n.lat,n.lng],{radius:6,color:'#fff',weight:1.5,fillColor:color,fillOpacity:1})
-        .bindPopup('<b>📦 NAP '+esc(n.codigo)+'</b><br>Conectados: <b>'+o.total+'</b> ('+o.activo+' activos · '+o.inact+' baja/bloq)<br>'+capStr+'<hr style="margin:6px 0;border:none;border-top:1px solid #e2e8f0"><div style="max-height:140px;overflow:auto;font-size:12px;color:#475569">'+(lista||'(sin clientes cargados)')+'</div>')
+        .bindPopup('<b>'+_icoNap()+' NAP '+esc(n.codigo)+'</b><br>Conectados: <b>'+o.total+'</b> ('+o.activo+' activos · '+o.inact+' baja/bloq)<br>'+capStr+'<hr style="margin:6px 0;border:none;border-top:1px solid #e2e8f0"><div style="max-height:140px;overflow:auto;font-size:12px;color:#475569">'+(lista||'(sin clientes cargados)')+'</div>')
         .addTo(_lNaps);
     });
     if(document.getElementById('cb-naps') && document.getElementById('cb-naps').checked) _lNaps.addTo(_MAP);
