@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.84';
+  var VER='v3.85';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3120,7 +3120,7 @@
     var cont=document.getElementById('cb-pagos'); if(!cont) return;
     var hoy=new Date(), mIni=hoy.getFullYear()+'-'+('0'+(hoy.getMonth()+1)).slice(-2)+'-01';
     var hoyISO=_hoyISO();
-    cont.innerHTML='<div class="card"><div class="label">💵 Recaudación — pagos detectados</div><div class="center"><div class="spin"></div></div></div>';
+    cont.innerHTML='<div class="card"><div class="label">💵 Recuperación de mora — pagos detectados</div><div class="center"><div class="spin"></div></div></div>';
     sbGetAll('clientes?pago_detectado_at=gte.'+mIni+'T00:00:00Z&select=numero_cliente,nombre,apellido,barrio,empresa,estado,plan_precio,deuda,pago_detectado_at&order=pago_detectado_at.desc').then(function(d){
       d=Array.isArray(d)?d:[];
       var mes=d.length, estMes=0, hoyN=0;
@@ -3128,12 +3128,13 @@
       var mini=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">'+ico+' '+lab+'</div><div style="font-size:23px;font-weight:800;color:'+col+';margin:2px 0;line-height:1.1">'+val+'</div><div style="font-size:11.5px;color:#94a3b8">'+sub+'</div></div>'; };
       var filas=d.slice(0,40).map(function(c){ var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)'; return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px;font-weight:700">'+esc(c.numero_cliente||'')+'</td><td style="padding:5px">'+esc(nom)+'</td><td style="padding:5px" class="muted">'+esc(c.barrio||'—')+'</td><td style="padding:5px;text-align:right;color:#16a34a;font-weight:700">'+_money(Number(c.plan_precio||0))+'</td><td style="padding:5px;text-align:right" class="muted">'+esc(fmtFecha(c.pago_detectado_at))+'</td></tr>'; }).join('');
       cont.innerHTML='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">'
-        +mini('✅','Pagos detectados (mes)',mes.toLocaleString('es-AR'),'clientes que se pusieron al día','#16a34a')
-        +mini('📅','Detectados hoy',hoyN.toLocaleString('es-AR'),'se pusieron al día hoy','#2563eb')
-        +mini('💵','Recaudación estimada',_money(estMes),'≈ aprox (1 mes c/u)','#7c3aed')
+        +mini('✅','Salieron de mora (mes)',mes.toLocaleString('es-AR'),'estaban en deuda y se pusieron al día','#16a34a')
+        +mini('📅','Salieron de mora hoy',hoyN.toLocaleString('es-AR'),'se pusieron al día hoy','#2563eb')
+        +mini('💵','Deuda recuperada (est.)',_money(estMes),'≈ aprox · NO es la recaudación total','#7c3aed')
         +'</div>'
-        +(mes?('<div class="card"><div class="label">Últimos pagos detectados <span class="muted" style="font-weight:400;font-size:12px">· '+Math.min(40,mes)+' de '+mes+'</span></div><div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:5px">N°</th><th style="padding:5px">Cliente</th><th style="padding:5px">Barrio</th><th style="padding:5px;text-align:right">Plan</th><th style="padding:5px;text-align:right">Fecha pago</th></tr></thead><tbody>'+filas+'</tbody></table></div></div>'):'<div class="card muted" style="font-size:13px">Todavía no se detectaron pagos este mes (el sync marca el pago cuando la deuda de un cliente pasa a 0).</div>')
-        +'<div class="muted" style="font-size:11.5px;margin-top:6px">⚠️ Detectamos el <b>evento</b> de pago (la deuda del cliente pasó a 0 entre dos corridas del sync), no el <b>monto exacto</b>. La "recaudación estimada" usa el precio del plan (1 mes) — si el cliente pagó varios meses o parcial, el real difiere. Para el monto exacto haría falta la cuenta corriente de ISPcube.</div>';
+        +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:10px">⚠️ <b>Esto NO es lo cobrado en el mes.</b> Solo vemos a los que estaban <b>en mora</b> y pagaron (la deuda pasó de >0 a 0). Los que pagan al día <b>sin entrar en mora</b> no se detectan acá. La recaudación real del mes la tenés en el dashboard de <b>ISPcube</b> («Ingresos este mes»).</div>'
+        +(mes?('<div class="card"><div class="label">Últimos que salieron de mora <span class="muted" style="font-weight:400;font-size:12px">· '+Math.min(40,mes)+' de '+mes+'</span></div><div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:5px">N°</th><th style="padding:5px">Cliente</th><th style="padding:5px">Barrio</th><th style="padding:5px;text-align:right">Plan</th><th style="padding:5px;text-align:right">Fecha pago</th></tr></thead><tbody>'+filas+'</tbody></table></div></div>'):'<div class="card muted" style="font-size:13px">Todavía nadie salió de mora este mes (se marca cuando la deuda de un cliente pasa a 0).</div>')
+        +'<div class="muted" style="font-size:11.5px;margin-top:6px">La "deuda recuperada" usa el precio del plan (1 mes) como estimación — si el cliente debía varios meses, recuperaste más. Para el monto exacto cobrado haría falta la cuenta corriente de ISPcube (la API no la expone hoy).</div>';
     }).catch(function(){ cont.innerHTML='<div class="card muted" style="font-size:13px">No se pudieron cargar los pagos detectados.</div>'; });
   }
   // Barrio/zona del cliente: usa barrio; si está vacío, lo deriva del domicilio (saca la altura final)
