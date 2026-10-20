@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.82';
+  var VER='v3.83';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3248,7 +3248,8 @@
       +'</div>'
       +'<div class="card" style="height:300px;margin-bottom:14px;padding:10px"><canvas id="g-canvas"></canvas></div>'
       +'<div id="g-bloq-wrap" style="margin-bottom:14px"></div>'
-      +'<div id="g-kpis"><div class="center"><div class="spin"></div></div></div>';
+      +'<div id="g-kpis"><div class="center"><div class="spin"></div></div></div>'
+      +'<div id="g-comp" style="margin-top:14px"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.g-per'),function(b){ b.addEventListener('click',function(){ _gSetPeriodo(b.getAttribute('data-p')); vGerencial(); }); });
     document.getElementById('g-go').addEventListener('click',function(){ var s=window._gState; s.desde=document.getElementById('g-desde').value; s.hasta=document.getElementById('g-hasta').value; window._gPeriodo='custom'; window._gMeses=_gMesesEntre(s.desde,s.hasta); vGerencial(); });
     document.getElementById('g-excl').addEventListener('change',function(){ window._gState.excl=this.checked; _gCalc(); _gGrafico(window._gMeses||6); });
@@ -3256,6 +3257,29 @@
     _gGrafico(window._gMeses||6);
     _gGraficoBloq();
     _gCalc();
+    _gComposicion();
+  }
+  // Composición REAL de la base que paga + churn/retención (clientes activos/bloqueados, sin 508 ni gratis)
+  function _gComposicion(){
+    var cont=document.getElementById('g-comp'); if(!cont) return;
+    cont.innerHTML='<div class="card"><div class="label">🧩 Composición de la base</div><div class="center"><div class="spin"></div></div></div>';
+    sbGetAll('clientes?estado=in.(activo,bloqueado)&es_508=is.false&gratis=is.false&select=tecnologia,empresa,plan_precio,estado').then(function(d){
+      d=Array.isArray(d)?d:[];
+      var tot=d.length, mrr=0, act=0, blo=0, tec={}, emp={};
+      d.forEach(function(c){ var p=Number(c.plan_precio||0); mrr+=p; if(c.estado==='activo')act++; else blo++; var t=(c.tecnologia||'(sin dato)'); var te=tec[t]||(tec[t]={n:0,mrr:0}); te.n++; te.mrr+=p; var e=(c.empresa&&String(c.empresa).trim())||'(sin empresa)'; var ee=emp[e]||(emp[e]={n:0,mrr:0}); ee.n++; ee.mrr+=p; });
+      var arpu=tot?mrr/tot:0;
+      var fmt=function(n){ return '$'+Math.round(n).toLocaleString('es-AR'); };
+      var mini=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">'+ico+' '+lab+'</div><div style="font-size:23px;font-weight:800;color:'+col+';margin:2px 0;line-height:1.1">'+val+'</div><div style="font-size:11.5px;color:#94a3b8">'+sub+'</div></div>'; };
+      var barr=function(obj,titulo,money){ var arr=Object.keys(obj).map(function(k){return [k,obj[k]];}).sort(function(a,b){return b[1].n-a[1].n;}); var max=arr.length?arr[0][1].n:1; return '<div class="card" style="flex:1;min-width:260px"><div class="label">'+titulo+'</div>'+arr.map(function(m){ var pct=Math.round(m[1].n/(tot||1)*100); return '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12.5px"><span style="width:92px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span><div style="flex:1;background:#eef2f7;border-radius:6px;height:15px;overflow:hidden"><div style="width:'+Math.round(m[1].n/max*100)+'%;background:#2563eb;height:100%"></div></div><b style="width:116px;text-align:right">'+m[1].n.toLocaleString('es-AR')+' ('+pct+'%)'+(money?(' · '+fmt(m[1].mrr)):'')+'</b></div>'; }).join('')+'</div>'; };
+      var h='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
+        +mini('👥','Base que paga',tot.toLocaleString('es-AR'),act.toLocaleString('es-AR')+' activos · '+blo.toLocaleString('es-AR')+' bloqueados','#0f172a')
+        +mini('💵','Facturación / mes (MRR)',fmt(mrr),'ingreso recurrente teórico','#16a34a')
+        +mini('📊','ARPU',fmt(arpu),'ingreso promedio por cliente','#2563eb')
+        +'</div>'
+        +'<div style="display:flex;gap:12px;flex-wrap:wrap">'+barr(tec,'📡 Por tecnología',true)+barr(emp,'🏢 Por empresa',true)+'</div>'
+        +'<div class="muted" style="font-size:11.5px;margin-top:8px">Base = clientes <b>activos + bloqueados</b> que facturan (sin traspaso 508 ni gratis). MRR = suma de <code>plan_precio</code> de ISPcube (ingreso teórico si todos pagan; la cobranza real está en 💰 Cobranza).</div>';
+      cont.innerHTML=h;
+    }).catch(function(){ cont.innerHTML='<div class="card muted" style="font-size:13px">No se pudo cargar la composición.</div>'; });
   }
   function _gMesesEntre(d1,d2){ var a=new Date(d1),b=new Date(d2); return Math.max(1,(b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth())+1); }
   function _gSetPeriodo(p){
@@ -3334,13 +3358,17 @@
       sbCount('clientes?eliminado_isp_at=gte.'+g.desde+'&eliminado_isp_at=lte.'+hh+'&select=id')
     ]).then(function(r){
       var altas=r[0],bajas=r[1],altasMes=r[2],activos=r[3],bloq=r[4],baja=r[5],traspasos=r[6],netas=altas-bajas;
+      var baseChurn=activos+bloq+bajas, churnPct=baseChurn?Math.round(bajas/baseChurn*1000)/10:0, retPct=Math.round((100-churnPct)*10)/10;
       cont.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:12px">'
         +_infKpi(altas,'Altas en el período','#2563eb','altas')+_infKpi(bajas,'Bajas de clientes','#dc2626','bajas')
         +_infKpi((netas>=0?'+':'')+netas,'Altas netas',netas>=0?'#16a34a':'#d97706')+_infKpi(altasMes,'Altas este mes','#7c3aed','altasmes')+'</div>'
         +'<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">'
-        +_infKpi(traspasos,'Eliminados de ISPcube','#64748b','traspasos')+_infKpi(activos,'Activos hoy','#16a34a','activos')+_infKpi(bloq,'Bloqueados hoy','#d97706','bloqueados')+_infKpi(baja,'En baja hoy','#64748b','baja')+'</div>'
+        +_infKpi(churnPct+'%','Churn del período',churnPct>=5?'#dc2626':'#d97706')+_infKpi(retPct+'%','Retención',retPct>=95?'#16a34a':'#d97706')
+        +_infKpi(activos.toLocaleString('es-AR'),'Activos hoy','#16a34a','activos')+_infKpi(bloq.toLocaleString('es-AR'),'Bloqueados hoy','#d97706','bloqueados')+'</div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">'
+        +_infKpi(traspasos,'Eliminados de ISPcube','#64748b','traspasos')+_infKpi(baja,'En baja hoy','#64748b','baja')+'</div>'
         +'<div id="g-lista" style="display:none;margin-top:12px"></div>'
-        +'<div class="muted" style="margin-top:14px;font-size:12px">'+((g.excl&&g.desde<_gMIG)?'⚠️ Se excluyó la migración inicial de ISPcube (09-06). ':'')+'<b>Altas</b> y <b>Bajas</b> = por fecha de alta/baja real (igual que la curva). <b>Eliminados de ISPcube</b> = borrados del sistema en el rango (incluye el traspaso del 508 y otros). <b>Altas netas</b> = altas − bajas. <span style="color:#2563eb">Tocá una tarjeta para ver su lista.</span></div>'
+        +'<div class="muted" style="margin-top:14px;font-size:12px">'+((g.excl&&g.desde<_gMIG)?'⚠️ Se excluyó la migración inicial de ISPcube (09-06). ':'')+'<b>Altas</b> y <b>Bajas</b> = por fecha de alta/baja real (igual que la curva). <b>Eliminados de ISPcube</b> = borrados del sistema en el rango (incluye el traspaso del 508 y otros). <b>Altas netas</b> = altas − bajas. <b>Churn</b> = bajas ÷ base del período (activos+bloqueados+bajas) — aprox, es la porción de la base que se fue; <b>retención</b> = 100 − churn. <span style="color:#2563eb">Tocá una tarjeta para ver su lista.</span></div>'
         +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-2" id="g-exp-altas">⬇️ Exportar altas (CSV)</button><button class="btn btn-2" id="g-exp-bajas">⬇️ Exportar bajas (CSV)</button></div>';
       document.getElementById('g-exp-altas').addEventListener('click',function(){ _gExport('altas',desdeA,hh,g.hasta); });
       document.getElementById('g-exp-bajas').addEventListener('click',function(){ _gExport('bajas',g.desde,hh,g.hasta); });
