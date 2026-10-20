@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.86';
+  var VER='v3.87';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3160,7 +3160,7 @@
         +mini('📅','Salieron de mora hoy',hoyN.toLocaleString('es-AR'),'se pusieron al día hoy','#2563eb')
         +mini('💵','Deuda recuperada (est.)',_money(estMes),'≈ aprox · NO es la recaudación total','#7c3aed')
         +'</div>'
-        +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:10px">⚠️ <b>Esto NO es lo cobrado en el mes.</b> Solo vemos a los que estaban <b>en mora</b> y pagaron (la deuda pasó de >0 a 0). Los que pagan al día <b>sin entrar en mora</b> no se detectan acá. La recaudación real del mes la tenés en el dashboard de <b>ISPcube</b> («Ingresos este mes»).</div>'
+        +'<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:10px">ℹ️ Esto es solo <b>quién salió de mora</b> (deudores que se pusieron al día) — útil para seguimiento. La <b>recaudación total del mes</b> está arriba en <b>💵 Recaudación real (ISPcube)</b>.</div>'
         +(mes?('<div class="card"><div class="label">Últimos que salieron de mora <span class="muted" style="font-weight:400;font-size:12px">· '+Math.min(40,mes)+' de '+mes+'</span></div><div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:5px">N°</th><th style="padding:5px">Cliente</th><th style="padding:5px">Barrio</th><th style="padding:5px;text-align:right">Plan</th><th style="padding:5px;text-align:right">Fecha pago</th></tr></thead><tbody>'+filas+'</tbody></table></div></div>'):'<div class="card muted" style="font-size:13px">Todavía nadie salió de mora este mes (se marca cuando la deuda de un cliente pasa a 0).</div>')
         +'<div class="muted" style="font-size:11.5px;margin-top:6px">La "deuda recuperada" usa el precio del plan (1 mes) como estimación — si el cliente debía varios meses, recuperaste más. Para el monto exacto cobrado haría falta la cuenta corriente de ISPcube (la API no la expone hoy).</div>';
     }).catch(function(){ cont.innerHTML='<div class="card muted" style="font-size:13px">No se pudieron cargar los pagos detectados.</div>'; });
