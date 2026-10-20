@@ -249,7 +249,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.77';
+  var VER='v3.78';
   try{ var _mv=document.getElementById('marca-ver'); if(_mv) _mv.textContent='Gestión · '+VER; }catch(e){}
   // ── Sync ISPcube on-demand (botón) — completá con tu Cloudflare Worker ──
   var SYNC_PROXY='https://nexa-sync.nexa-sas-comunicaciones.workers.dev';   // Cloudflare Worker
@@ -699,22 +699,35 @@
     function _esRech(o){ if(o.estado!=='NO_REALIZADA'&&o.estado!=='CANCELADA') return false; if(!o.fin_tec_at) return false; var t=Date.parse(o.fin_tec_at); return t>=_desde && t<_hasta; }
     Promise.all([
       sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,fecha_agendada,hora_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500'),
-      sbGet('desconexiones?cuadrilla_id=eq.'+cuadId+'&corte_at=gte.'+dia+'T03:00:00Z&corte_at=lt.'+nextDia+'T03:00:00Z&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=corte_at.desc&limit=500')
+      sbGet('desconexiones?cuadrilla_id=eq.'+cuadId+'&corte_at=gte.'+dia+'T03:00:00Z&corte_at=lt.'+nextDia+'T03:00:00Z&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=corte_at.desc&limit=500'),
+      sbGet('desconexion_intentos?cuadrilla_id=eq.'+cuadId+'&created_at=gte.'+dia+'T03:00:00Z&created_at=lt.'+nextDia+'T03:00:00Z&select=id,tipo,resultado,obs,created_at,cliente_id,desconexion_id&order=created_at.desc&limit=300').catch(function(){return [];})
     ]).then(function(_rr){
       var arr=(Array.isArray(_rr[0])?_rr[0]:[]).filter(function(o){ return _esFin(o)||_esPend(o)||_esRech(o); });
       var cortes=Array.isArray(_rr[1])?_rr[1]:[];
+      var intentos=Array.isArray(_rr[2])?_rr[2]:[];
       var ord={EN_CURSO:0,CERRADA_TECNICO:1,FINALIZADA:2,ASIGNADA:3,PENDIENTE:4};
       arr.sort(function(a,b){ var da=(ord[a.estado]==null?9:ord[a.estado]), db=(ord[b.estado]==null?9:ord[b.estado]); if(da!==db) return da-db; var ha=a.hora_agendada||'99:99', hb=b.hora_agendada||'99:99'; return ha<hb?-1:(ha>hb?1:0); });
-      if(!arr.length && !cortes.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin OTs ni cortes.</div>'; return; }
+      if(!arr.length && !cortes.length && !intentos.length){ det.innerHTML='<div class="muted" style="font-size:12px">Sin OTs ni cortes.</div>'; return; }
       var pend=arr.filter(_esPend);
       var btnHtml=pend.length?'<div style="margin-bottom:8px"><button class="btn btn-2" style="padding:7px 12px;font-size:12.5px" id="rp-pend-'+cuadId+'">📅 Pasar '+pend.length+' pendiente'+(pend.length===1?'':'s')+' al '+esc(fmtFecha(nextDia))+'</button></div>':'';
       var otHtml=arr.map(function(o){ var cli=o.clientes?((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim():'(red)'; var fhoy=_esFin(o)&&o.fecha_agendada!==dia?' <span class="muted">· cerrada hoy (era de '+esc(fmtFecha(o.fecha_agendada))+')</span>':''; return '<div class="pd-row pd-ot" data-ot="'+o.id+'" style="cursor:pointer" title="Ver la OT"><span><b>OT '+esc(o.numero)+'</b>'+(o.hora_agendada?' <span style="color:#2563eb;font-weight:700">🕐 '+esc(String(o.hora_agendada).substring(0,5))+'</span>':'')+' · '+esc(o.tipo)+' · '+esc(cli)+(o.clientes&&o.clientes.barrio?(' <span class="muted">('+esc(o.clientes.barrio)+')</span>'):'')+fhoy+(_otAtrasoMin(o)?' <span style="background:#fef2f2;color:#b91c1c;font-weight:800;font-size:10px;padding:1px 6px;border-radius:99px;white-space:nowrap">🔴 '+esc(_atrasoTxtAdm(_otAtrasoMin(o)))+'</span>':'')+'</span>'+pill(o.estado)+'</div>'; }).join('');
       var _ecz={PENDIENTE_ADMIN:'pend. admin',FINALIZADO:'finalizada',ANULADA_PAGO:'pagó',CANCELADA:'cancelada',EN_REVISION:'en revisión',PENDIENTE:'pendiente',ASIGNADA:'asignada'};
       var corteHtml=cortes.length?('<div style="font-size:11px;font-weight:700;margin:8px 0 4px;color:#0891b2">🔌 Cortes de desconexión ('+cortes.length+')</div>'+cortes.map(function(o,i){ var c=o.clientes||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':''); return '<div class="pd-row pd-corte" data-corte="'+i+'" style="cursor:pointer" title="Ver el corte"><span>🔌 <b>'+esc(c.numero_cliente||'')+'</b> · '+esc(nom)+(c.barrio?(' <span class="muted">('+esc(c.barrio)+')</span>'):'')+(rec?(' <span class="muted">· '+rec+'</span>'):'')+'</span><span style="font-size:10px;padding:1px 7px;border-radius:99px;background:#e0f2fe;color:#075985;white-space:nowrap">'+esc(_ecz[o.estado]||o.estado)+'</span></div>'; }).join('')):'';
-      det.innerHTML=btnHtml+otHtml+corteHtml;
-      Array.prototype.forEach.call(det.querySelectorAll('.pd-ot'),function(el){ el.addEventListener('click',function(e){ e.stopPropagation(); detalleOT(el.getAttribute('data-ot')); }); });
-      Array.prototype.forEach.call(det.querySelectorAll('.pd-corte'),function(el){ el.addEventListener('click',function(e){ e.stopPropagation(); var o=cortes[Number(el.getAttribute('data-corte'))]; if(!o)return; if(!_dxData.some(function(x){return String(x.id)===String(o.id);})) _dxData.push(o); _dxDetalle(o); }); });
-      var rb=document.getElementById('rp-pend-'+cuadId); if(rb) rb.addEventListener('click',function(e){ e.stopPropagation(); reprogramarOTs(pend.map(function(o){return o.id;}),{ fecha:nextDia }); });
+      // Intentos (llamados/visitas sin éxito) de la cuadrilla ese día → clickeables para abrir la ficha y leer el motivo
+      function _pintar(cmap){
+        var intHtml='';
+        if(intentos.length){
+          intHtml='<div style="font-size:11px;font-weight:700;margin:8px 0 4px;color:#b45309">🔄 Visitas / llamados sin éxito ('+intentos.length+')</div>'+intentos.map(function(it){ var c=cmap[it.cliente_id]||{}, nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||('Cliente '+(it.cliente_id||'')), ico=(it.tipo==='LLAMADO'?'📞':(it.tipo==='VISITA'?'🚶':'•')); return '<div class="pd-row pd-int" data-cli="'+esc(it.cliente_id||'')+'" style="cursor:pointer" title="Abrir la ficha del cliente"><span>'+ico+' <b>'+esc(c.numero_cliente||'')+'</b> '+esc(nom)+(c.barrio?(' <span class="muted">('+esc(c.barrio)+')</span>'):'')+(it.resultado?(' <span class="muted">· '+esc(it.resultado)+'</span>'):'')+(it.obs?(' <span class="muted">— '+esc(it.obs)+'</span>'):'')+'</span><span style="font-size:10px;color:#b45309;white-space:nowrap">'+esc(fmtFechaHora(it.created_at))+'</span></div>'; }).join('');
+        }
+        det.innerHTML=btnHtml+otHtml+corteHtml+intHtml;
+        Array.prototype.forEach.call(det.querySelectorAll('.pd-ot'),function(el){ el.addEventListener('click',function(e){ e.stopPropagation(); detalleOT(el.getAttribute('data-ot')); }); });
+        Array.prototype.forEach.call(det.querySelectorAll('.pd-corte'),function(el){ el.addEventListener('click',function(e){ e.stopPropagation(); var o=cortes[Number(el.getAttribute('data-corte'))]; if(!o)return; if(!_dxData.some(function(x){return String(x.id)===String(o.id);})) _dxData.push(o); _dxDetalle(o); }); });
+        Array.prototype.forEach.call(det.querySelectorAll('.pd-int'),function(el){ el.addEventListener('click',function(e){ e.stopPropagation(); var id=el.getAttribute('data-cli'); if(id&&id!=='null'&&typeof fichaCliente==='function') fichaCliente(id); }); });
+        var rb=document.getElementById('rp-pend-'+cuadId); if(rb) rb.addEventListener('click',function(e){ e.stopPropagation(); reprogramarOTs(pend.map(function(o){return o.id;}),{ fecha:nextDia }); });
+      }
+      var _ids=[]; intentos.forEach(function(it){ if(it.cliente_id&&_ids.indexOf(it.cliente_id)<0) _ids.push(it.cliente_id); });
+      if(_ids.length){ sbGet('clientes?id=in.('+_ids.join(',')+')&select=id,numero_cliente,nombre,apellido,barrio&limit=500').then(function(cs){ var cmap={}; (Array.isArray(cs)?cs:[]).forEach(function(c){ cmap[c.id]=c; }); _pintar(cmap); }).catch(function(){ _pintar({}); }); }
+      else _pintar({});
     }).catch(function(){ det.innerHTML='<div class="muted" style="font-size:12px;color:var(--rojo)">No se pudo cargar.</div>'; });
   }
   // ── Cronómetro EN VIVO de tareas en curso (tiempo corriendo desde que el técnico tocó «iniciar») ──
@@ -1434,7 +1447,7 @@
       sbGet('interacciones_cliente?cliente_id=eq.'+cliId+'&select=*&order=created_at.desc&limit=100').catch(function(){return [];}),
       sbGet('desconexiones?cliente_id=eq.'+cliId+'&select=id,estado,origen,intentos_count,intentos_obs,nap_intentos_count,nap_intentos_obs,parte_pendiente,gestion_obs,compromiso_obs,obs_tecnico,recupero_equipo,nap_cortada,corte_at,created_at,updated_at,cuadrillas(nombre)&order=created_at.desc&limit=50').catch(function(){return [];}),
       sbGet('usuarios?select=id,nombre&limit=100').catch(function(){return [];}),
-      sbGet('desconexion_intentos?cliente_id=eq.'+cliId+'&select=id,tipo,resultado,obs,creado_por,cuadrilla_id,canal,created_at,cuadrillas(nombre)&order=created_at.desc&limit=100').catch(function(){return [];})
+      sbGet('desconexion_intentos?cliente_id=eq.'+cliId+'&select=id,tipo,resultado,obs,creado_por,cuadrilla_id,canal,created_at&order=created_at.desc&limit=100').catch(function(){return [];})
     ]).then(function(r){
       var d=Array.isArray(r[0])?r[0]:[], inter=Array.isArray(r[1])?r[1]:[], dxs=Array.isArray(r[2])?r[2]:[], dxInt=Array.isArray(r[4])?r[4]:[];
       var umap={}; (Array.isArray(r[3])?r[3]:[]).forEach(function(u){ umap[u.id]=u.nombre; });
@@ -1473,7 +1486,7 @@
       // ── Intentos de recuperación (llamados + visitas, con quién/cuándo/resultado) ──
       if(dxInt.length){
         h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:#1d4ed8">📞 Intentos de recuperación <span class="muted" style="font-weight:400;font-size:13px">('+dxInt.length+')</span></h3>';
-        h+=dxInt.map(function(it){ var quien=(it.cuadrillas&&it.cuadrillas.nombre)||_uname(it.creado_por); var ico=(it.tipo==='LLAMADO'?'📞':(it.tipo==='VISITA'?'🚶':'•'));
+        h+=dxInt.map(function(it){ var quien=it.cuadrilla_id?(_cuadNombre(it.cuadrilla_id)||('Cuadrilla '+it.cuadrilla_id)):_uname(it.creado_por); var ico=(it.tipo==='LLAMADO'?'📞':(it.tipo==='VISITA'?'🚶':'•'));
           return '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 10px;margin-bottom:5px">'
             +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:#64748b"><span><b style="color:#334155">'+esc(fmtFechaHora(it.created_at))+'</b> · 👤 '+esc(quien)+(it.canal?(' · '+esc(it.canal)):'')+'</span><span>'+ico+' '+esc(it.tipo||'')+'</span></div>'
             +'<div style="font-size:13px;color:#1e293b;margin-top:3px">'+esc(it.resultado||'')+(it.obs?(' <span class="muted">· '+esc(it.obs)+'</span>'):'')+'</div></div>'; }).join('')+'</div>';
@@ -4121,7 +4134,7 @@
   // Ciclo: PENDIENTE → ASIGNADA → (técnico corta/recupera) PENDIENTE_ADMIN → (soporte + comercial) FINALIZADO
   function _dxEsAdmin(){ return USER && (USER.rol==='administrativo'||USER.rol==='gerencial'||USER.rol==='superadmin'); }
   function _dxBadge(){ sbGet('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PARCIAL,PENDIENTE_ADMIN)&select=id&limit=5000').then(function(d){ var n=Array.isArray(d)?d.length:0, b=document.getElementById('nav-dx-badge'); if(b){ if(n>0){ b.textContent=n; b.style.display=''; } else b.style.display='none'; } }).catch(function(){}); }
-  var DX_TABS=[['PENDIENTE','⏳ Pendientes'],['ASIGNADA','📍 Asignadas'],['PARCIAL','🔶 A medias'],['PENDIENTE_ADMIN','📝 Pendiente admin'],['compromiso','🤝 Compromisos'],['EN_REVISION','⏸️ En revisión'],['IMPOSIBLE','🚫 Imposibles'],['MIGRACION_508','📋 Migración 508'],['cerradas','✅ Cerradas'],['cand','➕ Candidatos']];
+  var DX_TABS=[['PENDIENTE','⏳ Pendientes'],['ASIGNADA','📍 Asignadas'],['PARCIAL','🔶 A medias'],['gestion','🔄 En gestión'],['PENDIENTE_ADMIN','📝 Pendiente admin'],['compromiso','🤝 Compromisos'],['EN_REVISION','⏸️ En revisión'],['IMPOSIBLE','🚫 Imposibles'],['MIGRACION_508','📋 Migración 508'],['cerradas','✅ Cerradas'],['cand','➕ Candidatos']];
   function _dxDiasRest(iso){ if(!iso) return null; return Math.ceil((Date.parse(iso)-Date.now())/86400000); }
   function _dxTabs(){ var v=window._dxState.ver; return '<div class="toolbar">'+DX_TABS.map(function(t){return '<button class="btn '+(v===t[0]?'btn-pri':'btn-2')+' dx-tab" data-ver="'+t[0]+'">'+t[1]+'</button>';}).join('')+'</div>'; }
   function _dxOrigen(o){ return {manual:'✋ manual',baja_isp:'⬇️ baja ISPcube',bloqueado_30d:'⛔ bloqueado +30d',voluntaria:'🙋 baja voluntaria'}[o]||o||''; }
@@ -4274,11 +4287,13 @@
     if(!_dxEsAdmin()){ view.innerHTML='<h1>Desconexiones</h1><div class="center">Solo disponible para administrativo, gerencial o superadmin.</div>'; return; }
     if(!window._dxState) window._dxState={ver:'PENDIENTE',q:'',origen:''};
     var st=window._dxState; loading();
+    if(window._dxIntMax==null){ window._dxIntMax=3; sbGet('config_comercial?id=eq.1&select=desc_max_intentos').then(function(d){ var v=Array.isArray(d)&&d[0]&&d[0].desc_max_intentos; if(v) window._dxIntMax=Number(v); }).catch(function(){}); }
     // Trae las desconexiones del tab activo y pinta. El mantenimiento NO corre acá (ver abajo).
     var _render=function(){
       if(st.ver==='cand'){ _dxCandidatos(); return; }
-      var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':(st.ver==='compromiso'?'estado=eq.COMPROMISO_PAGO':'estado=eq.'+st.ver);
-      sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,nodo,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado,bloqueado_desde)&order=created_at.desc&limit=2000').then(function(d){
+      var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':(st.ver==='compromiso'?'estado=eq.COMPROMISO_PAGO':(st.ver==='gestion'?'estado=in.(PENDIENTE,ASIGNADA,PARCIAL)&or=(intentos_count.gt.0,nap_intentos_count.gt.0)':'estado=eq.'+st.ver));
+      var _ord=(st.ver==='gestion')?'order=intentos_count.desc,nap_intentos_count.desc,ultimo_intento_at.desc.nullslast':'order=created_at.desc';
+      sbGet('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,nodo,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado,bloqueado_desde)&'+_ord+'&limit=2000').then(function(d){
         _dxData=Array.isArray(d)?d:[];
         var _bars={}; _dxData.forEach(function(o){ var bz=(o.clientes&&o.clientes.barrio)||'(sin barrio)'; _bars[bz]=(_bars[bz]||0)+1; });
         var _barOpts=Object.keys(_bars).sort(function(a,b){return _bars[b]-_bars[a];}).map(function(k){return '<option value="'+esc(k)+'"'+(st.fbarrio===k?' selected':'')+'>'+esc(k)+' ('+_bars[k]+')</option>';}).join('');
@@ -4458,6 +4473,9 @@
     if(window._dxState.ver==='cerradas'||window._dxState.ver==='PENDIENTE_ADMIN'){
       cols.push({k:'resultado',t:'Resultado',sort:function(o){return _dxResultado(o).cat;},r:function(o){return '<span style="font-size:12px">'+_dxResultado(o).lbl+'</span>';}});
       cols.push({k:'quien',t:'Quién',sort:function(o){return _dxQuien(o);},r:function(o){return '<span style="font-size:12px">'+esc(_dxQuien(o))+'</span>';}});
+    }
+    if(window._dxState.ver==='gestion'){
+      cols.push({k:'intentos',t:'Intentos',sort:function(o){return Math.max(o.intentos_count||0,o.nap_intentos_count||0);},r:function(o){ var e=o.intentos_count||0, n=o.nap_intentos_count||0, max=(window._dxIntMax||3), tot=Math.max(e,n), col=tot>=max?'#b91c1c':(tot>=max-1?'#b45309':'#334155'), parts=[]; if(e)parts.push('📦 '+e); if(n)parts.push('✂️ '+n); var ult=o.ultimo_intento_at?(' <span class="muted" style="font-size:11px;white-space:nowrap">· últ. '+esc(fmtFecha(o.ultimo_intento_at))+'</span>'):''; return '<span style="font-weight:700;color:'+col+'">'+(parts.join(' · ')||'—')+'</span>'+ult+(tot>=max?' <span style="font-size:10px;background:#fef2f2;color:#b91c1c;padding:1px 6px;border-radius:99px;font-weight:800;white-space:nowrap">al límite</span>':''); }});
     }
     cols.push({k:'info',t:'Detalle',sort:null,r:_dxInfo});
     cols.push({k:'acc',t:'Acciones',sort:null,fixed:true,r:_dxAcc});
