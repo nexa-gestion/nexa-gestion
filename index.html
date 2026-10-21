@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.95';
+  var VER='v3.96';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -4264,9 +4264,12 @@
   }
 
   // ══════════ TICKETS de ISPcube ══════════ (reclamos que los clientes crean en su app → generar OT)
+  function _tkWireTabs(){ Array.prototype.forEach.call(document.querySelectorAll('.tk-tab'),function(b){ b.addEventListener('click',function(){ window._tkTab=b.getAttribute('data-t'); vTickets(); }); }); }
   function vTickets(){
     loading();
-    sbGet('isp_tickets?estado_nexa=eq.nuevo&select=*&order=created_at_isp.desc&limit=2000').then(function(tksRaw){
+    if(!window._tkTab) window._tkTab='nuevos';
+    var _tkEstQ=(window._tkTab==='resueltos')?'estado_nexa=in.(convertido,gestionado,archivado,descartado)':'estado_nexa=eq.nuevo';
+    sbGet('isp_tickets?'+_tkEstQ+'&select=*&order=created_at_isp.desc&limit=500').then(function(tksRaw){
       var tks=Array.isArray(tksRaw)?tksRaw:[];
       // solo busco los clientes cuyos códigos aparecen en los tickets (evita el tope de 1000 filas y baja costo)
       var codes={}; tks.forEach(function(t){ if(t.codigo_ispcube) codes[t.codigo_ispcube]=1; });
@@ -4278,9 +4281,29 @@
     }).then(function(r){
       var tks=r[0], cls=r[1]||[], byCode={}; cls.forEach(function(c){ byCode[c.codigo_ispcube]=c; });
       var TIPO={5:'REPARACION',2:'REPARACION',4:'INSTALACION',6:'RETIRO_EQUIPOS',11:'RECONEXION',10:'REPARACION',1:'OTRO',8:'OTRO'};
-      var h='<h1>🎫 Tickets de ISPcube</h1><p class="sub">Reclamos que los clientes crearon desde su app/portal de ISPcube. Generá la OT, gestionalo sin OT, o mandalo a Bajas — queda atado al ticket.</p>'
-        +'<div style="margin-bottom:10px"><button class="btn btn-2" id="tk-arch-viejos" style="font-size:13px">🗑️ Archivar tickets viejos (anteriores al 01/10/2026)</button></div>';
-      if(!tks.length){ view.innerHTML=h+'<div class="center">No hay tickets nuevos. 🎉 <span class="muted">(se importan en cada sync de ISPcube)</span></div>'; var av0=document.getElementById('tk-arch-viejos'); if(av0) av0.addEventListener('click',_tkArchivarViejos); return; }
+      var isRes=(window._tkTab==='resueltos');
+      var tabs='<div class="toolbar" style="margin-bottom:10px;align-items:center">'
+        +'<button class="btn '+(!isRes?'btn-pri':'btn-2')+' tk-tab" data-t="nuevos">⏳ Nuevos</button>'
+        +'<button class="btn '+(isRes?'btn-pri':'btn-2')+' tk-tab" data-t="resueltos">✅ Resueltos / gestionados</button>'
+        +(!isRes?'<button class="btn btn-2" id="tk-arch-viejos" style="margin-left:auto;font-size:13px">🗑️ Archivar viejos (ant. 01/10/2026)</button>':'')
+        +'</div>';
+      var h='<h1>🎫 Tickets de ISPcube</h1><p class="sub">Reclamos que los clientes crearon desde su app/portal de ISPcube. Generá la OT, gestionalo sin OT, o mandalo a Bajas — queda atado al ticket y a la ficha del cliente.</p>'+tabs;
+      if(!tks.length){ view.innerHTML=h+'<div class="center">'+(isRes?'Todavía no hay tickets resueltos.':'No hay tickets nuevos. 🎉 <span class="muted">(se importan en cada sync de ISPcube)</span>')+'</div>'; _tkWireTabs(); var av0=document.getElementById('tk-arch-viejos'); if(av0) av0.addEventListener('click',_tkArchivarViejos); return; }
+      if(isRes){
+        var _resLbl={convertido:'🛠️ Convertido a OT',gestionado:'✍️ Gestionado (sin OT)',archivado:'🗑️ Archivado',descartado:'✖ Descartado'};
+        h+='<div style="display:flex;flex-direction:column;gap:8px">'+tks.map(function(t){ var cl=byCode[t.codigo_ispcube]; var ispC=t.isp_cerrado_at?'<span style="color:#16a34a;font-weight:600">✓ cerrado en ISPcube</span>':'<span class="muted">cierre en ISPcube pendiente (próximo sync)</span>';
+          return '<div class="ocard" style="margin:0;padding:10px 13px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">'
+            +'<div style="flex:1;min-width:240px"><div><b>'+esc(t.cliente_nombre||'(sin nombre)')+'</b> <span class="muted" style="font-size:12px">· ticket #'+esc(t.ticket_id)+' · '+esc(t.categoria||'')+' · entró '+esc(fmtFecha(t.created_at_isp))+'</span></div>'
+              +'<div style="font-size:12.5px;margin-top:3px;font-weight:600;color:#334155">'+(_resLbl[t.estado_nexa]||t.estado_nexa)+(t.ot_id?(' · <a class="tk-ot" data-ot="'+t.ot_id+'" style="color:#2563eb;cursor:pointer">ver OT</a>'):'')+'</div>'
+              +'<div style="font-size:11.5px;margin-top:2px">'+ispC+'</div>'
+              +(t.detalle?'<div class="muted" style="font-size:12px;margin-top:3px">🗣️ '+esc(t.detalle)+'</div>':'')+'</div>'
+            +(cl?'<button class="btn btn-2 tk-ficha" data-cli="'+cl.id+'">👤 Ver ficha / gestión</button>':'<span class="muted" style="font-size:12px">no está en Nexa</span>')
+            +'</div></div>'; }).join('')+'</div>';
+        view.innerHTML=h; _tkWireTabs();
+        Array.prototype.forEach.call(view.querySelectorAll('.tk-ficha'),function(b){ b.addEventListener('click',function(){ fichaCliente(b.getAttribute('data-cli')); }); });
+        Array.prototype.forEach.call(view.querySelectorAll('.tk-ot'),function(b){ b.addEventListener('click',function(){ detalleOT(b.getAttribute('data-ot')); }); });
+        return;
+      }
       h+='<div id="tk-wrap" style="display:flex;flex-direction:column;gap:10px">'+tks.map(function(t){ var cl=byCode[t.codigo_ispcube];
         return '<div class="ocard" style="margin:0;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">'
           +'<div style="flex:1;min-width:240px"><div style="font-weight:800">'+esc(t.cliente_nombre||'(sin nombre)')+(t.codigo_ispcube?(' <span class="muted">· ISP '+esc(t.codigo_ispcube)+'</span>'):'')+(cl?(' <span class="muted">· Nexa N° '+esc(cl.numero_cliente)+'</span>'):' <span style="color:var(--rojo)">⚠️ no está en Nexa</span>')+'</div>'
@@ -4292,14 +4315,15 @@
             +'<button class="btn btn-2 tk-desc" data-id="'+t.id+'">Descartar</button></div>'
           +'</div></div>';
       }).join('')+'</div>';
-      view.innerHTML=h;
+      view.innerHTML=h; _tkWireTabs();
       var av=document.getElementById('tk-arch-viejos'); if(av) av.addEventListener('click',_tkArchivarViejos);
       var w=document.getElementById('tk-wrap');
       w.addEventListener('click',function(e){
         var g=e.target.closest('.tk-gen'); if(g){ g.disabled=true; g.textContent='Generando…'; var id=g.getAttribute('data-id'), cli=g.getAttribute('data-cli'), tipo=g.getAttribute('data-tipo'), t=tks.filter(function(x){return String(x.id)===String(id);})[0]||{};
+          var _otid=null;
           sbPost('ordenes_trabajo',{cliente_id:Number(cli),tipo:tipo,estado:'PENDIENTE',prioridad:'NORMAL',descripcion:'[Ticket ISPcube #'+t.ticket_id+'] '+(t.detalle||t.categoria||''),created_by:USER.id})
-            .then(function(o){ var otid=(Array.isArray(o)&&o[0])?o[0].id:null; return sbPatch('isp_tickets?id=eq.'+id,{estado_nexa:'convertido',cliente_id:Number(cli),ot_id:otid}); })
-            .then(function(){ logAct('Generó OT desde ticket ISPcube',{entidad:'OT',detalle:'Ticket #'+t.ticket_id+' · '+(t.categoria||'')}); toast('✅ OT generada — ya está en Órdenes'); vTickets(); })
+            .then(function(o){ _otid=(Array.isArray(o)&&o[0])?o[0].id:null; return sbPatch('isp_tickets?id=eq.'+id,{estado_nexa:'convertido',cliente_id:Number(cli),ot_id:_otid}); })
+            .then(function(){ sbPost('interacciones_cliente',{cliente_id:Number(cli),tipo:'ticket',titulo:'🎫 Ticket #'+(t.ticket_id||'')+' → OT generada'+(_otid?(' (N° '+_otid+')'):''),detalle:(t.categoria||'')+(t.detalle?(' — '+t.detalle):''),ticket_id:t.id,creado_por:USER.id}).catch(function(){}); logAct('Generó OT desde ticket ISPcube',{entidad:'OT',detalle:'Ticket #'+t.ticket_id+' · '+(t.categoria||'')}); toast('✅ OT generada — ya está en Órdenes'); vTickets(); })
             .catch(function(){ g.disabled=false; g.textContent='🛠️ Generar OT'; toast('No se pudo generar la OT.'); }); return; }
         var d=e.target.closest('.tk-desc'); if(d){ if(d.getAttribute('data-ok')!=='1'){ d.setAttribute('data-ok','1'); d.textContent='¿Descartar?'; return; } var id2=d.getAttribute('data-id'); sbPatch('isp_tickets?id=eq.'+id2,{estado_nexa:'descartado'}).then(function(){ logAct('Descartó ticket ISPcube',{entidad:'OT',entidad_id:id2}); toast('Descartado'); vTickets(); }); return; }
         var gs=e.target.closest('.tk-gest'); if(gs){ var tg=tks.filter(function(x){return String(x.id)===String(gs.getAttribute('data-id'));})[0]; if(tg) _tkGestionar(tg,gs.getAttribute('data-cli')); return; }
