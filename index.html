@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.89';
+  var VER='v3.90';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3130,17 +3130,17 @@
     var ini=mes+'-01', fin=_cbMesAdd(mes,1)+'-01';   // [ini, fin)
     cont.innerHTML='<div class="card"><div class="label">💵 Recaudación real (ISPcube)</div><div class="center"><div class="spin"></div></div></div>';
     Promise.all([
-      sbGetAll('cobranzas_isp?fecha=gte.'+ini+'&fecha=lt.'+fin+'&select=total,fecha&limit=20000').catch(function(){return null;}),
-      sbGet('cobranzas_isp?select=fecha&order=fecha.asc&limit=1').catch(function(){return [];}),
+      sbGetAll('cobranzas_isp?real_date=gte.'+ini+'T00:00:00&real_date=lt.'+fin+'T00:00:00&select=total,real_date&limit=20000').catch(function(){return null;}),
+      sbGet('cobranzas_isp?select=real_date&order=real_date.asc&limit=1').catch(function(){return [];}),
       sbCount('clientes?pago_detectado_at=gte.'+ini+'T00:00:00Z&pago_detectado_at=lt.'+fin+'T00:00:00Z&select=id').catch(function(){return 0;})
     ]).then(function(r){
       var d=r[0];
       if(d===null){ cont.innerHTML='<div class="card muted" style="font-size:13px">No se pudo cargar la recaudación (¿corriste el SQL de cobranzas_isp?).</div>'; return; }
-      var minF=(Array.isArray(r[1])&&r[1][0]&&r[1][0].fecha)?String(r[1][0].fecha).slice(0,10):null;
+      var minF=(Array.isArray(r[1])&&r[1][0]&&r[1][0].real_date)?String(r[1][0].real_date).slice(0,10):null;
       var salieronMora=r[2]||0;
       var esActual=(mes===mesActual);
       var totMes=0, totHoy=0, porDia={}, nMes=d.length, nHoy=0;
-      d.forEach(function(x){ var t=Number(x.total||0), f=String(x.fecha||'').slice(0,10); totMes+=t; porDia[f]=(porDia[f]||0)+t; if(f===hoyISO){ totHoy+=t; nHoy++; } });
+      d.forEach(function(x){ var t=Number(x.total||0), f=String(x.real_date||'').slice(0,10); totMes+=t; porDia[f]=(porDia[f]||0)+t; if(f===hoyISO){ totHoy+=t; nHoy++; } });
       var dias=Object.keys(porDia).sort(), nd=dias.length, prom=nd?totMes/nd:0;
       var mejor=dias.slice().sort(function(a,b){return porDia[b]-porDia[a];})[0];
       var mini=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:13px 16px"><div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">'+ico+' '+lab+'</div><div style="font-size:24px;font-weight:800;color:'+col+';margin:2px 0;line-height:1.1">'+val+'</div><div style="font-size:11.5px;color:#94a3b8">'+sub+'</div></div>'; };
