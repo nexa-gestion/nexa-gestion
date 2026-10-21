@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.90';
+  var VER='v3.91';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1408,7 +1408,8 @@
         +'<div class="fichagrid">'+fr('Empresa',c.empresa)+fr('Documento',(c.tipo_doc||'')+' '+(c.doc_numero||''))+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(c.telefono||'—')+' '+waLink(c.telefono,cNom,'',_domLimpio(c.domicilio_full))+'</span></div>'+'<div class="ficha-row"><span class="k">Tel. alternativo</span><span class="v">'+(c.telefono_alt?(esc(c.telefono_alt)+' '+waLink(c.telefono_alt,cNom,'',_domLimpio(c.domicilio_full))):'<span style="color:#dc2626">— falta 2° número</span>')+'</span></div>'+fr('Email',c.email)
         +fr('Domicilio',_domLimpio(c.domicilio_full))+fr('Barrio',c.barrio)
         +'<div class="ficha-row"><span class="k">Ubicación</span><span class="v" style="text-align:right">'+ubicLink(c.lat,c.lng)+'</span></div>'+fr('Nodo',c.nodo)
-        +fr('Tecnología',c.tecnologia)+fr('TV / Fútbol',(c.tv_online?'TV ':'')+(c.pack_futbol?'Fútbol':'')||'No')+'</div>'
+        +fr('Tecnología',c.tecnologia)+fr('TV / Fútbol',(c.tv_online?'TV ':'')+(c.pack_futbol?'Fútbol':'')||'No')
+        +'<div class="ficha-row"><span class="k">📅 Fecha de alta</span><span class="v">'+(c.fecha_alta?(esc(fmtFecha(c.fecha_alta))+' <span class="muted" style="font-size:11px">· hace '+Math.floor((Date.now()-new Date(c.fecha_alta))/86400000)+' días</span>'):'—')+'</span></div>'+'</div>'
         +'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;margin-top:10px"><div style="font-weight:700;color:#1e40af;margin-bottom:6px">📡 Datos de conexión (lo que va en ISPcube)</div>'
           +'<div class="row"><div><label class="l">Caja (NAP)</label><input id="f-caja" value="'+esc(c.caja_nap||'')+'"></div><div><label class="l">Puerto</label><input id="f-puerto" value="'+esc(c.puerto||'')+'"></div><div><label class="l">Precinto</label><input id="f-precinto" value="'+esc(c.precinto||'')+'"></div></div>'
           +'<div style="margin-top:8px"><label class="l">📡 Plan contratado <span class="muted">(cambia el plan y ajusta la tecnología)</span></label><select id="f-plan"><option value="">— sin plan —</option>'+REF.planes.map(function(p){return '<option value="'+p.id+'"'+(String(c.plan_id||'')===String(p.id)?' selected':'')+'>'+esc(p.nombre)+(p.tecnologia?(' · '+esc(p.tecnologia)):'')+'</option>';}).join('')+'</select></div>'
@@ -1425,7 +1426,7 @@
         if(cortes) w.insertAdjacentHTML('beforeend',_chip('✂️ Cortado '+cortes+' '+(cortes===1?'vez':'veces')));
         if(comp) w.insertAdjacentHTML('beforeend',_chip('🤝 Compromisos de pago: '+comp));
       }).catch(function(){});
-      cargarHistCliente(c.id);
+      cargarHistCliente(c.id, c);
       document.getElementById('f-conx-save').addEventListener('click',function(){
         var b={ caja_nap:document.getElementById('f-caja').value.trim()||null, puerto:document.getElementById('f-puerto').value.trim()||null, precinto:document.getElementById('f-precinto').value.trim()||null };
         var pEl=document.getElementById('f-plan'), np=pEl&&pEl.value?Number(pEl.value):null;
@@ -1446,21 +1447,32 @@
   }
   // Historial de servicios del cliente: todas sus OTs (las finalizadas muestran fotos/cierre al tocarlas)
   function _interIcono(tipo){ return {compromiso:'🤝',soporte:'🛠️',nota:'📝',ticket:'🎫',baja:'📉'}[tipo]||'•'; }
-  function cargarHistCliente(cliId){
+  function cargarHistCliente(cliId, cli){
     var cont=document.getElementById('f-hist'); if(!cont) return;
     cont.innerHTML='<div class="muted" style="font-size:13px">Cargando historial…</div>';
     Promise.all([
-      sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,fin_tec_at,inicio_tec_at,created_at,observaciones_tec,motivo_cancelacion,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100'),
+      sbGet('ordenes_trabajo?cliente_id=eq.'+cliId+'&select=id,numero,tipo,estado,fecha_agendada,hora_agendada,fin_tec_at,inicio_tec_at,created_at,created_by,observaciones_tec,motivo_cancelacion,cuadrillas(nombre),tipos_trabajo(nombre)&order=created_at.desc&limit=100'),
       sbGet('interacciones_cliente?cliente_id=eq.'+cliId+'&select=*&order=created_at.desc&limit=100').catch(function(){return [];}),
       sbGet('desconexiones?cliente_id=eq.'+cliId+'&select=id,estado,origen,intentos_count,intentos_obs,nap_intentos_count,nap_intentos_obs,parte_pendiente,gestion_obs,compromiso_obs,obs_tecnico,recupero_equipo,nap_cortada,corte_at,created_at,updated_at,cuadrillas(nombre)&order=created_at.desc&limit=50').catch(function(){return [];}),
       sbGet('usuarios?select=id,nombre&limit=100').catch(function(){return [];}),
-      sbGet('desconexion_intentos?cliente_id=eq.'+cliId+'&select=id,tipo,resultado,obs,creado_por,cuadrilla_id,canal,created_at&order=created_at.desc&limit=100').catch(function(){return [];})
+      sbGet('desconexion_intentos?cliente_id=eq.'+cliId+'&select=id,tipo,resultado,obs,creado_por,cuadrilla_id,canal,created_at&order=created_at.desc&limit=100').catch(function(){return [];}),
+      sbGet('solicitudes_alta?cliente_id=eq.'+cliId+'&select=created_at,estado,tipo_solicitud,vendedor_id,origen&order=created_at.asc&limit=20').catch(function(){return [];})
     ]).then(function(r){
-      var d=Array.isArray(r[0])?r[0]:[], inter=Array.isArray(r[1])?r[1]:[], dxs=Array.isArray(r[2])?r[2]:[], dxInt=Array.isArray(r[4])?r[4]:[];
+      var d=Array.isArray(r[0])?r[0]:[], inter=Array.isArray(r[1])?r[1]:[], dxs=Array.isArray(r[2])?r[2]:[], dxInt=Array.isArray(r[4])?r[4]:[], solis=Array.isArray(r[5])?r[5]:[];
       var umap={}; (Array.isArray(r[3])?r[3]:[]).forEach(function(u){ umap[u.id]=u.nombre; });
       var _uname=function(id){ return umap[id]||(id?('Usuario '+id):'—'); };
+      // ── 🧭 Trazabilidad: solicitud → alta → 1ª OT ──
+      var _diasDesde=function(x){ return x?Math.floor((Date.now()-new Date(x))/86400000):null; };
+      var otAsc=d.slice().sort(function(a,b){ return (a.created_at||'')<(b.created_at||'')?-1:1; });
+      var otPrim=otAsc[0], soli=solis[0];
+      var _tz=function(ico,lab,val,sub){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:10px;padding:9px 12px"><div style="font-size:11px;color:#64748b;font-weight:700">'+ico+' '+lab+'</div><div style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px">'+val+'</div>'+(sub?'<div style="font-size:11px;color:#94a3b8">'+sub+'</div>':'')+'</div>'; };
+      var tzCards=[];
+      tzCards.push(_tz('📥','Solicitud', soli?esc(fmtFecha(soli.created_at)):'—', soli?('hace '+_diasDesde(soli.created_at)+' días'+(soli.origen?(' · '+esc(soli.origen)):'')):'sin solicitud registrada'));
+      tzCards.push(_tz('📅','Alta', (cli&&cli.fecha_alta)?esc(fmtFecha(cli.fecha_alta)):'—', (cli&&cli.fecha_alta)?('hace '+_diasDesde(cli.fecha_alta)+' días'):'—'));
+      tzCards.push(_tz('🛠️','1ª OT generada', otPrim?(esc(fmtFecha(otPrim.created_at))+' <span class="muted" style="font-weight:400">'+esc(otPrim.created_at?_hhmm(new Date(otPrim.created_at)):'')+'</span>'):'—', otPrim?('N° '+esc(otPrim.numero)+' · '+esc(otPrim.tipo||'')+(otPrim.created_by?(' · 👤 '+esc(_uname(otPrim.created_by))):'')):'—'));
+      var h='<div style="border-top:2px solid #e2e8f0;padding-top:10px"><h3 style="margin:0 0 6px;color:#0891b2">🧭 Trazabilidad</h3><div style="display:flex;gap:8px;flex-wrap:wrap">'+tzCards.join('')+'</div></div>';
       // ── Gestiones e historial (interacciones) ──
-      var h='<div style="border-top:2px solid #e2e8f0;padding-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;color:#6d28d9">📋 Gestiones e historial <span class="muted" style="font-weight:400;font-size:13px">('+inter.length+')</span></h3><button class="btn btn-2 btn-sm" id="f-nota">➕ Agregar nota</button></div>';
+      h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;color:#6d28d9">📋 Gestiones e historial <span class="muted" style="font-weight:400;font-size:13px">('+inter.length+')</span></h3><button class="btn btn-2 btn-sm" id="f-nota">➕ Agregar nota</button></div>';
       if(inter.length){ h+='<div style="margin-top:6px">'+inter.map(function(it){ return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9"><div style="font-size:11px;color:#94a3b8;width:92px;flex-shrink:0">'+esc(fmtFechaHora(it.created_at))+'</div><div style="flex:1"><b style="font-size:13px">'+_interIcono(it.tipo)+' '+esc(it.titulo||it.tipo||'')+'</b><div style="font-size:13px;color:#475569">'+esc(it.detalle||'')+'</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">👤 '+esc(_uname(it.creado_por))+'</div></div></div>'; }).join('')+'</div>'; }
       else { h+='<div class="muted" style="font-size:13px;margin-top:4px">Sin gestiones registradas. Las notas de tickets, compromisos y soporte van a aparecer acá.</div>'; }
       h+='</div>';
@@ -1503,10 +1515,11 @@
       h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:var(--azul)">🧰 Historial de servicios <span class="muted" style="font-weight:400;font-size:13px">('+d.length+' OT · '+hechos+' con cierre)</span></h3>';
       if(!d.length){ h+='<div class="muted">Este cliente todavía no tiene órdenes.</div></div>'; }
       else {
-        h+='<table style="width:100%"><thead><tr><th>Fecha</th><th>N° OT</th><th>Tipo</th><th>Trabajo</th><th>Cuadrilla</th><th>Estado</th></tr></thead><tbody>';
-        d.forEach(function(o){ var f=o.fin_tec_at||o.fecha_agendada||o.created_at; var cerr=(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO');
-          h+='<tr data-ot="'+o.id+'" style="cursor:pointer"><td class="muted">'+esc(fmtFecha(f))+'</td><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(o.tipos_trabajo?o.tipos_trabajo.nombre:'—')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td>'+pill(o.estado)+(cerr?' 📷':'')+'</td></tr>'; });
-        h+='</tbody></table><div class="muted" style="font-size:12px;margin-top:4px">Tocá un servicio para ver el cierre (fotos, materiales, datos de la visita).</div></div>';
+        var _demora=function(o){ if(!o.created_at) return ''; var fin=(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO'||o.estado==='NO_REALIZADA'||o.estado==='CANCELADA')?(o.fin_tec_at||o.updated_at||null):null; var ab=(!fin); fin=fin?new Date(fin):new Date(); var dd=Math.floor((fin-new Date(o.created_at))/86400000); if(dd<0)dd=0; var col=(ab&&dd>=3)?'#b91c1c':(ab?'#b45309':'#64748b'); return '<span style="color:'+col+';font-weight:'+(ab&&dd>=3?'800':'600')+'">'+(ab?'lleva ':'')+dd+'d'+(ab?'':'')+'</span>'; };
+        h+='<table style="width:100%"><thead><tr><th>Generada</th><th>Cargó</th><th>N° OT</th><th>Tipo</th><th>Cuadrilla</th><th>Demora</th><th>Estado</th></tr></thead><tbody>';
+        d.forEach(function(o){ var cerr=(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO');
+          h+='<tr data-ot="'+o.id+'" style="cursor:pointer"><td class="muted" style="white-space:nowrap">'+esc(o.created_at?fmtFecha(o.created_at):'—')+' <span style="font-size:11px">'+esc(o.created_at?_hhmm(new Date(o.created_at)):'')+'</span></td><td class="muted" style="font-size:12px">'+esc(o.created_by?_uname(o.created_by):'—')+'</td><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td style="font-size:12px">'+_demora(o)+'</td><td>'+pill(o.estado)+(cerr?' 📷':'')+'</td></tr>'; });
+        h+='</tbody></table><div class="muted" style="font-size:12px;margin-top:4px">Generada = cuándo y quién cargó la OT · Demora = días hasta cerrarse (o "lleva N" si sigue abierta) · tocá para ver el cierre.</div></div>';
       }
       cont.innerHTML=h;
       var fn=document.getElementById('f-nota'); if(fn) fn.addEventListener('click',function(){ _cliNota(cliId); });
