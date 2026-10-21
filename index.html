@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.92';
+  var VER='v3.93';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3368,7 +3368,8 @@
       +'<div class="card" style="height:300px;margin-bottom:14px;padding:10px"><canvas id="g-canvas"></canvas></div>'
       +'<div id="g-bloq-wrap" style="margin-bottom:14px"></div>'
       +'<div id="g-kpis"><div class="center"><div class="spin"></div></div></div>'
-      +'<div id="g-comp" style="margin-top:14px"></div>';
+      +'<div id="g-comp" style="margin-top:14px"></div>'
+      +'<div id="g-tiempos" style="margin-top:14px"></div>';
     Array.prototype.forEach.call(view.querySelectorAll('.g-per'),function(b){ b.addEventListener('click',function(){ _gSetPeriodo(b.getAttribute('data-p')); vGerencial(); }); });
     document.getElementById('g-go').addEventListener('click',function(){ var s=window._gState; s.desde=document.getElementById('g-desde').value; s.hasta=document.getElementById('g-hasta').value; window._gPeriodo='custom'; window._gMeses=_gMesesEntre(s.desde,s.hasta); vGerencial(); });
     document.getElementById('g-excl').addEventListener('change',function(){ window._gState.excl=this.checked; _gCalc(); _gGrafico(window._gMeses||6); });
@@ -3377,6 +3378,56 @@
     _gGraficoBloq();
     _gCalc();
     _gComposicion();
+    _gTiempos();
+  }
+  // ⏱️ Tiempos del proceso (demoras por etapa) — admin vs técnico. Usa el período del Gerencial.
+  function _gTiempos(){
+    var cont=document.getElementById('g-tiempos'); if(!cont) return;
+    var g=window._gState, desde=g.desde, hasta=g.hasta+'T23:59:59';
+    cont.innerHTML='<div class="card"><div class="label">⏱️ Tiempos del proceso</div><div class="center"><div class="spin"></div></div></div>';
+    var _hs=function(a,b){ if(!a||!b) return null; var d=(new Date(b)-new Date(a))/3600000; return (d>=0&&d<24*365)?d:null; };
+    var _med=function(arr){ arr=arr.filter(function(x){return x!=null;}).sort(function(a,b){return a-b;}); if(!arr.length) return null; var m=Math.floor(arr.length/2); return arr.length%2?arr[m]:(arr[m-1]+arr[m])/2; };
+    var _p90=function(arr){ arr=arr.filter(function(x){return x!=null;}).sort(function(a,b){return a-b;}); if(!arr.length) return null; return arr[Math.min(arr.length-1,Math.floor(arr.length*0.9))]; };
+    var _dur=function(h){ if(h==null) return '—'; if(h<1) return Math.round(h*60)+' min'; if(h<48) return (Math.round(h*10)/10)+' h'; return (Math.round(h/24*10)/10)+' d'; };
+    Promise.all([
+      sbGetAll('ordenes_trabajo?area=eq.INTERNET&estado=in.(FINALIZADA,CERRADA_TECNICO)&created_at=gte.'+desde+'&created_at=lte.'+hasta+'&select=numero,tipo,created_at,inicio_tec_at,fin_tec_at,validado_admin_at,clientes(numero_cliente,nombre,apellido)').catch(function(){return [];}),
+      sbGetAll('solicitudes_alta?created_at=gte.'+desde+'&created_at=lte.'+hasta+'&gestionado_at=not.is.null&select=created_at,gestionado_at,nombre,apellido').catch(function(){return [];})
+    ]).then(function(r){
+      var ots=Array.isArray(r[0])?r[0]:[], sol=Array.isArray(r[1])?r[1]:[];
+      // arma métrica: {med, p90, n, slowest:[{txt,h}]}
+      function met(items, fa, fb, lbl){ var vs=[], det=[]; items.forEach(function(o){ var h=_hs(o[fa]||(fa==='_sa'?o.created_at:null), o[fb]); if(h!=null){ vs.push(h); det.push({h:h,o:o}); } }); det.sort(function(a,b){return b.h-a.h;}); return {med:_med(vs),p90:_p90(vs),n:vs.length,slow:det.slice(0,10)}; }
+      var m_sol=met(sol,'created_at','gestionado_at'), m_exe=met(ots,'created_at','inicio_tec_at'), m_dom=met(ots,'inicio_tec_at','fin_tec_at'), m_val=met(ots,'fin_tec_at','validado_admin_at');
+      var exeI=met(ots.filter(function(o){return o.tipo==='INSTALACION';}),'created_at','inicio_tec_at'), exeR=met(ots.filter(function(o){return o.tipo==='REPARACION';}),'created_at','inicio_tec_at');
+      var domI=met(ots.filter(function(o){return o.tipo==='INSTALACION';}),'inicio_tec_at','fin_tec_at'), domR=met(ots.filter(function(o){return o.tipo==='REPARACION';}),'inicio_tec_at','fin_tec_at');
+      window._gTiempoSlow={sol:m_sol.slow,exe:m_exe.slow,dom:m_dom.slow,val:m_val.slow};
+      var card=function(key,ico,lab,quien,m,extra){ if(!m.n) return '<div style="flex:1;min-width:210px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:13px 15px;opacity:.6"><div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">'+ico+' '+lab+'</div><div class="muted" style="font-size:13px;margin-top:6px">sin datos en el período</div></div>';
+        return '<div class="g-tcard" data-k="'+key+'" style="flex:1;min-width:210px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:13px 15px;cursor:pointer"><div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">'+ico+' '+lab+'</div>'
+          +'<div style="font-size:24px;font-weight:800;color:#0f172a;margin:3px 0;line-height:1.1">'+_dur(m.med)+' <span style="font-size:12px;color:#94a3b8;font-weight:600">mediana</span></div>'
+          +'<div style="font-size:11.5px;color:#94a3b8">p90 '+_dur(m.p90)+' · n='+m.n+' · '+quien+'</div>'
+          +(extra||'')+'<div style="font-size:11px;color:#2563eb;font-weight:600;margin-top:5px">▸ ver los más lentos</div></div>'; };
+      var splitInst=function(mi,mr){ return '<div style="font-size:11.5px;color:#475569;margin-top:5px;border-top:1px solid #f1f5f9;padding-top:5px">🔧 Instalación: <b>'+_dur(mi.med)+'</b>'+(mi.n?' <span class="muted">(n'+mi.n+')</span>':'')+' · 🛠️ Reparación: <b>'+_dur(mr.med)+'</b>'+(mr.n?' <span class="muted">(n'+mr.n+')</span>':'')+'</div>'; };
+      var h='<div class="dash-sec" style="margin:0 0 8px">⏱️ Tiempos del proceso <span class="dash-sec-r">demoras por etapa · período elegido · tocá una tarjeta para ver los casos más lentos</span></div>'
+        +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+        +card('sol','📥','Carga de solicitud',' admin',m_sol)
+        +card('exe','🛠️','OT → ejecución',' espera operativa',m_exe,splitInst(exeI,exeR))
+        +card('dom','⏲️','En el domicilio',' técnico',m_dom,splitInst(domI,domR))
+        +card('val','✅','Cierre → validación',' admin',m_val)
+        +'</div>'
+        +'<div id="g-tiempo-det" style="margin-top:10px"></div>'
+        +'<div class="muted" style="font-size:11px;margin-top:8px">Mediana = el valor del medio (más realista que el promedio, no lo estiran los casos raros). <b>p90</b> = el 90% se hizo en ese tiempo o menos. ⏲️ En el domicilio descarta OTs dejadas abiertas (+6h). ⚠️ No se mide "generada→asignada" (el sistema casi no graba la hora de asignación) ni el link solicitud→OT salvo el 22% que viene del formulario.</div>';
+      cont.innerHTML=h;
+      Array.prototype.forEach.call(cont.querySelectorAll('.g-tcard'),function(el){ el.addEventListener('click',function(){ _gTiempoDet(el.getAttribute('data-k')); }); });
+    }).catch(function(){ cont.innerHTML='<div class="card muted" style="font-size:13px">No se pudieron calcular los tiempos.</div>'; });
+  }
+  function _gTiempoDet(key){
+    var det=document.getElementById('g-tiempo-det'); if(!det) return;
+    var arr=(window._gTiempoSlow||{})[key]||[];
+    var _dur=function(h){ if(h==null) return '—'; if(h<1) return Math.round(h*60)+' min'; if(h<48) return (Math.round(h*10)/10)+' h'; return (Math.round(h/24*10)/10)+' d'; };
+    var tit={sol:'Solicitudes que más tardaron en gestionarse',exe:'OTs que más tardaron en ejecutarse (generada→inicio)',dom:'Visitas más largas en el domicilio',val:'OTs que más tardaron en validarse'}[key]||'Más lentos';
+    if(!arr.length){ det.innerHTML='<div class="card muted" style="font-size:13px">Sin casos.</div>'; return; }
+    var rows=arr.map(function(x){ var o=x.o, nom; if(o.clientes){ nom=((o.clientes.nombre||'')+' '+(o.clientes.apellido||'')).trim()+(o.numero?(' · OT '+o.numero):''); } else { nom=((o.nombre||'')+' '+(o.apellido||'')).trim()||'(solicitud)'; } return '<tr><td style="padding:4px 6px">'+esc(nom)+'</td><td style="padding:4px 6px;text-align:right;font-weight:700;color:#b45309">'+_dur(x.h)+'</td></tr>'; }).join('');
+    det.innerHTML='<div class="card"><div class="label">🐢 '+esc(tit)+' <span class="muted" style="font-weight:400;font-size:12px">· top '+arr.length+'</span></div><table style="width:100%;font-size:13px"><tbody>'+rows+'</tbody></table></div>';
+    if(det.scrollIntoView) try{ det.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){}
   }
   // Composición REAL de la base que paga + churn/retención (clientes activos/bloqueados, sin 508 ni gratis)
   function _gComposicion(){
