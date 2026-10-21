@@ -251,7 +251,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.93';
+  var VER='v3.94';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1463,6 +1463,7 @@
       var _uname=function(id){ return umap[id]||(id?('Usuario '+id):'—'); };
       // ── 🧭 Trazabilidad: solicitud → alta → 1ª OT ──
       var _diasDesde=function(x){ return x?Math.floor((Date.now()-new Date(x))/86400000):null; };
+      var _diasDesde2=function(a,b){ if(!a||!b) return null; var d=Math.floor((new Date(b)-new Date(a))/86400000); return d>=0?d:0; };
       var otAsc=d.slice().sort(function(a,b){ return (a.created_at||'')<(b.created_at||'')?-1:1; });
       var otPrim=otAsc[0], soli=solis[0];
       var _tz=function(ico,lab,val,sub){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:10px;padding:9px 12px"><div style="font-size:11px;color:#64748b;font-weight:700">'+ico+' '+lab+'</div><div style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px">'+val+'</div>'+(sub?'<div style="font-size:11px;color:#94a3b8">'+sub+'</div>':'')+'</div>'; };
@@ -1470,6 +1471,15 @@
       tzCards.push(_tz('📥','Solicitud', soli?esc(fmtFecha(soli.created_at)):'—', soli?('hace '+_diasDesde(soli.created_at)+' días'+(soli.origen?(' · '+esc(soli.origen)):'')):'sin solicitud registrada'));
       tzCards.push(_tz('📅','Alta', (cli&&cli.fecha_alta)?esc(fmtFecha(cli.fecha_alta)):'—', (cli&&cli.fecha_alta)?('hace '+_diasDesde(cli.fecha_alta)+' días'):'—'));
       tzCards.push(_tz('🛠️','1ª OT generada', otPrim?(esc(fmtFecha(otPrim.created_at))+' <span class="muted" style="font-weight:400">'+esc(otPrim.created_at?_hhmm(new Date(otPrim.created_at)):'')+'</span>'):'—', otPrim?('N° '+esc(otPrim.numero)+' · '+esc(otPrim.tipo||'')+(otPrim.created_by?(' · 👤 '+esc(_uname(otPrim.created_by))):'')):'—'));
+      // 4ª tarjeta: resultado/finalización de esa 1ª OT (cuándo se hizo + cuánto tardó desde que se generó)
+      (function(){ var val,sub;
+        if(!otPrim){ val='—'; sub='—'; }
+        else if(otPrim.estado==='FINALIZADA'||otPrim.estado==='CERRADA_TECNICO'){ var dd=_diasDesde2(otPrim.created_at,otPrim.fin_tec_at); val=otPrim.fin_tec_at?(esc(fmtFecha(otPrim.fin_tec_at))+' <span class="muted" style="font-weight:400">'+esc(_hhmm(new Date(otPrim.fin_tec_at)))+'</span>'):'✓ hecha'; sub='✅ finalizada'+(dd!=null?(' · tardó '+(dd===0?'mismo día':(dd+' día'+(dd===1?'':'s')))+' desde generada'):''); }
+        else if(otPrim.estado==='CANCELADA'){ val='<span style="color:#b91c1c">cancelada</span>'; sub='no se hizo'; }
+        else if(otPrim.estado==='NO_REALIZADA'){ val='<span style="color:#b45309">no realizada</span>'; sub='el técnico no pudo'; }
+        else { val='<span style="color:#b45309">pendiente</span>'; sub='todavía no se hizo'; }
+        tzCards.push(_tz('✅','1ª OT — resultado', val, sub));
+      })();
       var h='<div style="border-top:2px solid #e2e8f0;padding-top:10px"><h3 style="margin:0 0 6px;color:#0891b2">🧭 Trazabilidad</h3><div style="display:flex;gap:8px;flex-wrap:wrap">'+tzCards.join('')+'</div></div>';
       // ── Gestiones e historial (interacciones) ──
       h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;color:#6d28d9">📋 Gestiones e historial <span class="muted" style="font-weight:400;font-size:13px">('+inter.length+')</span></h3><button class="btn btn-2 btn-sm" id="f-nota">➕ Agregar nota</button></div>';
@@ -1515,10 +1525,11 @@
       h+='<div style="border-top:2px solid #e2e8f0;padding-top:10px;margin-top:12px"><h3 style="margin:0 0 6px;color:var(--azul)">🧰 Historial de servicios <span class="muted" style="font-weight:400;font-size:13px">('+d.length+' OT · '+hechos+' con cierre)</span></h3>';
       if(!d.length){ h+='<div class="muted">Este cliente todavía no tiene órdenes.</div></div>'; }
       else {
-        h+='<table style="width:100%"><thead><tr><th>Generada</th><th>Cargó</th><th>N° OT</th><th>Tipo</th><th>Agendada</th><th>Cuadrilla</th><th>Atraso</th><th>Estado</th></tr></thead><tbody>';
+        h+='<table style="width:100%"><thead><tr><th>Generada</th><th>Cargó</th><th>N° OT</th><th>Tipo</th><th>Agendada</th><th>Realizada</th><th>Cuadrilla</th><th>Atraso</th><th>Estado</th></tr></thead><tbody>';
         d.forEach(function(o){ var cerr=(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO');
-          h+='<tr data-ot="'+o.id+'" style="cursor:pointer"><td class="muted" style="white-space:nowrap">'+esc(o.created_at?fmtFecha(o.created_at):'—')+' <span style="font-size:11px">'+esc(o.created_at?_hhmm(new Date(o.created_at)):'')+'</span></td><td class="muted" style="font-size:12px">'+esc(o.created_by?_uname(o.created_by):'—')+'</td><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td class="muted" style="white-space:nowrap;font-size:12px">'+esc(o.fecha_agendada?fmtFecha(o.fecha_agendada):'—')+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td style="font-size:12px">'+_atrasoCell(o)+'</td><td>'+pill(o.estado)+(cerr?' 📷':'')+'</td></tr>'; });
-        h+='</tbody></table><div class="muted" style="font-size:12px;margin-top:4px">Generada = cuándo y quién cargó la OT · Atraso = días pasados de la fecha agendada (0 = a tiempo; "lleva N" si sigue abierta y atrasada) · tocá para ver el cierre.</div></div>';
+          var realiz = cerr&&o.fin_tec_at ? ('<span style="white-space:nowrap">'+esc(fmtFecha(o.fin_tec_at))+' <span style="font-size:11px">'+esc(_hhmm(new Date(o.fin_tec_at)))+'</span></span>') : (o.estado==='CANCELADA'?'<span class="muted">cancelada</span>':(o.estado==='NO_REALIZADA'?'<span class="muted">no realiz.</span>':'<span class="muted">pendiente</span>'));
+          h+='<tr data-ot="'+o.id+'" style="cursor:pointer"><td class="muted" style="white-space:nowrap">'+esc(o.created_at?fmtFecha(o.created_at):'—')+' <span style="font-size:11px">'+esc(o.created_at?_hhmm(new Date(o.created_at)):'')+'</span></td><td class="muted" style="font-size:12px">'+esc(o.created_by?_uname(o.created_by):'—')+'</td><td><b>'+esc(o.numero)+'</b></td><td>'+esc(o.tipo)+'</td><td class="muted" style="white-space:nowrap;font-size:12px">'+esc(o.fecha_agendada?fmtFecha(o.fecha_agendada):'—')+'</td><td class="muted" style="font-size:12px">'+realiz+'</td><td>'+esc(o.cuadrillas?o.cuadrillas.nombre:'—')+'</td><td style="font-size:12px">'+_atrasoCell(o)+'</td><td>'+pill(o.estado)+(cerr?' 📷':'')+'</td></tr>'; });
+        h+='</tbody></table><div class="muted" style="font-size:12px;margin-top:4px">Generada = cuándo/quién cargó · Agendada = día que se coordinó · Realizada = cuándo se hizo (cierre del técnico) · Atraso = días pasados de la agendada (0 = a tiempo) · tocá para ver el cierre.</div></div>';
       }
       cont.innerHTML=h;
       var fn=document.getElementById('f-nota'); if(fn) fn.addEventListener('click',function(){ _cliNota(cliId); });
@@ -3054,10 +3065,13 @@
     var dd=Math.floor((ref-ag)/86400000);
     return dd>0?dd:0;
   }
-  // Celda visual del atraso (verde a tiempo, ámbar/rojo según días; "lleva N" si sigue abierta)
+  // Celda visual del atraso (verde a tiempo, ámbar/rojo según días; "lleva N" si sigue abierta).
+  // Canceladas / no realizadas NO tienen atraso (nunca se hicieron) → se marcan como tal.
   function _atrasoCell(o){
+    if(o.estado==='CANCELADA') return '<span class="muted">cancelada</span>';
+    if(o.estado==='NO_REALIZADA') return '<span class="muted">no realizada</span>';
     var d=_otAtrasoDias(o); if(d==null) return '<span class="muted">—</span>';
-    var abierta=!(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO'||o.estado==='NO_REALIZADA'||o.estado==='CANCELADA');
+    var abierta=!(o.estado==='FINALIZADA'||o.estado==='CERRADA_TECNICO');
     if(d===0) return '<span style="color:#16a34a;font-weight:600">a tiempo</span>';
     var col=d>=3?'#b91c1c':'#b45309';
     return '<span style="color:'+col+';font-weight:'+(d>=3?'800':'700')+'">'+(abierta?'lleva ':'+')+d+'d</span>';
