@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.04';
+  var VER='v4.05';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -4696,19 +4696,23 @@
   function _dxColor(o){ return {PENDIENTE:'#d97706',ASIGNADA:'#2563eb',PARCIAL:'#ea580c',PENDIENTE_ADMIN:'#7c3aed',COMPROMISO_PAGO:'#16a34a',EN_REVISION:'#0891b2',MIGRACION_508:'#64748b'}[o.estado]||'#64748b'; }
   // Color del marker en el mapa: semáforo por intentos de retiro. Gris = 508 (no retirar).
   function _dxMapColor(o){
+    if(o.estado==='PARCIAL') return '#9333ea';               // VIOLETA: corte a medias (falta NAP o equipo) — cualquiera lo termina
     if(o.estado==='MIGRACION_508') return '#94a3b8';         // gris: no retirar
     if(o.estado==='IMPOSIBLE') return '#dc2626';             // rojo: agotado
     var n=o.intentos_count||0;
     return n>=3?'#dc2626':(n===2?'#f97316':(n===1?'#eab308':'#16a34a')); // 0 verde,1 amarillo,2 naranja,3+ rojo
   }
+  // qué falta en un corte a medias (para popup/lista)
+  function _dxFaltaTxt(o){ if(o.estado!=='PARCIAL'||!o.parte_pendiente) return ''; return o.parte_pendiente==='NAP'?'falta ✂️ cortar NAP':'falta 📦 retirar equipo'; }
   function _dxMapPinta(o,m,rn,pts){
     var c=o.clientes||{};
     var la=(o.lat!=null?o.lat:c.lat), lo=(o.lng!=null?o.lng:c.lng);
     if(la==null||lo==null) return false;
     var nom=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)', deu=Number(c.deuda||0);
     var ic=o.intentos_count||0;
-    L.circleMarker([la,lo],{renderer:rn,radius:7,color:'#fff',weight:2,fillColor:_dxMapColor(o),fillOpacity:.95})
-      .bindPopup('<b>N° '+esc(c.numero_cliente||'')+' · '+esc(nom)+'</b>'+(c.barrio?('<br>📍 '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(_dxOrigen(o.origen))+' · '+esc(_dxEstadoTxt(o.estado))+(ic>0?(' · ✗ '+ic+' intento'+(ic>1?'s':'')):'')+(deu>0?(' · <span style="color:#991b1b;font-weight:700">$'+deu.toLocaleString('es-AR')+'</span>'):'')+(c.bloqueado_desde?('<br>'+_diasBloqTxt(c)):'')+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
+    var _parc=(o.estado==='PARCIAL');
+    L.circleMarker([la,lo],{renderer:rn,radius:(_parc?9:7),color:(_parc?'#581c87':'#fff'),weight:(_parc?3:2),fillColor:_dxMapColor(o),fillOpacity:.95})
+      .bindPopup('<b>N° '+esc(c.numero_cliente||'')+' · '+esc(nom)+'</b>'+(c.barrio?('<br>📍 '+esc(c.barrio)):'')+(c.domicilio_full?('<br><span style="color:#64748b">'+esc(c.domicilio_full)+'</span>'):'')+'<br>'+esc(_dxOrigen(o.origen))+' · '+esc(_dxEstadoTxt(o.estado))+(_parc&&_dxFaltaTxt(o)?(' · <b style="color:#7e22ce">'+esc(_dxFaltaTxt(o))+'</b>'):'')+(ic>0?(' · ✗ '+ic+' intento'+(ic>1?'s':'')):'')+(deu>0?(' · <span style="color:#991b1b;font-weight:700">$'+deu.toLocaleString('es-AR')+'</span>'):'')+(c.bloqueado_desde?('<br>'+_diasBloqTxt(c)):'')+(c.telefono?('<br>📞 '+esc(c.telefono)):''))
       .bindTooltip(esc(nom)+(c.barrio?(' · '+esc(c.barrio)):'')).addTo(m);
     if(pts) pts.push([la,lo]);
     return true;
@@ -4728,7 +4732,7 @@
         var info=document.getElementById('dx-mapinfo');
         if(info) info.innerHTML='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px">'
           +'<b>📍 '+(pts.length-n508)+' corte(s)</b>'+(sin?(' · '+sin+' sin GPS'):'')
-          +'<span style="color:#16a34a">🟢 a retirar</span><span style="color:#eab308">🟡 1 intento</span><span style="color:#f97316">🟠 2</span><span style="color:#dc2626">🔴 imposible</span>'
+          +'<span style="color:#16a34a">🟢 a retirar</span><span style="color:#eab308">🟡 1 intento</span><span style="color:#f97316">🟠 2</span><span style="color:#dc2626">🔴 imposible</span><span style="color:#9333ea;font-weight:700">🟣 a medias (falta terminar)</span>'
           +(window._dxState.ver!=='MIGRACION_508'?('<label style="margin-left:auto;cursor:pointer"><input type="checkbox" id="dx-ver508" '+(window._dxState.ver508?'checked':'')+'> <span style="color:#64748b">⚫ Ver 508 (no retirar)'+(n508?(' · '+n508):'')+'</span></label>'):'')
           +'</div>';
         var cb=document.getElementById('dx-ver508'); if(cb) cb.addEventListener('change',function(){ window._dxState.ver508=this.checked; _dxRenderMapa(); });
@@ -4781,6 +4785,9 @@
     }
     if(window._dxState.ver==='gestion'){
       cols.push({k:'intentos',t:'Intentos',sort:function(o){return Math.max(o.intentos_count||0,o.nap_intentos_count||0);},r:function(o){ var e=o.intentos_count||0, n=o.nap_intentos_count||0, max=3, tot=Math.max(e,n), col=tot>=max?'#b91c1c':(tot>=max-1?'#b45309':'#334155'), parts=[]; if(e)parts.push(_icoOnu()+' '+e); if(n)parts.push('✂️ '+n); var ult=o.ultimo_intento_at?(' <span class="muted" style="font-size:11px;white-space:nowrap">· últ. '+esc(fmtFecha(o.ultimo_intento_at))+'</span>'):''; return '<span style="font-weight:700;color:'+col+'">'+(parts.join(' · ')||'—')+'</span>'+ult+(tot>=max?' <span style="font-size:10px;background:#fef2f2;color:#b91c1c;padding:1px 6px;border-radius:99px;font-weight:800;white-space:nowrap">al límite</span>':''); }});
+    }
+    if(window._dxState.ver==='PARCIAL'){
+      cols.push({k:'falta',t:'Qué falta',sort:function(o){return o.parte_pendiente||'';},r:function(o){ var hecho=(o.recupero_equipo===true?'✅ ya recuperó equipo':(o.nap_cortada===true?'✅ ya cortó NAP':'')); var falta=o.parte_pendiente==='NAP'?'✂️ cortar NAP':(o.parte_pendiente==='EQUIPO'?'📦 retirar equipo':'—'); return '<span style="font-size:12px"><b style="color:#7e22ce">'+esc(falta)+'</b>'+(hecho?('<br><span class="muted" style="font-size:11px">'+esc(hecho)+'</span>'):'')+'</span>'; }});
     }
     cols.push({k:'info',t:'Detalle',sort:null,r:_dxInfo});
     cols.push({k:'acc',t:'Acciones',sort:null,fixed:true,r:_dxAcc});
