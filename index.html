@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.03';
+  var VER='v4.04';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -4955,7 +4955,7 @@
       if(recibido && nuevoSer!==ser) body.equipo_serial=nuevoSer||null;
       sbPatch('desconexiones?id=eq.'+id,body).then(function(){
         function after(){ logAct('Depósito: '+(recibido?('recibió el equipo'+(nuevoSer?(' ('+nuevoSer+')'):'')):'sin devolución de equipo'),{entidad:'DESCONEXION',entidad_id:id}); cerrarModal(); toast(recibido?'📦 Equipo recibido — vuelve al depósito':'Registrado ✓'); vDesconexiones(); }
-        if(recibido && nuevoSer){ sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(nuevoSer),{estado:'EN_DEPOSITO',cliente_id:null,cuadrilla_id:null,ot_id:null}).then(after).catch(after); }
+        if(recibido && nuevoSer){ sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(nuevoSer),{estado:'EN_DEPOSITO',cliente_id:null,cuadrilla_id:null,ot_id:null}).then(function(rr){ if(Array.isArray(rr)&&rr.length) return rr; return sbPost('stock_seriales',{serial:nuevoSer,material_id:10,estado:'EN_DEPOSITO',cliente_id:null,cuadrilla_id:null}); }).then(after).catch(after); }
         else after();
       });
     });
@@ -5908,13 +5908,66 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
   function vDeposito(){
     view.innerHTML='<h1>Depósito / Stock</h1><p class="sub">Catálogo, ingreso con seriales, entrega a cuadrillas y movimientos — como en FG.</p>'
       +'<div class="toolbar" id="dep-tabs">'
-      +['materiales|📋 Materiales','ingreso|📥 Ingreso','deposito|🏭 Stock depósito','cuadrillas|🚚 Stock cuadrillas','movimientos|🔄 Movimientos']
+      +['materiales|📋 Materiales','ingreso|📥 Ingreso','deposito|🏭 Stock depósito','cuadrillas|🚚 Stock cuadrillas','recuperados|♻️ Recuperados','movimientos|🔄 Movimientos']
         .map(function(t){ var p=t.split('|'); return '<button class="btn '+(depState.tab===p[0]?'btn-pri':'btn-2')+'" data-tab="'+p[0]+'">'+p[1]+'</button>'; }).join('')
       +'</div><div id="dep-cont"></div>';
     Array.prototype.forEach.call(document.querySelectorAll('#dep-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ depState.tab=b.getAttribute('data-tab'); vDeposito(); }); });
-    ({materiales:depMateriales,ingreso:depIngreso,deposito:depStock,cuadrillas:depCuadrillas,movimientos:depMovs}[depState.tab]||depMateriales)();
+    ({materiales:depMateriales,ingreso:depIngreso,deposito:depStock,cuadrillas:depCuadrillas,recuperados:depRecuperados,movimientos:depMovs}[depState.tab]||depMateriales)();
   }
 
+  // ===== RECUPERADOS (equipos que el técnico retiró, esperando el OK del depósito) =====
+  // Circuito: técnico recupera → RECUPERADO → el encargado revisa: si funciona va a stock (EN_DEPOSITO),
+  // si no / a reparar va a EN_REVISION, y desde ahí luego puede pasar a depósito. Control anti-duplicado al ingresar.
+  function depRecuperados(){
+    var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
+    Promise.all([
+      sbGet('stock_seriales?estado=in.(RECUPERADO,EN_REVISION)&select=id,serial,material_id,estado,cuadrilla_id,created_at&order=created_at.desc&limit=2000').catch(function(){return [];}),
+      sbGet('catalogo_materiales?select=id,nombre').catch(function(){return [];}),
+      sbGet('desconexiones?recupero_equipo=eq.true&equipo_serial=not.is.null&select=equipo_serial,clientes(numero_cliente,nombre,apellido,barrio)&order=updated_at.desc.nullslast&limit=2000').catch(function(){return [];})
+    ]).then(function(r){
+      var rows=Array.isArray(r[0])?r[0]:[];
+      var matMap={}; (Array.isArray(r[1])?r[1]:[]).forEach(function(m){ matMap[m.id]=m.nombre; });
+      var dxMap={}; (Array.isArray(r[2])?r[2]:[]).forEach(function(x){ var k=String(x.equipo_serial||'').toLowerCase(); if(k&&!dxMap[k]) dxMap[k]=x; });
+      var pend=rows.filter(function(x){return x.estado==='RECUPERADO';});
+      var rev=rows.filter(function(x){return x.estado==='EN_REVISION';});
+      function cliTxt(serial){ var x=dxMap[String(serial||'').toLowerCase()]; if(!x||!x.clientes) return ''; var c=x.clientes; return '<span class="muted" style="font-size:12px"> · de '+esc(((c.nombre||'')+' '+(c.apellido||'')).trim())+(c.numero_cliente?(' (N° '+esc(c.numero_cliente)+')'):'')+(c.barrio?(' · '+esc(c.barrio)):'')+'</span>'; }
+      function fila(x,acciones){ return '<tr><td><b>'+esc(x.serial)+'</b>'+cliTxt(x.serial)+'</td><td>'+esc(matMap[x.material_id]||('mat '+x.material_id))+'</td><td class="muted" style="font-size:12px">'+esc(_cuadNombre(x.cuadrilla_id)||'—')+'</td><td class="muted" style="font-size:12px;white-space:nowrap">'+esc(x.created_at?fmtFecha(x.created_at):'')+'</td><td style="white-space:nowrap">'+acciones+'</td></tr>'; }
+      var h='';
+      h+='<div class="ocard" style="margin-bottom:12px"><div style="font-weight:800;color:#b45309;margin-bottom:6px">♻️ Recuperados pendientes de revisión ('+pend.length+')</div>';
+      h+='<div class="muted" style="font-size:12px;margin-bottom:8px">Equipos que el técnico retiró. Revisá cada uno: si funciona va al stock del depósito; si no, a revisión/reparación.</div>';
+      if(!pend.length) h+='<div class="muted">No hay equipos esperando revisión.</div>';
+      else { h+='<table style="width:100%"><thead><tr><th>Serial / equipo</th><th>Material</th><th>Recuperó</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>';
+        pend.forEach(function(x){ h+=fila(x,'<button class="btn btn-ok rec-ok" data-id="'+x.id+'" data-ser="'+esc(x.serial)+'" style="padding:5px 9px;font-size:12px">✅ Funciona → depósito</button> <button class="btn btn-2 rec-rev" data-id="'+x.id+'" style="padding:5px 9px;font-size:12px">🔧 A revisar</button>'); });
+        h+='</tbody></table>'; }
+      h+='</div>';
+      h+='<div class="ocard"><div style="font-weight:800;color:#1d4ed8;margin-bottom:6px">🔧 En revisión / a reparar ('+rev.length+')</div>';
+      if(!rev.length) h+='<div class="muted">No hay equipos en revisión.</div>';
+      else { h+='<table style="width:100%"><thead><tr><th>Serial / equipo</th><th>Material</th><th>Recuperó</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>';
+        rev.forEach(function(x){ h+=fila(x,'<button class="btn btn-ok rec-ok" data-id="'+x.id+'" data-ser="'+esc(x.serial)+'" style="padding:5px 9px;font-size:12px">✅ Reparado → depósito</button>'); });
+        h+='</tbody></table>'; }
+      h+='</div>';
+      cont.innerHTML=h;
+      Array.prototype.forEach.call(cont.querySelectorAll('.rec-ok'),function(b){ b.addEventListener('click',function(){ _recAStock(b.getAttribute('data-id'), b.getAttribute('data-ser')); }); });
+      Array.prototype.forEach.call(cont.querySelectorAll('.rec-rev'),function(b){ b.addEventListener('click',function(){ _recARevision(b.getAttribute('data-id')); }); });
+    });
+  }
+  // Pasa un recuperado al stock del depósito. CONTROL: si ese serial ya está en depósito, no lo duplica.
+  function _recAStock(id,serial){
+    sbGet('stock_seriales?serial=eq.'+encodeURIComponent(serial)+'&estado=eq.EN_DEPOSITO&select=id').then(function(dup){
+      dup=Array.isArray(dup)?dup:[];
+      if(dup.length && String(dup[0].id)!==String(id)){
+        if(!confirm('⚠️ El equipo '+serial+' YA figura en el stock del depósito.\nNo lo agrego de nuevo para no duplicar. ¿Quitar este registro recuperado (porque ya está)?')) return;
+        fetch(SB_URL+'/rest/v1/stock_seriales?id=eq.'+id,{method:'DELETE',headers:H}).then(function(){ toast('Quitado (ya estaba en depósito) ✓'); depRecuperados(); });
+        return;
+      }
+      sbPatch('stock_seriales?id=eq.'+id,{estado:'EN_DEPOSITO',cuadrilla_id:null,cliente_id:null,ot_id:null}).then(function(){ toast('✅ Equipo a stock del depósito'); depRecuperados(); }).catch(function(){ toast('No se pudo mover.'); });
+    });
+  }
+  // Manda un recuperado a revisión / reparación (no entra al stock reutilizable todavía).
+  function _recARevision(id){
+    if(!confirm('Marcar este equipo como EN REVISIÓN / a reparar.\nNo entra al stock reutilizable hasta que lo apruebes. ¿Confirmás?')) return;
+    sbPatch('stock_seriales?id=eq.'+id,{estado:'EN_REVISION',cuadrilla_id:null}).then(function(){ toast('🔧 Marcado en revisión'); depRecuperados(); }).catch(function(){ toast('No se pudo.'); });
+  }
   // ===== MATERIALES (catálogo con serial_tipo + paquete) =====
   function depMateriales(){
     var cont=document.getElementById('dep-cont'); cont.innerHTML='<div class="center"><div class="spin"></div></div>';
