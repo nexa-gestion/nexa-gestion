@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.05';
+  var VER='v4.06';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -4581,6 +4581,7 @@
       if(st.ver==='cand'){ _dxCandidatos(); return; }
       var filtro=(st.ver==='cerradas')?'estado=in.(FINALIZADO,CANCELADA,ANULADA_PAGO)':(st.ver==='compromiso'?'estado=eq.COMPROMISO_PAGO':(st.ver==='gestion'?'estado=in.(PENDIENTE,ASIGNADA,PARCIAL)&or=(intentos_count.gt.0,nap_intentos_count.gt.0)':'estado=eq.'+st.ver));
       var _ord=(st.ver==='gestion')?'order=intentos_count.desc,nap_intentos_count.desc,ultimo_intento_at.desc.nullslast':'order=created_at.desc';
+      window._dxMapAll=null;   // refresca el dataset del mapa operativo en cada recarga de la vista
       sbGetAll('desconexiones?'+filtro+'&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,nodo,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado,bloqueado_desde)&'+_ord).then(function(d){
         _dxData=Array.isArray(d)?d:[];
         var _bars={}; _dxData.forEach(function(o){ var bz=(o.clientes&&o.clientes.barrio)||'(sin barrio)'; _bars[bz]=(_bars[bz]||0)+1; });
@@ -4633,22 +4634,23 @@
     _dxRetiroToAdmin(done);
     _dxVencerCompromisos(done);
   }
-  function _dxFiltrados(){
+  function _dxPred(o){
     var st=window._dxState, q=(st.q||'').toLowerCase().trim(), org=st.origen||'';
-    return _dxData.filter(function(o){
-      if(org && o.origen!==org) return false;
-      if(st.fbarrio && ((o.clientes&&o.clientes.barrio)||'(sin barrio)')!==st.fbarrio) return false;
-      if(st.fcuad && String((o.cuadrilla_id||o.compromiso_por)||'')!==String(st.fcuad)) return false;
-      if(st.ver==='cerradas' && st.festado && o.estado!==st.festado) return false;
-      if(st.fresultado && _dxResultado(o).cat!==st.fresultado) return false;
-      if(st.frec==='si' && o.recupero_equipo!==true) return false;
-      if(st.frec==='no' && o.recupero_equipo!==false) return false;
-      if(st.fdesde || st.fhasta){ var f=_dxFechaAR(o.corte_at||o.finalizado_at||o.resuelto_at||o.created_at); if(st.fdesde && (!f || f<st.fdesde)) return false; if(st.fhasta && (!f || f>st.fhasta)) return false; }
-      if(!q) return true;
-      var c=o.clientes||{}, hay=((c.numero_cliente||'')+' '+(c.doc_numero||'')+' '+(c.codigo_ispcube||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.domicilio_full||'')+' '+(c.precinto||'')+' '+(c.caja_nap||'')+' '+(c.puerto||'')+' '+(c.telefono||'')).toLowerCase();
-      return hay.indexOf(q)>=0;
-    });
+    if(org && o.origen!==org) return false;
+    if(st.fbarrio && ((o.clientes&&o.clientes.barrio)||'(sin barrio)')!==st.fbarrio) return false;
+    if(st.fcuad && String((o.cuadrilla_id||o.compromiso_por)||'')!==String(st.fcuad)) return false;
+    if(st.ver==='cerradas' && st.festado && o.estado!==st.festado) return false;
+    if(st.fresultado && _dxResultado(o).cat!==st.fresultado) return false;
+    if(st.frec==='si' && o.recupero_equipo!==true) return false;
+    if(st.frec==='no' && o.recupero_equipo!==false) return false;
+    if(st.fdesde || st.fhasta){ var f=_dxFechaAR(o.corte_at||o.finalizado_at||o.resuelto_at||o.created_at); if(st.fdesde && (!f || f<st.fdesde)) return false; if(st.fhasta && (!f || f>st.fhasta)) return false; }
+    if(!q) return true;
+    var c=o.clientes||{}, hay=((c.numero_cliente||'')+' '+(c.doc_numero||'')+' '+(c.codigo_ispcube||'')+' '+(c.nombre||'')+' '+(c.apellido||'')+' '+(c.barrio||'')+' '+(c.domicilio_full||'')+' '+(c.precinto||'')+' '+(c.caja_nap||'')+' '+(c.puerto||'')+' '+(c.telefono||'')).toLowerCase();
+    return hay.indexOf(q)>=0;
   }
+  function _dxFiltrados(){ return _dxData.filter(_dxPred); }
+  // categoría del corte para el mapa (color/filtro): m=a medias, r=imposible, o=2 int, a=1 int, v=a retirar
+  function _dxMapCat(o){ if(o.estado==='PARCIAL') return 'm'; if(o.estado==='IMPOSIBLE') return 'r'; var n=o.intentos_count||0; return n>=3?'r':(n===2?'o':(n===1?'a':'v')); }
   // Cómo se cerró la baja (para la pestaña Cerradas): distingue cierre por sistema/ISP vs decisión del admin
   function _dxCierre(o){
     var auto=/autom|fuera del sistema|eliminad|ispcube|rehabilit/i.test(o.resolucion||'');
@@ -4717,34 +4719,48 @@
     if(pts) pts.push([la,lo]);
     return true;
   }
+  // Mapa OPERATIVO: muestra todo lo que hay que hacer (pendientes + asignadas + a medias + imposibles) junto,
+  // independiente de la pestaña. La leyenda es clickeable para filtrar por categoría. Respeta los filtros de arriba.
   function _dxRenderMapa(){
     var cont=document.getElementById('dx-mapa'); if(!cont) return;
-    ensureLeaflet(function(){
-      if(window._dxMap){ try{ window._dxMap.remove(); }catch(e){} window._dxMap=null; }
-      var m=L.map(cont).setView([-27.40,-55.92],12); window._dxMap=m;
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
-      var rn=L.canvas(), pts=[], sin=0;
-      _dxFiltrados().forEach(function(o){ if(!_dxMapPinta(o,m,rn,pts)) sin++; });
-      // Capa gris del 508 (no retirar) — toggle. Solo si NO estás ya en la pestaña 508.
-      var ver508=(window._dxState.ver508 && window._dxState.ver!=='MIGRACION_508'), n508=0;
-      var _finish=function(){
-        if(pts.length){ try{ m.fitBounds(pts,{padding:[30,30],maxZoom:15}); }catch(e){} }
-        var info=document.getElementById('dx-mapinfo');
-        if(info) info.innerHTML='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px">'
-          +'<b>📍 '+(pts.length-n508)+' corte(s)</b>'+(sin?(' · '+sin+' sin GPS'):'')
-          +'<span style="color:#16a34a">🟢 a retirar</span><span style="color:#eab308">🟡 1 intento</span><span style="color:#f97316">🟠 2</span><span style="color:#dc2626">🔴 imposible</span><span style="color:#9333ea;font-weight:700">🟣 a medias (falta terminar)</span>'
-          +(window._dxState.ver!=='MIGRACION_508'?('<label style="margin-left:auto;cursor:pointer"><input type="checkbox" id="dx-ver508" '+(window._dxState.ver508?'checked':'')+'> <span style="color:#64748b">⚫ Ver 508 (no retirar)'+(n508?(' · '+n508):'')+'</span></label>'):'')
-          +'</div>';
-        var cb=document.getElementById('dx-ver508'); if(cb) cb.addEventListener('change',function(){ window._dxState.ver508=this.checked; _dxRenderMapa(); });
-        setTimeout(function(){ try{ m.invalidateSize(); }catch(e){} },200);
-      };
-      if(ver508){
-        var q508=window._dx508cache;
-        var paint508=function(arr){ arr.forEach(function(o){ if(_dxMapPinta(o,m,rn,pts)) n508++; }); _finish(); };
-        if(q508){ paint508(q508); }
-        else sbGet('desconexiones?estado=eq.MIGRACION_508&select=id,estado,intentos_count,lat,lng,origen,clientes(numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,deuda,lat,lng,bloqueado_desde)&limit=2000').then(function(d){ window._dx508cache=Array.isArray(d)?d:[]; paint508(window._dx508cache); }).catch(_finish);
-      } else { _finish(); }
-    });
+    var st=window._dxState; if(!st.mapcats) st.mapcats={v:1,a:1,o:1,r:1,m:1};
+    var draw=function(data){
+      ensureLeaflet(function(){
+        var keep=null; try{ if(window._dxMap) keep={c:window._dxMap.getCenter(),z:window._dxMap.getZoom()}; }catch(e){ keep=null; }
+        if(window._dxMap){ try{ window._dxMap.remove(); }catch(e){} window._dxMap=null; }
+        var m=L.map(cont).setView(keep?keep.c:[-27.40,-55.92],keep?keep.z:12); window._dxMap=m;
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+        var rn=L.canvas(), pts=[], sin=0, cnt={v:0,a:0,o:0,r:0,m:0};
+        data.filter(_dxPred).forEach(function(o){ var cat=_dxMapCat(o); cnt[cat]=(cnt[cat]||0)+1; if(!st.mapcats[cat]) return; if(!_dxMapPinta(o,m,rn,pts)) sin++; });
+        var ver508=!!st.ver508, n508=0;
+        var _finish=function(){
+          if(!keep && pts.length){ try{ m.fitBounds(pts,{padding:[30,30],maxZoom:15}); }catch(e){} }
+          var info=document.getElementById('dx-mapinfo');
+          if(info){
+            var chip=function(cat,col,lbl,n){ var on=!!st.mapcats[cat]; return '<button class="dx-mcat" data-cat="'+cat+'" title="Mostrar/ocultar" style="cursor:pointer;border:1px solid '+(on?col:'#cbd5e1')+';background:'+(on?col:'#fff')+';color:'+(on?'#fff':'#94a3b8')+';border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700;'+(on?'':'opacity:.65')+'">'+lbl+' '+n+'</button>'; };
+            info.innerHTML='<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;font-size:12px">'
+              +'<b>📍 '+pts.length+' en mapa</b>'+(sin?(' · <span class="muted">'+sin+' sin GPS</span>'):'')
+              +'<span class="muted" style="margin:0 2px">filtrar:</span>'
+              +chip('v','#16a34a','🟢 a retirar',cnt.v)+chip('a','#eab308','🟡 1 int',cnt.a)+chip('o','#f97316','🟠 2 int',cnt.o)+chip('r','#dc2626','🔴 imposible',cnt.r)+chip('m','#9333ea','🟣 a medias',cnt.m)
+              +'<label style="margin-left:auto;cursor:pointer"><input type="checkbox" id="dx-ver508" '+(st.ver508?'checked':'')+'> <span style="color:#64748b">⚫ Ver 508'+(n508?(' · '+n508):'')+'</span></label>'
+              +'</div>';
+            Array.prototype.forEach.call(info.querySelectorAll('.dx-mcat'),function(b){ b.addEventListener('click',function(){ var c=b.getAttribute('data-cat'); st.mapcats[c]=st.mapcats[c]?0:1; _dxRenderMapa(); }); });
+            var cb=document.getElementById('dx-ver508'); if(cb) cb.addEventListener('change',function(){ st.ver508=this.checked; _dxRenderMapa(); });
+          }
+          setTimeout(function(){ try{ m.invalidateSize(); }catch(e){} },200);
+        };
+        if(ver508){
+          var q508=window._dx508cache;
+          var paint508=function(arr){ arr.forEach(function(o){ if(_dxMapPinta(o,m,rn,pts)) n508++; }); _finish(); };
+          if(q508){ paint508(q508); }
+          else sbGet('desconexiones?estado=eq.MIGRACION_508&select=id,estado,intentos_count,lat,lng,origen,clientes(numero_cliente,nombre,apellido,domicilio_full,barrio,telefono,deuda,lat,lng,bloqueado_desde)&limit=2000').then(function(d){ window._dx508cache=Array.isArray(d)?d:[]; paint508(window._dx508cache); }).catch(_finish);
+        } else { _finish(); }
+      });
+    };
+    if(window._dxMapAll) draw(window._dxMapAll);
+    else { var info=document.getElementById('dx-mapinfo'); if(info) info.innerHTML='<span class="muted" style="font-size:12px">Cargando el mapa operativo…</span>';
+      sbGetAll('desconexiones?estado=in.(PENDIENTE,ASIGNADA,PARCIAL,IMPOSIBLE)&select=*,clientes(id,numero_cliente,doc_numero,codigo_ispcube,nombre,apellido,domicilio_full,barrio,nodo,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado,bloqueado_desde)&order=created_at.desc').then(function(d){ window._dxMapAll=Array.isArray(d)?d:[]; draw(window._dxMapAll); }).catch(function(){ draw([]); });
+    }
   }
   function _dxPinta(){
     if(window._dxState&&window._dxState.mapa) _dxRenderMapa();
