@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.98';
+  var VER='v3.99';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -5396,7 +5396,7 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
       +'<p class="sub">Penetración por barrio: clientes activos vs capacidad de la red. Cajas NAP del KMZ completo; barrios con contorno y nombre OFICIAL (RENABAP).</p>'
       +'<div class="center"><div class="spin"></div><div class="muted" style="margin-top:8px">Cargando red y clientes…</div></div>';
     Promise.all([
-      sbGetAll('clientes?estado=eq.activo&select=id,nombre,apellido,barrio,tecnologia,lat,lng,caja_nap,puerto&order=id.asc'),
+      sbGetAll('clientes?estado=eq.activo&select=id,numero_cliente,nombre,apellido,barrio,domicilio_full,tecnologia,lat,lng,caja_nap,puerto&order=id.asc'),
       sbGetAll('ordenes_trabajo?lat_fin=not.is.null&cliente_id=not.is.null&select=cliente_id,lat_fin,lng_fin&order=fin_tec_at.asc.nullsfirst')
     ]).then(function(r){
       // ── CONGLOMERADO: por cliente, el GPS real del técnico (instalación/reparación) pisa al geocodificado ──
@@ -5418,7 +5418,7 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
     var _norm=function(c){ return String(c||'').toLowerCase().replace(/[^a-z0-9]/g,''); };
     // 1) cada CAJA del KMZ a su barrio por UBICACIÓN (point-in-polygon) + índice por código normalizado
     var byCode={};
-    d.naps.forEach(function(n){ n._cli=0; n._cliList=[]; n._cliBar={}; n._poly=false; n._barrio=null; n._zid=null; n._geom=null; n._norm=_norm(n.codigo);
+    d.naps.forEach(function(n){ n._cli=0; n._cliList=[]; n._cliObjs=[]; n._cliBar={}; n._poly=false; n._barrio=null; n._zid=null; n._geom=null; n._norm=_norm(n.codigo);
       for(var i=0;i<d.barrios.length;i++){ var b=d.barrios[i], hit=false;
         for(var r=0;r<b.rings.length;r++){ if(pointInPoly(n.lat,n.lng,b.rings[r])){ hit=true; break; } }
         if(hit){ n._barrio=b.nombre; n._poly=true; n._zid='B'+b.id; n._geom=b.rings; break; }
@@ -5434,19 +5434,20 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
     function barrioDe(lat,lng){ for(var j=0;j<d.barrios.length;j++){ var b=d.barrios[j]; for(var r=0;r<b.rings.length;r++){ if(pointInPoly(lat,lng,b.rings[r])) return b.nombre; } } return null; }
     // 2) asignar cada cliente: 1° por su CAJA_NAP real (la caja de ese código más cercana a su GPS, desambigua códigos reusados)
     //    · 2° la caja más cercana ≤150 m · 3° sin caja → al polígono del barrio por GPS · 4° (sin zona)
-    var cliBar={}, sinCaja=0, sinUbic=0, noBox=[];
+    var cliBar={}, sinCaja=0, sinUbic=0, noBox=[], cliByBarrio={};
     function addBar(nm){ if(nm) cliBar[nm]=(cliBar[nm]||0)+1; }
+    function pushCli(nm,c,caja){ if(!nm)return; (cliByBarrio[nm]=cliByBarrio[nm]||[]).push({id:c.id,num:c.numero_cliente,nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(),barrio:c.barrio,dom:c.domicilio_full,tec:c.tecnologia,caja:caja||c.caja_nap}); }
     d.cli.forEach(function(c){ var nm=((c.nombre||'')+' '+(c.apellido||'')).trim()||'(cliente)';
       var cod=_norm(c.caja_nap), box=null;
       if(cod && byCode[cod]){ var cand=byCode[cod], bd=1e9; for(var i=0;i<cand.length;i++){ var dd=_ocHav(c.lat,c.lng,cand[i].lat,cand[i].lng); if(dd<bd){bd=dd;box=cand[i];} } }
       if(!box) box=nearestBox(c.lat,c.lng,150);
-      if(box){ box._cli++; box._cliList.push(nm); var cb=_ocChacraNorm(c.barrio); if(cb) box._cliBar[cb]=(box._cliBar[cb]||0)+1; }
-      else { sinCaja++; var bz=barrioDe(c.lat,c.lng)||_ocChacraNorm(c.barrio); if(bz) noBox.push(bz); else sinUbic++; }
+      if(box){ box._cli++; box._cliList.push(nm); box._cliObjs.push(c); var cb=_ocChacraNorm(c.barrio); if(cb) box._cliBar[cb]=(box._cliBar[cb]||0)+1; }
+      else { sinCaja++; var bz=barrioDe(c.lat,c.lng)||_ocChacraNorm(c.barrio); if(bz){ noBox.push(bz); pushCli(bz,c,'(sin caja)'); } else sinUbic++; }
     });
     // 2b) las cajas que NO caen en polígono toman la CHACRA dominante de sus clientes (de la dirección); si no tienen clientes, su nodo
     d.naps.forEach(function(n){ if(n._poly) return; var best=null,bn=0; for(var k in n._cliBar){ if(n._cliBar[k]>bn){ bn=n._cliBar[k]; best=k; } } n._barrio = best || _ocNodoLbl(n.codigo); });
     // clientes por barrio = según la etiqueta FINAL de su caja (+ los sin caja por su barrio/GPS)
-    d.naps.forEach(function(n){ for(var i=0;i<n._cli;i++) addBar(n._barrio); });
+    d.naps.forEach(function(n){ for(var i=0;i<n._cli;i++) addBar(n._barrio); n._cliObjs.forEach(function(c){ pushCli(n._barrio,c,n.codigo); }); });
     noBox.forEach(function(bz){ addBar(bz); });
     // 3) agregar por BARRIO: capacidad = (cajas del KMZ dentro del barrio) × salidas; clientes = los asignados
     var bar={};
@@ -5460,7 +5461,7 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
     // byZona (mapa): barrios con cajas, misma cuenta que la tabla
     var byZona={}; Object.keys(bar).forEach(function(k){ var o=bar[k]; if(o.zid&&o.geom){ byZona[o.zid]={name:o.zona,geom:o.geom,naps:o.naps,cli:o.cli,cap:o.cap,libres:o.libres,ocup:o.ocup}; } });
     var totNaps=d.naps.length, cap=totNaps*PORTS, totCli=d.cli.length-sinUbic;
-    _OCDATA._res={byBarrio:byBarrio,byNodo:byNodo,byZona:byZona,sinNap:sinUbic,sinCaja:sinCaja,totNaps:totNaps,cap:cap,totCli:totCli,libres:Math.max(0,cap-totCli),occ:cap?totCli/cap:0};
+    _OCDATA._res={byBarrio:byBarrio,byNodo:byNodo,byZona:byZona,cliByBarrio:cliByBarrio,sinNap:sinUbic,sinCaja:sinCaja,totNaps:totNaps,cap:cap,totCli:totCli,libres:Math.max(0,cap-totCli),occ:cap?totCli/cap:0};
     return _OCDATA._res;
   }
   function _ocRender(){
@@ -5555,6 +5556,20 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
     }catch(e){}
   }
   function _ocCard(t,big,sub){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">'+esc(t)+'</div><div style="font-size:24px;font-weight:800;margin:2px 0">'+esc(big)+'</div><div class="muted" style="font-size:12px">'+esc(sub)+'</div></div>'; }
+  // Click en una fila (barrio/nodo) → desplegar los clientes de esa zona, con sus datos, para ver de dónde son
+  function _ocClientes(zona){
+    var res=_OCDATA&&_OCDATA._res; if(!res){ return; }
+    var list=((res.cliByBarrio||{})[zona]||[]).slice().sort(function(a,b){ return String(a.nombre||'').localeCompare(String(b.nombre||''),'es'); });
+    if(!list.length){ toast('No hay clientes cargados en '+zona); return; }
+    var rows=list.map(function(c){ return '<tr class="ocli" data-id="'+(c.id||'')+'" style="cursor:pointer"><td style="padding:4px 6px"><b>'+esc(c.num||'')+'</b></td><td style="padding:4px 6px">'+esc(c.nombre||'(cliente)')+'</td><td style="padding:4px 6px;font-size:12px">'+esc(c.tec||'—')+'</td><td style="padding:4px 6px;font-size:12px" class="muted">'+esc(c.barrio||'<sin barrio>')+'</td><td style="padding:4px 6px;font-size:12px" class="muted">'+esc((typeof _domLimpio==='function'?_domLimpio(c.dom):c.dom)||'—')+'</td><td style="padding:4px 6px;font-size:12px" class="muted">'+esc(c.caja||'—')+'</td></tr>'; }).join('');
+    modal('<h2>👥 '+esc(zona)+' <span class="muted" style="font-size:14px;font-weight:400">· '+list.length+' cliente(s)</span></h2>'
+      +'<p class="muted" style="margin-top:-4px">Clientes <b>activos</b> asignados a esta zona. Tocá uno para abrir su ficha.'+(/^Nodo /.test(zona)?' <br>⚠️ Está como «'+esc(zona)+'» porque estos clientes <b>no tienen el barrio cargado</b> — cargáselo y van a caer en su chacra.':'')+'</p>'
+      +'<div style="max-height:62vh;overflow:auto;border:1px solid var(--bord);border-radius:10px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b;position:sticky;top:0;background:#eef2f7"><th style="padding:5px 6px">N°</th><th style="padding:5px 6px">Cliente</th><th style="padding:5px 6px">Tec</th><th style="padding:5px 6px">Barrio</th><th style="padding:5px 6px">Domicilio</th><th style="padding:5px 6px">Caja</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-2" id="ocli-mapa">🗺️ Ver en el mapa</button><button class="btn btn-2" id="ocli-x">Cerrar</button></div>','wide');
+    document.getElementById('ocli-x').addEventListener('click',cerrarModal);
+    var mb=document.getElementById('ocli-mapa'); if(mb) mb.addEventListener('click',function(){ cerrarModal(); if(typeof _ocFocusBarrio==='function') _ocFocusBarrio(zona); });
+    Array.prototype.forEach.call(document.querySelectorAll('.ocli'),function(tr){ tr.addEventListener('click',function(){ var id=tr.getAttribute('data-id'); if(id&&id!=='null'&&typeof fichaCliente==='function'){ cerrarModal(); fichaCliente(id); } }); });
+  }
   function _ocTabla(res){
     var rows=(_ocVista==='barrio'?res.byBarrio:res.byNodo);
     var cont=document.getElementById('oc-tabla');
@@ -5566,7 +5581,7 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
       {k:'libres',t:'Libres',sort:function(o){return o.libres;},r:function(o){return '<b style="color:#15803d">'+o.libres+'</b>';}},
       {k:'ocup',t:'Ocupación',sort:function(o){return o.ocup;},r:function(o){ var p=Math.round(o.ocup*100), w=Math.min(100,p); return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;max-width:120px;background:#eef2f7;border-radius:6px;height:14px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:'+_ocColor(o.ocup)+'"></div></div><b>'+p+'%</b></div>'; }}
     ];
-    gridRender(cont,cols,rows,{key:'oc-'+_ocVista,stickyHead:true,onRow:function(o){ _ocFocusBarrio(String(o.zona).split(' · ')[0]); }});
+    gridRender(cont,cols,rows,{key:'oc-'+_ocVista,stickyHead:true,onRow:function(o){ _ocClientes(String(o.zona).split(' · ')[0]); }});
   }
   function _ocFull(){
     var m=document.getElementById('oc-map'); if(!m)return;
