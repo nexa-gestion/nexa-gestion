@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.01';
+  var VER='v4.02';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -5512,8 +5512,8 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
         +'<label style="display:flex;align-items:center;gap:5px;font-size:13px">📍 Ir al barrio: <select id="oc-barrio-sel" style="max-width:200px"><option value="">— elegí —</option></select></label>'
         +'<span class="muted" style="font-size:12px">🟩 &lt;50% · 🟧 50-85% · 🟥 &gt;85% · ⬛ saturada</span>'
       +'</div>'
-      +'<div id="oc-map" style="height:380px;border:1px solid var(--bord);border-radius:12px;margin-bottom:12px"></div>'
-      +'<div id="oc-tabla"></div>';
+      +'<div id="oc-map" style="height:380px;border:1px solid var(--bord);border-radius:12px;margin-bottom:12px;position:relative;z-index:1"></div>'
+      +'<div id="oc-tabla" style="position:relative;z-index:2"></div>';
     document.getElementById('oc-vb').addEventListener('click',function(){ _ocVista='barrio'; _ocRender(); });
     document.getElementById('oc-vn').addEventListener('click',function(){ _ocVista='nodo'; _ocRender(); });
     document.getElementById('oc-ports').addEventListener('change',function(){ var v=parseInt(this.value); if(v>0&&v<=64){ _OC_PORTS=v; _ocRender(); } });
@@ -5599,11 +5599,11 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
   }
   function _ocFull(){
     var m=document.getElementById('oc-map'); if(!m)return;
-    if(m._full){ m.style.cssText='height:380px;border:1px solid var(--bord);border-radius:12px;margin-bottom:12px'; var c=document.getElementById('oc-map-close'); if(c)c.remove(); m._full=false; }
+    if(m._full){ m.style.cssText='height:380px;border:1px solid var(--bord);border-radius:12px;margin-bottom:12px;position:relative;z-index:1'; var c=document.getElementById('oc-map-close'); if(c)c.remove(); m._full=false; }
     else { m.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;border:0;border-radius:0;margin:0';
       var b=document.createElement('button'); b.id='oc-map-close'; b.textContent='✕ Cerrar mapa'; b.style.cssText='position:fixed;top:12px;right:12px;z-index:100000;padding:9px 16px;background:#0f172a;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;box-shadow:0 2px 10px rgba(0,0,0,.4)'; b.addEventListener('click',_ocFull); document.body.appendChild(b); m._full=true; }
-    var _refit=function(){ if(!_OCMAP)return; _OCMAP.invalidateSize(true); if(_OCMAP._fitB){ try{ _OCMAP.fitBounds(_OCMAP._fitB,{padding:[20,20]}); }catch(e){} } };
-    setTimeout(_refit,120); setTimeout(_refit,350);
+    var _refit=function(){ if(!_OCMAP)return; _OCMAP.invalidateSize(false); if(_OCMAP._fitB){ try{ _OCMAP.fitBounds(_OCMAP._fitB,{padding:[20,20]}); }catch(e){} } };
+    _refit(); setTimeout(_refit,80); setTimeout(_refit,250); setTimeout(_refit,500);
   }
   function _ocToggleCapa(){ if(!_OCMAP)return;
     if(_ocLPoly){ if(_ocCapaPoly) _ocLPoly.addTo(_OCMAP); else _OCMAP.removeLayer(_ocLPoly); }
