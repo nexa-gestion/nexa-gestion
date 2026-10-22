@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.00';
+  var VER='v4.01';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -5352,7 +5352,10 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
   // Resuelve los "(sin zona)" del centro de Posadas (cajas de fibra sin barrio RENABAP, ej. "58-1-A" → "Nodo 58").
   function _ocNodoLbl(cod){ var c=String(cod||'').trim(); var m=c.match(/^(\d+)/); return m?('Nodo '+m[1]):'(sin zona)'; }
   // Normaliza el barrio del cliente a nombre de chacra para fusionar con los polígonos: "CH 159"/"Ch 159"/"Chacra159" → "Chacra 159".
-  function _ocChacraNorm(b){ b=String(b||'').trim(); if(!b) return null; var m=b.match(/^(?:ch|chacra)\s*\.?\s*(\d+)/i); return m?('Chacra '+m[1]):b; }
+  function _ocChacraNorm(b){ b=String(b||'').trim(); if(!b) return null;
+    var m=b.match(/\bch(?:acra)?\s*[.\-]?\s*(\d+)/i); if(m) return 'Chacra '+m[1];   // "CH 159" / "FG CH 159" / "Chacra145" / "CH - 145" → Chacra N (en cualquier parte)
+    if(/^(?:ch|chacra)\.?$/i.test(b)) return null;                                    // "CH" pelado sin número → no sirve como zona
+    return b; }
   // Cuando el cliente NO tiene barrio cargado, inferir la zona del domicilio: toma el nombre del lugar
   // (palabras iniciales) hasta el primer número o palabra de calle. "El Porvenir calle 56 lote 103" → "El Porvenir".
   // Exige ≥2 palabras para no confundir un nombre de calle con un barrio. Null si no se puede.
