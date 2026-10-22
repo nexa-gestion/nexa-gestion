@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.58</title>
+<title>Nexa · Técnico — v0.59</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -65,7 +65,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.58';
+  var VER='v0.59';
   var _ALARM_MS=2*3600000; // OT en curso +2h = alarma (te olvidaste de cerrarla)
   // Íconos SVG del rubro (no cartón): caja NAP (bocas de fibra) y ONU (equipo con antena)
   function _icoNap(sz){ var s=sz||15; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block"><rect x="3" y="4" width="18" height="16" rx="2.5" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/><line x1="3.6" y1="9" x2="20.4" y2="9" stroke="#2563eb" stroke-width="1.2"/><circle cx="8" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="12" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="16" cy="14.6" r="1.4" fill="#2563eb"/></svg>'; }
@@ -1119,9 +1119,11 @@
       function sideJobsAndDone(){
         var jobs=[];
         if(nap) jobs.push(sbPatch('clientes?id=eq.'+c.id,{estado:'desconectado'}));   // el servicio queda abajo solo si se cortó la NAP
-        if(eq&&serial) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial),{estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}));
-        // si no pudo retirar = una VISITA sin éxito → queda registrada como intento de recuperación
-        if(!eq && dxId) jobs.push(sbPost('desconexion_intentos',{desconexion_id:dxId,cliente_id:c.id,tipo:'VISITA',resultado:(eqmot||'No se pudo retirar'),obs:(obs||null),cuadrilla_id:CUAD.id,canal:'PWA'}).catch(function(){}));
+        // Equipo recuperado → al stock. Si el serial ya existe lo marca EN_CUADRILLA; si NO existe
+        // (equipo viejo de ISPcube nunca cargado al stock) lo INSERTA como ONU recuperada, así no se pierde del inventario.
+        if(eq&&serial) jobs.push(sbPatch('stock_seriales?serial=eq.'+encodeURIComponent(serial),{estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}).then(function(r){ if(Array.isArray(r)&&r.length) return r; return sbPost('stock_seriales',{serial:serial,material_id:10,estado:'EN_CUADRILLA',cuadrilla_id:CUAD.id,cliente_id:null}); }).catch(function(){}));
+        // si no pudo retirar = una VISITA sin éxito → queda registrada como intento de recuperación, CON el GPS del técnico
+        if(!eq && dxId){ var _vi={desconexion_id:dxId,cliente_id:c.id,tipo:'VISITA',resultado:(eqmot||'No se pudo retirar'),obs:(obs||null),cuadrilla_id:CUAD.id,canal:'PWA'}; if(g){ _vi.lat=g.lat; _vi.lng=g.lng; if(c.lat!=null&&c.lng!=null) _vi.dist_m=Math.round(haversine(g.lat,g.lng,c.lat,c.lng)*1000); } jobs.push(sbPost('desconexion_intentos',_vi).catch(function(){})); }
         Promise.all(jobs).then(function(){ toast(finMsg); CORTE=null; vDescon(); });
       }
       doWrite(cierre).then(sideJobsAndDone).catch(function(){
@@ -1188,6 +1190,9 @@
       var cuerpo={ intentos_count:n, intentos_obs:obsAcum, ultimo_intento_at:ahora, updated_at:ahora };
       if(ultimo){ cuerpo.estado='IMPOSIBLE'; cuerpo.resolucion='🚫 Imposible de retirar — '+n+' intentos'; cuerpo.resuelto_at=ahora; cuerpo.cerrado_por=CUAD.id; }
       if(g){ cuerpo.lat=g.lat; cuerpo.lng=g.lng; }
+      // deja el intento con el GPS del técnico para auditar (dónde estaba vs el domicilio)
+      var _ii={desconexion_id:dxId,cliente_id:c.id,tipo:'VISITA',resultado:mot,obs:(det||null),cuadrilla_id:CUAD.id,canal:'PWA'}; if(g){ _ii.lat=g.lat; _ii.lng=g.lng; if(c.lat!=null&&c.lng!=null) _ii.dist_m=Math.round(haversine(g.lat,g.lng,c.lat,c.lng)*1000); }
+      sbPost('desconexion_intentos',_ii).catch(function(){});
       sbPatch('desconexiones?id=eq.'+dxId,cuerpo).then(function(){
         sbPost('actividad_log',{ accion:(ultimo?'🚫 Desconexión IMPOSIBLE ('+n+' intentos)':'✗ Intento de retiro fallido ('+n+'/'+DESC_MAX_INT+')'), entidad:'DESCONEXION', entidad_id:dxId, detalle:'Cliente N° '+(c.numero_cliente||'')+' — '+mot+(det?(': '+det):''), cuadrilla_id:CUAD.id, cuadrilla_nombre:CUAD.nombre }).catch(function(){});
         toast(ultimo?('🚫 '+n+' intentos — pasó a Imposibles'):('✗ Intento '+n+' registrado'));
