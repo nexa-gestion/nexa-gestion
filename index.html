@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.99';
+  var VER='v4.00';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -5353,6 +5353,17 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
   function _ocNodoLbl(cod){ var c=String(cod||'').trim(); var m=c.match(/^(\d+)/); return m?('Nodo '+m[1]):'(sin zona)'; }
   // Normaliza el barrio del cliente a nombre de chacra para fusionar con los polígonos: "CH 159"/"Ch 159"/"Chacra159" → "Chacra 159".
   function _ocChacraNorm(b){ b=String(b||'').trim(); if(!b) return null; var m=b.match(/^(?:ch|chacra)\s*\.?\s*(\d+)/i); return m?('Chacra '+m[1]):b; }
+  // Cuando el cliente NO tiene barrio cargado, inferir la zona del domicilio: toma el nombre del lugar
+  // (palabras iniciales) hasta el primer número o palabra de calle. "El Porvenir calle 56 lote 103" → "El Porvenir".
+  // Exige ≥2 palabras para no confundir un nombre de calle con un barrio. Null si no se puede.
+  function _ocZonaDom(dom){ var s=String(dom||'').trim(); if(!s) return null;
+    var ch=_ocChacraNorm(s); if(ch && /^Chacra /.test(ch)) return ch;   // "CH 159 ..." → Chacra 159
+    var STOP=/^(calle|av|avda|avenida|ruta|rn|rp|km|mz|mza|manzana|lote|lte|casa|dpto|depto|piso|esq|esquina|nro|sn)$/i;
+    var out=[], toks=s.split(/\s+/);
+    for(var i=0;i<toks.length;i++){ var t=toks[i].replace(/[.,°;]/g,''); if(!t) continue; if(/\d/.test(t)||STOP.test(t)) break; out.push(toks[i].replace(/[.,;]+$/,'')); }
+    if(out.length<2) return null; var nm=out.join(' ').trim(); if(nm.length<4) return null;
+    return nm.toLowerCase().replace(/[a-záéíóúñ]\S*/gi,function(w){ return w.charAt(0).toUpperCase()+w.slice(1); });
+  }
   function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
   function _ocColor(ratio){ return ratio<=0.001?'#94a3b8':(ratio<0.5?'#22c55e':(ratio<0.85?'#f59e0b':(ratio<=1.0?'#ef4444':'#7f1d1d'))); }
   // convex hull (monotone chain) sobre puntos {lat,lng} → anillo [[lat,lng],...] (para pintar zonas sin polígono, ej Garupá)
@@ -5441,8 +5452,8 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
       var cod=_norm(c.caja_nap), box=null;
       if(cod && byCode[cod]){ var cand=byCode[cod], bd=1e9; for(var i=0;i<cand.length;i++){ var dd=_ocHav(c.lat,c.lng,cand[i].lat,cand[i].lng); if(dd<bd){bd=dd;box=cand[i];} } }
       if(!box) box=nearestBox(c.lat,c.lng,150);
-      if(box){ box._cli++; box._cliList.push(nm); box._cliObjs.push(c); var cb=_ocChacraNorm(c.barrio); if(cb) box._cliBar[cb]=(box._cliBar[cb]||0)+1; }
-      else { sinCaja++; var bz=barrioDe(c.lat,c.lng)||_ocChacraNorm(c.barrio); if(bz){ noBox.push(bz); pushCli(bz,c,'(sin caja)'); } else sinUbic++; }
+      if(box){ box._cli++; box._cliList.push(nm); box._cliObjs.push(c); var cb=_ocChacraNorm(c.barrio)||_ocZonaDom(c.domicilio_full); if(cb) box._cliBar[cb]=(box._cliBar[cb]||0)+1; }
+      else { sinCaja++; var bz=barrioDe(c.lat,c.lng)||_ocChacraNorm(c.barrio)||_ocZonaDom(c.domicilio_full); if(bz){ noBox.push(bz); pushCli(bz,c,'(sin caja)'); } else sinUbic++; }
     });
     // 2b) las cajas que NO caen en polígono toman la CHACRA dominante de sus clientes (de la dirección); si no tienen clientes, su nodo
     d.naps.forEach(function(n){ if(n._poly) return; var best=null,bn=0; for(var k in n._cliBar){ if(n._cliBar[k]>bn){ bn=n._cliBar[k]; best=k; } } n._barrio = best || _ocNodoLbl(n.codigo); });
