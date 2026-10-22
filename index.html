@@ -55,6 +55,9 @@
   .toolbar label{ white-space:nowrap; }
   .toolbar input[type=checkbox]{ width:16px; height:16px; min-width:0; flex:none; margin:0; }
   table{ width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--bord); border-radius:12px; overflow:hidden; }
+  .sticky-wrap{ max-height:72vh; overflow:auto; border:1px solid var(--bord); border-radius:12px; }
+  .sticky-wrap > table.sticky-head{ overflow:visible; border:0; border-radius:0; }
+  table.sticky-head thead th{ position:sticky; top:0; z-index:6; background:#eef2f7; box-shadow:inset 0 -1px 0 var(--bord); }
   th,td{ text-align:left; padding:10px 12px; border-bottom:1px solid var(--bord); font-size:13px; }
   th{ background:#f8fafc; color:var(--gris); font-size:12px; text-transform:uppercase; letter-spacing:.3px; }
   tr:hover td{ background:#f8fafc; cursor:pointer; }
@@ -251,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v3.96';
+  var VER='v3.97';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -396,10 +399,10 @@
     function draw(){
       var cs=cols.filter(function(c){return isVis(c.k);}), rs=sorted();
       var h='<div class="toolbar" style="justify-content:flex-end;margin-bottom:8px"><div style="position:relative"><button class="btn btn-2" id="'+key+'-cb">⚙️ Columnas</button><div id="'+key+'-cm" class="colmenu" style="display:none"></div></div></div>';
-      h+='<table><thead><tr>'+cs.map(function(c){ var act=st.by===c.k, ar=act?(st.dir==='asc'?' ▲':' ▼'):(c.sort?' ⇅':''); return '<th'+(c.sort?' class="thsort" data-k="'+c.k+'" style="cursor:pointer;user-select:none"':'')+'>'+esc(c.t)+'<span style="color:#94a3b8;font-size:10px">'+ar+'</span></th>'; }).join('')+'</tr></thead><tbody>';
+      h+=(opts.stickyHead?'<div class="sticky-wrap">':'')+'<table'+(opts.stickyHead?' class="sticky-head"':'')+'><thead><tr>'+cs.map(function(c){ var act=st.by===c.k, ar=act?(st.dir==='asc'?' ▲':' ▼'):(c.sort?' ⇅':''); return '<th'+(c.sort?' class="thsort" data-k="'+c.k+'" style="cursor:pointer;user-select:none"':'')+'>'+esc(c.t)+'<span style="color:#94a3b8;font-size:10px">'+ar+'</span></th>'; }).join('')+'</tr></thead><tbody>';
       if(!rs.length){ h+='<tr><td colspan="'+cs.length+'" class="muted" style="text-align:center;padding:18px">Sin resultados.</td></tr>'; }
       rs.forEach(function(row,i){ var stl=(opts.onRow?'cursor:pointer;':'')+(opts.rowStyle?opts.rowStyle(row):''); h+='<tr data-i="'+i+'"'+(stl?' style="'+stl+'"':'')+'>'+cs.map(function(c){ return '<td>'+c.r(row)+'</td>'; }).join('')+'</tr>'; });
-      h+='</tbody></table>'+(opts.note?('<div class="muted" style="margin-top:8px">'+opts.note+'</div>'):'');
+      h+='</tbody></table>'+(opts.stickyHead?'</div>':'')+(opts.note?('<div class="muted" style="margin-top:8px">'+opts.note+'</div>'):'');
       cont.innerHTML=h;
       Array.prototype.forEach.call(cont.querySelectorAll('.thsort'),function(th){ th.addEventListener('click',function(){ var k=th.getAttribute('data-k'); if(st.by===k)st.dir=st.dir==='asc'?'desc':'asc'; else{st.by=k;st.dir='asc';} draw(); }); });
       if(opts.onRow) Array.prototype.forEach.call(cont.querySelectorAll('tr[data-i]'),function(tr){ tr.addEventListener('click',function(ev){ if(ev.target.closest('button,a,input,select'))return; opts.onRow(rs[+tr.getAttribute('data-i')],ev); }); });
@@ -5345,6 +5348,9 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
   }
   function _ocNodo(cod){ var m=String(cod||'').match(/^\s*(\d+)/); return m?m[1]:'?'; }
   function _ocBarrio(n){ return String(n||'').replace(/^ID\s*:?\s*/i,'').replace(/^\d+\s*/,'').replace(/\s+/g,' ').trim() || String(n||'(sin zona)'); }
+  // Fallback cuando una caja NO cae en ningún polígono de barrio: agrupar por su NODO de fibra (prefijo numérico del código).
+  // Resuelve los "(sin zona)" del centro de Posadas (cajas de fibra sin barrio RENABAP, ej. "58-1-A" → "Nodo 58").
+  function _ocNodoLbl(cod){ var c=String(cod||'').trim(); var m=c.match(/^(\d+)/); return m?('Nodo '+m[1]):'(sin zona)'; }
   function _ocHav(a,b,c,d){ var R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180; var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return 2*R*Math.asin(Math.sqrt(x)); }
   function _ocColor(ratio){ return ratio<=0.001?'#94a3b8':(ratio<0.5?'#22c55e':(ratio<0.85?'#f59e0b':(ratio<=1.0?'#ef4444':'#7f1d1d'))); }
   // convex hull (monotone chain) sobre puntos {lat,lng} → anillo [[lat,lng],...] (para pintar zonas sin polígono, ej Garupá)
@@ -5410,7 +5416,7 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
     var _norm=function(c){ return String(c||'').toLowerCase().replace(/[^a-z0-9]/g,''); };
     // 1) cada CAJA del KMZ a su barrio por UBICACIÓN (point-in-polygon) + índice por código normalizado
     var byCode={};
-    d.naps.forEach(function(n){ n._cli=0; n._cliList=[]; n._barrio='(sin zona)'; n._zid=null; n._geom=null; n._norm=_norm(n.codigo);
+    d.naps.forEach(function(n){ n._cli=0; n._cliList=[]; n._barrio=_ocNodoLbl(n.codigo); n._zid=null; n._geom=null; n._norm=_norm(n.codigo);
       for(var i=0;i<d.barrios.length;i++){ var b=d.barrios[i], hit=false;
         for(var r=0;r<b.rings.length;r++){ if(pointInPoly(n.lat,n.lng,b.rings[r])){ hit=true; break; } }
         if(hit){ n._barrio=b.nombre; n._zid='B'+b.id; n._geom=b.rings; break; }
@@ -5553,7 +5559,7 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
       {k:'libres',t:'Libres',sort:function(o){return o.libres;},r:function(o){return '<b style="color:#15803d">'+o.libres+'</b>';}},
       {k:'ocup',t:'Ocupación',sort:function(o){return o.ocup;},r:function(o){ var p=Math.round(o.ocup*100), w=Math.min(100,p); return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;max-width:120px;background:#eef2f7;border-radius:6px;height:14px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:'+_ocColor(o.ocup)+'"></div></div><b>'+p+'%</b></div>'; }}
     ];
-    gridRender(cont,cols,rows,{key:'oc-'+_ocVista,onRow:function(o){ _ocFocusBarrio(String(o.zona).split(' · ')[0]); }});
+    gridRender(cont,cols,rows,{key:'oc-'+_ocVista,stickyHead:true,onRow:function(o){ _ocFocusBarrio(String(o.zona).split(' · ')[0]); }});
   }
   function _ocFull(){
     var m=document.getElementById('oc-map'); if(!m)return;
