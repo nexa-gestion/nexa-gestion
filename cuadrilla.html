@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.60</title>
+<title>Nexa · Técnico — v0.61</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -65,7 +65,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.60';
+  var VER='v0.61';
   var _ALARM_MS=2*3600000; // OT en curso +2h = alarma (te olvidaste de cerrarla)
   // Íconos SVG del rubro (no cartón): caja NAP (bocas de fibra) y ONU (equipo con antena)
   function _icoNap(sz){ var s=sz||15; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block"><rect x="3" y="4" width="18" height="16" rx="2.5" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/><line x1="3.6" y1="9" x2="20.4" y2="9" stroke="#2563eb" stroke-width="1.2"/><circle cx="8" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="12" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="16" cy="14.6" r="1.4" fill="#2563eb"/></svg>'; }
@@ -1038,8 +1038,9 @@
     var _cc=(CORTE.dx&&CORTE.dx.compromiso_count)||0, _compSec;
     if(_cc>=2){ _compSec='<div class="card" style="border-left:4px solid var(--rojo)"><div style="font-weight:800;color:var(--rojo)">🤝 Sin más compromisos</div><div class="muted" style="font-size:12.5px;margin-top:3px">Este cliente ya tuvo los 2 compromisos de pago y no cumplió. No se le puede dar otro — corresponde el corte. (Si hay un acuerdo nuevo, lo carga un administrador.)</div></div>'; }
     else { var _dias=(_cc===0?7:3); _compSec=(_cc===1?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12.5px;color:#92400e">⚠️ Este cliente <b>ya tuvo un compromiso de pago y no cumplió</b>. Este sería el <b>ÚLTIMO</b> (3 días).</div>':'')+'<button class="btn btn-2" id="co-comp" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">🤝 Compromiso de pago ('+_dias+' días) — no cortar</button>'; }
+    var _compFalla=(_cc>0)?('<div class="card" style="background:#fef2f2;border:1px solid #fecaca"><div style="font-weight:800;color:#991b1b">⚠️ Prometió pagar y NO cumplió ('+_cc+(_cc>1?' veces':' vez')+')</div><div class="muted" style="font-size:12.5px;margin-top:3px">Ya hizo compromiso de pago y no pagó. '+(_cc>=2?'No corresponde otro compromiso — <b>retirá el equipo y cortá la NAP</b>.':'Si no paga ahora mismo, <b>retirá el equipo</b>.')+'</div></div>'):'';
     app.innerHTML=topBar('Cortar N° '+c.numero_cliente, nom)+'<div class="wrap">'
-      +_intAviso
+      +_compFalla+_intAviso
       +'<div class="card"><div class="muted" style="font-size:13px">Registrás el corte y la baja pasa a <b>pendiente administrativo</b> (soporte y comercial la cierran en ISPcube).</div></div>'
       +((CORTE.dx&&(CORTE.dx.gestion_obs||CORTE.dx.telefono_contacto))?('<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd"><div class="label" style="color:#0369a1">📋 Nota del administrativo</div>'+(CORTE.dx.gestion_obs?('<div style="font-size:13.5px;margin-top:3px">'+esc(CORTE.dx.gestion_obs)+'</div>'):'')+(CORTE.dx.telefono_contacto?('<div style="margin-top:7px">📞 Tel. extra para coordinar: <a href="tel:'+esc(String(CORTE.dx.telefono_contacto).replace(/[^\d+]/g,''))+'" style="font-weight:700">'+esc(CORTE.dx.telefono_contacto)+'</a></div>'):'')+'</div>'):'')
       +'<div class="card"><div class="label">📞 Teléfonos del cliente</div>'
