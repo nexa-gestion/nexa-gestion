@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.07';
+  var VER='v4.08';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -654,7 +654,7 @@
       sbGet('desconexiones?corte_at=gte.'+dia+'T03:00:00Z&corte_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000'),
       sbGet('desconexion_intentos?created_at=gte.'+dia+'T03:00:00Z&created_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000').catch(function(){return [];}),
       sbGet('desconexiones?estado=eq.PARCIAL&updated_at=gte.'+dia+'T03:00:00Z&updated_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000').catch(function(){return [];}),
-      sbGet('desconexiones?estado=in.(COMPROMISO_PAGO,ANULADA_PAGO)&resuelto_at=gte.'+dia+'T03:00:00Z&resuelto_at=lt.'+_nx+'T03:00:00Z&cuadrilla_id=not.is.null&select=cuadrilla_id&limit=5000').catch(function(){return [];})
+      sbGet('desconexiones?estado=in.(COMPROMISO_PAGO,ANULADA_PAGO)&resuelto_at=gte.'+dia+'T03:00:00Z&resuelto_at=lt.'+_nx+'T03:00:00Z&cerrado_por=not.is.null&select=cerrado_por&limit=5000').catch(function(){return [];})
     ]).then(function(_rr){
       var d=Array.isArray(_rr[0])?_rr[0]:[];
       var _cortes=Array.isArray(_rr[1])?_rr[1]:[], totalCortes=_cortes.length, cortesPorCuad={}; _cortes.forEach(function(x){ if(x.cuadrilla_id) cortesPorCuad[x.cuadrilla_id]=(cortesPorCuad[x.cuadrilla_id]||0)+1; });
@@ -663,7 +663,7 @@
       // los PARCIAL (cortes a medias: recuperó equipo pero falta NAP, o viceversa) van aparte — NO son un fracaso
       var parcialPorCuad={}; (Array.isArray(_rr[3])?_rr[3]:[]).forEach(function(x){ if(x.cuadrilla_id) parcialPorCuad[x.cuadrilla_id]=(parcialPorCuad[x.cuadrilla_id]||0)+1; });
       // RETENCIONES: clientes salvados por la gestión del técnico (compromiso de pago o ya pagó, en vez de cortar)
-      var retPorCuad={}; (Array.isArray(_rr[4])?_rr[4]:[]).forEach(function(x){ if(x.cuadrilla_id) retPorCuad[x.cuadrilla_id]=(retPorCuad[x.cuadrilla_id]||0)+1; });
+      var retPorCuad={}; (Array.isArray(_rr[4])?_rr[4]:[]).forEach(function(x){ if(x.cerrado_por) retPorCuad[x.cerrado_por]=(retPorCuad[x.cerrado_por]||0)+1; });  // por cerrado_por = la cuadrilla que la hizo (excluye al admin)
       var _act={}; REF.cuadrillas.forEach(function(c2){ _act[c2.id]=true; });
       var sinAsig=d.filter(function(o){ return !o.cuadrilla_id && o.fecha_agendada===dia && o.estado!=='FINALIZADA' && o.estado!=='CERRADA_TECNICO'; });
       var act=d.filter(function(o){ return o.cuadrilla_id && _act[o.cuadrilla_id] && (_esFin(o)||_esPend(o)||_esRech(o)); });
@@ -719,7 +719,7 @@
       sbGet('ordenes_trabajo?cuadrilla_id=eq.'+cuadId+'&or=(fecha_agendada.eq.'+dia+',and(fin_tec_at.gte.'+dia+'T03:00:00Z,fin_tec_at.lt.'+nextDia+'T03:00:00Z))&area=eq.INTERNET&select=id,numero,tipo,estado,fecha_agendada,hora_agendada,fin_tec_at,clientes(nombre,apellido,barrio)&limit=500'),
       sbGet('desconexiones?cuadrilla_id=eq.'+cuadId+'&or=(and(corte_at.gte.'+dia+'T03:00:00Z,corte_at.lt.'+nextDia+'T03:00:00Z),and(estado.eq.PARCIAL,updated_at.gte.'+dia+'T03:00:00Z,updated_at.lt.'+nextDia+'T03:00:00Z))&select=*,clientes(id,numero_cliente,codigo_ispcube,nombre,apellido,domicilio_full,barrio,telefono,deuda,caja_nap,puerto,precinto,lat,lng,estado)&order=updated_at.desc&limit=500'),
       sbGet('desconexion_intentos?cuadrilla_id=eq.'+cuadId+'&created_at=gte.'+dia+'T03:00:00Z&created_at=lt.'+nextDia+'T03:00:00Z&select=id,tipo,resultado,obs,created_at,cliente_id,desconexion_id,lat,lng,dist_m&order=created_at.desc&limit=300').catch(function(){return [];}),
-      sbGet('desconexiones?cuadrilla_id=eq.'+cuadId+'&estado=in.(COMPROMISO_PAGO,ANULADA_PAGO)&resuelto_at=gte.'+dia+'T03:00:00Z&resuelto_at=lt.'+nextDia+'T03:00:00Z&select=id,estado,resolucion,resuelto_at,cliente_id,clientes(id,numero_cliente,nombre,apellido,barrio)&order=resuelto_at.desc&limit=200').catch(function(){return [];})
+      sbGet('desconexiones?cerrado_por=eq.'+cuadId+'&estado=in.(COMPROMISO_PAGO,ANULADA_PAGO)&resuelto_at=gte.'+dia+'T03:00:00Z&resuelto_at=lt.'+nextDia+'T03:00:00Z&select=id,estado,resolucion,resuelto_at,cliente_id,clientes(id,numero_cliente,nombre,apellido,barrio)&order=resuelto_at.desc&limit=200').catch(function(){return [];})
     ]).then(function(_rr){
       var arr=(Array.isArray(_rr[0])?_rr[0]:[]).filter(function(o){ return _esFin(o)||_esPend(o)||_esRech(o); });
       var cortes=Array.isArray(_rr[1])?_rr[1]:[];
@@ -3704,10 +3704,12 @@
       sbGetAll('desconexiones?finalizado_at=gte.'+rk.desde+'&finalizado_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id,finalizado_at').catch(function(){return [];}),
       // VISITAS SIN ÉXITO: cada intento de recuperación (llamado/visita) registrado por la cuadrilla + parciales (toda actividad cuenta)
       sbGetAll('desconexion_intentos?created_at=gte.'+rk.desde+'&created_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id').catch(function(){return [];}),
-      sbGetAll('desconexiones?estado=eq.PARCIAL&updated_at=gte.'+rk.desde+'&updated_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id').catch(function(){return [];})
+      sbGetAll('desconexiones?estado=eq.PARCIAL&updated_at=gte.'+rk.desde+'&updated_at=lte.'+hh+'&cuadrilla_id=not.is.null&select=cuadrilla_id').catch(function(){return [];}),
+      // RETENCIONES: clientes salvados (compromiso/pagó) por la gestión del técnico — por cerrado_por (quien la hizo)
+      sbGetAll('desconexiones?estado=in.(COMPROMISO_PAGO,ANULADA_PAGO)&resuelto_at=gte.'+rk.desde+'&resuelto_at=lte.'+hh+'&cerrado_por=not.is.null&select=cerrado_por').catch(function(){return [];})
     ]).then(function(r){
-      var ots=Array.isArray(r[0])?r[0]:[], desc=Array.isArray(r[1])?r[1]:[], intentosDx=Array.isArray(r[2])?r[2]:[], parcialesDx=Array.isArray(r[3])?r[3]:[];
-      var ags={}, ag=function(cid){ return ags[cid]||(ags[cid]={cerr:0,exito:0,noreal:0,valid:0,tmin:0,tcount:0,inst:0,rep:0,otros:0,cortes:0,visitas:0,parciales:0}); };
+      var ots=Array.isArray(r[0])?r[0]:[], desc=Array.isArray(r[1])?r[1]:[], intentosDx=Array.isArray(r[2])?r[2]:[], parcialesDx=Array.isArray(r[3])?r[3]:[], retencDx=Array.isArray(r[4])?r[4]:[];
+      var ags={}, ag=function(cid){ return ags[cid]||(ags[cid]={cerr:0,exito:0,noreal:0,valid:0,tmin:0,tcount:0,inst:0,rep:0,otros:0,cortes:0,visitas:0,parciales:0,retenc:0}); };
       ots.forEach(function(o){ var a=ag(o.cuadrilla_id); a.cerr++;
         // CANCELADA/NO_REALIZADA que el técnico cerró = visita que no terminó en trabajo hecho (no exitosa)
         if(o.estado==='CANCELADA'||o.estado==='NO_REALIZADA'){ a.noreal++; return; }
@@ -3719,12 +3721,13 @@
       desc.forEach(function(x){ ag(x.cuadrilla_id).cortes++; });
       intentosDx.forEach(function(x){ ag(x.cuadrilla_id).visitas++; });
       parcialesDx.forEach(function(x){ ag(x.cuadrilla_id).parciales++; });
+      retencDx.forEach(function(x){ ag(x.cerrado_por).retenc++; });
       var nombres={}; (REF.cuadrillas||[]).forEach(function(c){ nombres[c.id]=c.nombre; });
       var rows=Object.keys(ags).map(function(cid){ var a=ags[cid]; var visitas=a.visitas+a.parciales+a.noreal; return {
         nom:(nombres[cid]||('Cuadrilla #'+cid)),
         trabajos:a.exito+a.cortes, exito:a.exito, noreal:a.noreal, cortes:a.cortes,
-        inst:a.inst, rep:a.rep, otros:a.otros, visitas:visitas,
-        actividad:a.exito+a.cortes+visitas,
+        inst:a.inst, rep:a.rep, otros:a.otros, visitas:visitas, retenc:a.retenc,
+        actividad:a.exito+a.cortes+visitas+a.retenc,
         efect:a.cerr?Math.round(a.exito/a.cerr*100):0,
         validpct:a.exito?Math.round(a.valid/a.exito*100):0,
         tprom:a.tcount?Math.round(a.tmin/a.tcount):null
@@ -3742,7 +3745,8 @@
         {label:'Instalaciones',data:ord.map(function(r){return r.inst;}),backgroundColor:'#2563eb',stack:'t'},
         {label:'Reparaciones',data:ord.map(function(r){return r.rep;}),backgroundColor:'#0d9488',stack:'t'},
         {label:'Cortes',data:ord.map(function(r){return r.cortes;}),backgroundColor:'#d97706',stack:'t'},
-        {label:'Otros',data:ord.map(function(r){return r.otros;}),backgroundColor:'#94a3b8',stack:'t'}
+        {label:'Otros',data:ord.map(function(r){return r.otros;}),backgroundColor:'#94a3b8',stack:'t'},
+        {label:'Retenciones',data:ord.map(function(r){return r.retenc;}),backgroundColor:'#16a34a',stack:'t'}
       ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},title:{display:true,text:'Trabajos por cuadrilla en el período'}},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{precision:0}}}}});
     });
     var cont=document.getElementById('rk-tabla'); if(!cont) return;
@@ -3753,6 +3757,7 @@
       ['Repar.',function(r){return r.rep;},function(r){return r.rep;}],
       ['Otros',function(r){return r.otros;},function(r){return r.otros;}],
       ['Cortes',function(r){return r.cortes;},function(r){return r.cortes;}],
+      ['🤝 Retenc.',function(r){return r.retenc;},function(r){return r.retenc;}],
       ['Visitas s/éxito',function(r){return r.visitas;},function(r){return r.visitas;}],
       ['Actividad total',function(r){return r.actividad;},function(r){return r.actividad;}],
       ['No realiz.',function(r){return r.noreal;},function(r){return r.noreal;}],
@@ -3768,7 +3773,7 @@
       var trs=ds.map(function(r,idx){ var pos=(si===1&&sd<0)?(medal[idx]||(idx+1)):(idx+1); return '<tr style="border-top:1px solid var(--bord)"><td style="padding:6px 4px;font-weight:700">'+pos+'</td>'+C.map(function(col,i){ var v=esc(col[1](r)); if(i===1) v='<b>'+v+'</b>'; return '<td style="padding:6px 4px'+(i>=1?';text-align:right':'')+'">'+v+'</td>'; }).join('')+'</tr>'; }).join('');
       cont.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label" style="margin:0">🏆 Ranking · '+rows.length+' cuadrilla(s)</div><button class="btn btn-2 btn-sm" id="rk-csv">⬇️ Excel</button></div>'
         +'<div style="overflow:auto;margin-top:8px"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'+ths+'</tr></thead><tbody>'+trs+'</tbody></table></div>'
-        +'<div class="muted" style="font-size:11.5px;margin-top:6px"><b>Trabajos</b> = OTs cerradas con éxito + cortes. <b>Visitas s/éxito</b> = intentos de retiro/corte + desconexiones a medias + no realizadas (trabajo que igual se hizo). <b>Actividad total</b> = trabajos + visitas s/éxito (el esfuerzo real). <b>% efect.</b> = exitosas / cerradas. <b>T. prom.</b> = duración promedio de la visita. <b>% validado</b> = de las exitosas, cuántas validó oficina.</div></div>';
+        +'<div class="muted" style="font-size:11.5px;margin-top:6px"><b>Trabajos</b> = OTs cerradas con éxito + cortes. <b>Visitas s/éxito</b> = intentos de retiro/corte + desconexiones a medias + no realizadas (trabajo que igual se hizo). <b>🤝 Retenc.</b> = clientes salvados (compromiso de pago o pagó) por la gestión del técnico. <b>Actividad total</b> = trabajos + visitas s/éxito + retenciones (el esfuerzo real). <b>% efect.</b> = exitosas / cerradas. <b>T. prom.</b> = duración promedio de la visita. <b>% validado</b> = de las exitosas, cuántas validó oficina.</div></div>';
       Array.prototype.forEach.call(cont.querySelectorAll('th[data-i]'),function(th){ th.addEventListener('click',function(){ var i=Number(th.getAttribute('data-i')); if(si===i) sd=-sd; else { si=i; sd=(i>=1?-1:1); } pintar(); }); });
       document.getElementById('rk-csv').addEventListener('click',function(){
         var lines=[['#'].concat(C.map(function(c){return c[0];})).join(';')].concat(ds.map(function(r,idx){ return [idx+1].concat(C.map(function(col){ return '"'+String(col[1](r)).replace(/"/g,'""')+'"'; })).join(';'); }));
