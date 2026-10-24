@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.09';
+  var VER='v4.10';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3794,26 +3794,39 @@
   // ══════════ 🔧 A SOLUCIONAR ══════════ (OTs no realizadas que SÍ se pueden hacer — recuperables)
   function vRecuperables(){
     loading();
-    sbGetAll('ordenes_trabajo?recuperable=is.true&recuperable_resuelto_at=is.null&select=id,numero,tipo,estado,recuperable_obs,recuperable_at,motivo_cancelacion,observaciones_tec,fin_tec_at,cuadrilla_id,cliente_id,cuadrillas(nombre),clientes(id,numero_cliente,nombre,apellido,barrio,telefono,estado,codigo_ispcube)&order=recuperable_at.desc.nullslast').then(function(d){
-      d=Array.isArray(d)?d:[];
-      var h='<h1>🔧 A solucionar</h1><p class="sub">Trabajos que no se hicieron pero SE PUEDEN hacer — para que no se pierdan. '+d.length+' caso(s).</p>';
-      if(!d.length){ view.innerHTML=h+'<div class="card center muted">No hay casos a solucionar. 🎉</div>'; return; }
+    if(!window._recTab) window._recTab='pend';
+    var tab=window._recTab, resu=(tab==='resueltos');
+    var filtro=resu?'recuperable_resuelto_at=not.is.null':'recuperable_resuelto_at=is.null';
+    var ord=resu?'order=recuperable_resuelto_at.desc':'order=recuperable_at.desc.nullslast';
+    Promise.all([
+      sbGetAll('ordenes_trabajo?recuperable=is.true&'+filtro+'&select=id,numero,tipo,estado,recuperable_obs,recuperable_at,recuperable_resuelto_at,recuperable_resuelto_por,motivo_cancelacion,observaciones_tec,fin_tec_at,cuadrilla_id,cliente_id,cuadrillas(nombre),clientes(id,numero_cliente,nombre,apellido,barrio,telefono,estado,codigo_ispcube)&'+ord),
+      window._usuariosMap?Promise.resolve(window._usuariosMap):sbGet('usuarios?select=id,nombre').then(function(u){ var m={}; (Array.isArray(u)?u:[]).forEach(function(x){ m[x.id]=x.nombre; }); window._usuariosMap=m; return m; }).catch(function(){ return {}; })
+    ]).then(function(_r){
+      var d=Array.isArray(_r[0])?_r[0]:[], umap=_r[1]||{}, _un=function(id){ return umap[id]||(id?('Usuario '+id):'—'); };
+      var tabsHtml='<div class="toolbar" style="margin-bottom:10px"><button class="btn '+(tab==='pend'?'btn-pri':'btn-2')+' rec-tab" data-t="pend">🔧 A solucionar</button><button class="btn '+(resu?'btn-pri':'btn-2')+' rec-tab" data-t="resueltos">✅ Resueltos</button></div>';
+      var h='<h1>🔧 A solucionar</h1><p class="sub">'+(resu?'Casos ya resueltos (se generó OT o se marcaron resueltos).':'Trabajos que no se hicieron pero SE PUEDEN hacer — para que no se pierdan.')+' '+d.length+' caso(s).</p>'+tabsHtml;
+      if(!d.length){ view.innerHTML=h+'<div class="card center muted">'+(resu?'Todavía no hay casos resueltos.':'No hay casos a solucionar. 🎉')+'</div>'; _recWire(); return; }
       h+=d.map(function(o){ var c=o.clientes||{}; var nom=((c.nombre||'')+' '+(c.apellido||'')).trim();
-        return '<div class="card" style="margin-bottom:10px">'
+        var acc=resu
+          ? '<div style="font-size:12px;color:#15803d;font-weight:700;white-space:nowrap;text-align:right">✅ Resuelto '+esc(fmtFecha(o.recuperable_resuelto_at))+(o.recuperable_resuelto_por?('<br><span style="font-weight:400;color:#64748b">por '+esc(_un(o.recuperable_resuelto_por))+'</span>'):'')+'</div>'
+          : '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ok btn-sm rec-gen" data-id="'+o.id+'" data-cli="'+(c.id||'')+'">🔧 Generar OT</button><button class="btn btn-2 btn-sm rec-ok" data-id="'+o.id+'" data-cli="'+(c.id||'')+'">✅ Resuelto</button></div>';
+        return '<div class="card" style="margin-bottom:10px'+(resu?';opacity:.92':'')+'">'
           +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">'
             +'<div><div style="font-weight:700;font-size:15px"><span class="rec-cli" data-cli="'+(c.id||'')+'" style="color:#2563eb;cursor:pointer">'+esc(nom||('Cliente '+(c.numero_cliente||'')))+'</span> <span class="muted" style="font-weight:400;font-size:12px">· N° '+esc(c.numero_cliente||'')+' · '+esc(c.barrio||'—')+' · '+pill(c.estado)+'</span></div>'
             +'<div style="font-size:12px;color:#64748b;margin-top:2px">OT N° '+esc(o.numero)+' · '+esc(o.tipo||'')+' · '+esc(o.cuadrillas?o.cuadrillas.nombre:'sin cuadrilla')+' · '+esc(fmtFecha(o.fin_tec_at||o.recuperable_at))+'</div></div>'
-            +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ok btn-sm rec-gen" data-id="'+o.id+'" data-cli="'+(c.id||'')+'">🔧 Generar OT</button><button class="btn btn-2 btn-sm rec-ok" data-id="'+o.id+'" data-cli="'+(c.id||'')+'">✅ Resuelto</button></div>'
+            +acc
           +'</div>'
           +(o.recuperable_obs?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:7px 10px;margin-top:8px;font-size:13px"><b>Por qué se puede:</b> '+esc(o.recuperable_obs)+'</div>':'')
           +(o.observaciones_tec?'<div class="muted" style="font-size:12px;margin-top:5px">🗒️ Técnico: '+esc(o.observaciones_tec)+'</div>':'')
         +'</div>'; }).join('');
       view.innerHTML=h;
+      _recWire();
       Array.prototype.forEach.call(view.querySelectorAll('.rec-cli'),function(el){ el.addEventListener('click',function(){ var id=el.getAttribute('data-cli'); if(id&&typeof fichaCliente==='function') fichaCliente(id); }); });
       Array.prototype.forEach.call(view.querySelectorAll('.rec-ok'),function(b){ b.addEventListener('click',function(){ var nota=prompt('Observación / nota al resolver (queda en el perfil del cliente, con tu usuario y la fecha/hora):',''); if(nota===null) return; _recResolver(b.getAttribute('data-id'),null,b.getAttribute('data-cli'),nota); }); });
       Array.prototype.forEach.call(view.querySelectorAll('.rec-gen'),function(b){ b.addEventListener('click',function(){ _recGenerar(b.getAttribute('data-id'),b.getAttribute('data-cli')); }); });
     }).catch(function(){ view.innerHTML='<h1>🔧 A solucionar</h1><div class="center" style="color:var(--rojo)">No se pudo cargar (¿corriste el SQL de recuperables?).</div>'; });
   }
+  function _recWire(){ Array.prototype.forEach.call(view.querySelectorAll('.rec-tab'),function(b){ b.addEventListener('click',function(){ window._recTab=b.getAttribute('data-t'); vRecuperables(); }); }); }
   function _recResolver(otId, nuevaOtId, cliId, nota){
     var jobs=[ sbPatch('ordenes_trabajo?id=eq.'+otId,{ recuperable_resuelto_at:new Date().toISOString(), recuperable_resuelto_por:USER.id }) ];
     var det='🔧 A solucionar — resuelto'+(nuevaOtId?' · se generó una OT de instalación nueva':'');
