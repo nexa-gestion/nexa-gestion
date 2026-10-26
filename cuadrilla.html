@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1e3a5f">
-<title>Nexa · Técnico — v0.62</title>
+<title>Nexa · Técnico — v0.63</title>
 <style>
   :root{ --azul:#1e3a5f; --azul2:#2563eb; --bg:#f1f5f9; --tinta:#0f172a; --gris:#64748b; --bord:#e2e8f0;
     --verde:#16a34a; --ambar:#d97706; --rojo:#dc2626; --cyan:#0891b2; }
@@ -65,7 +65,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.62';
+  var VER='v0.63';
   var _ALARM_MS=2*3600000; // OT en curso +2h = alarma (te olvidaste de cerrarla)
   // Íconos SVG del rubro (no cartón): caja NAP (bocas de fibra) y ONU (equipo con antena)
   function _icoNap(sz){ var s=sz||15; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block"><rect x="3" y="4" width="18" height="16" rx="2.5" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/><line x1="3.6" y1="9" x2="20.4" y2="9" stroke="#2563eb" stroke-width="1.2"/><circle cx="8" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="12" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="16" cy="14.6" r="1.4" fill="#2563eb"/></svg>'; }
@@ -1055,11 +1055,11 @@
            : '<input id="co-eqmot" placeholder="¿Por qué no? (no hay nadie / no encontré la casa)" style="margin-top:8px" value="'+esc((CORTE.dx&&CORTE.dx.equipo_motivo)||'')+'">')+'</div>'
       +'<div class="card"><div class="label">✂️ ¿Cortaste la NAP (liberaste el puerto)?</div><div style="display:flex;gap:8px;margin-top:4px"><button class="btn '+(CORTE.napCortada?'btn-ok':'btn-2')+'" id="co-nap-si">Sí</button><button class="btn '+(!CORTE.napCortada?'btn-ok':'btn-2')+'" id="co-nap-no">No pude</button></div>'
         +(!CORTE.napCortada?'<input id="co-napmot" placeholder="¿Por qué no? (lluvia / no encontré la NAP)" style="margin-top:8px" value="'+esc((CORTE.dx&&CORTE.dx.nap_motivo)||'')+'">':'')
-        +((CORTE.recupero&&CORTE.napCortada)?'':'<div class="muted" style="font-size:12px;margin-top:6px;color:#9a3412">🔶 Queda <b>a medias</b>: se guarda lo hecho y la parte que falta vuelve al listado para terminarla.</div>')+'</div>'
+        +((CORTE.recupero&&CORTE.napCortada)?'':(CORTE.recupero?'<div class="muted" style="font-size:12px;margin-top:6px;color:#9a3412">✅ Recuperaste el equipo → la baja pasa a <b>administrativo</b> (lo valida depósito). ⚠️ Falta cortar la NAP: queda pendiente para liberar el puerto.</div>':(CORTE.napCortada?'<div class="muted" style="font-size:12px;margin-top:6px;color:#9a3412">🔶 Cortaste la NAP pero <b>falta retirar el equipo</b>: vuelve al listado para terminarlo.</div>':'')))+'</div>'
       +'<div class="card"><div class="label">Foto (opcional)</div><div id="co-fotos">'+renderCorteFotos()+'</div><input type="file" accept="image/*" multiple id="co-foto-in" style="margin-top:8px;border:0;padding:6px 0"></div>'
       +'<div class="card"><div class="label">Observación</div><textarea id="co-obs" rows="2" style="width:100%"></textarea></div>'
       +'<div class="err" id="co-err"></div>'
-      +'<button class="btn btn-ok" id="co-confirmar" style="background:'+((CORTE.recupero&&CORTE.napCortada)?'var(--rojo)':((!CORTE.recupero&&!CORTE.napCortada)?'#d97706':'#ea580c'))+'">'+((CORTE.recupero&&CORTE.napCortada)?'✂️ Confirmar corte':((!CORTE.recupero&&!CORTE.napCortada)?'✗ Registrar intento (no se pudo)':'💾 Guardar (queda a medias)'))+'</button>'
+      +'<button class="btn btn-ok" id="co-confirmar" style="background:'+(CORTE.recupero?'var(--rojo)':(!CORTE.napCortada?'#d97706':'#ea580c'))+'">'+(CORTE.recupero?'✂️ Confirmar corte':(!CORTE.napCortada?'✗ Registrar intento (no se pudo)':'💾 Guardar — falta retirar equipo'))+'</button>'
       +_compSec
       +'<button class="btn btn-2" id="co-pagado" style="margin-top:10px;border-color:var(--verde);color:var(--verde)">✅ Ya pagó (verificado) — no cortar</button>'
       +_noPudoSec
@@ -1099,7 +1099,7 @@
     if(!eq && !eqmot){ err.textContent='Poné el motivo de por qué no retiraste el equipo.'; return; }
     if(!nap && !napmot){ err.textContent='Poné el motivo de por qué no cortaste la NAP.'; return; }
     var completo=(eq&&nap), nada=(!eq&&!nap);
-    var btxt=(completo?'✂️ Confirmar corte':(nada?'✗ Registrar intento (no se pudo)':'💾 Guardar (queda a medias)'));
+    var btxt=(eq?'✂️ Confirmar corte':(nada?'✗ Registrar intento (no se pudo)':'💾 Guardar — falta retirar equipo'));
     var btn=document.getElementById('co-confirmar'); btn.disabled=true; btn.textContent='Guardando…';
     getGPS().then(function(g){
       var ahora=new Date().toISOString(), hoy=new Date().toLocaleDateString('es-AR'), cuad=CUAD.nombre||'';
@@ -1111,10 +1111,12 @@
       else { var _ic=((CORTE.dx&&CORTE.dx.intentos_count)||0)+1; cierre.intentos_count=_ic; cierre.intentos_obs=_app(CORTE.dx&&CORTE.dx.intentos_obs,eqmot); cierre.ultimo_intento_at=ahora; cierre.equipo_motivo=eqmot; cierre.equipo_serial=null; eqMax=(_ic>=DESC_MAX_INT); }
       if(nap){ cierre.nap_cortada_at=ahora; cierre.corte_at=ahora; cierre.nap_motivo=null; }
       else { var _nic=((CORTE.dx&&CORTE.dx.nap_intentos_count)||0)+1; cierre.nap_intentos_count=_nic; cierre.nap_intentos_obs=_app(CORTE.dx&&CORTE.dx.nap_intentos_obs,napmot); cierre.nap_motivo=napmot; }
-      if(completo){ cierre.estado='PENDIENTE_ADMIN'; cierre.parte_pendiente=null; }
-      else if(!nada){ cierre.estado='PARCIAL'; cierre.parte_pendiente=(!eq?'EQUIPO':'NAP'); }
+      // REGLA: recuperar el equipo = BAJA HECHA → pasa a administrativo (Luciano valida el equipo). Si falta la NAP,
+      // queda la marca parte_pendiente='NAP' (liberar el puerto después). corte_at se setea igual para que cuente la tarea.
+      if(eq){ cierre.estado='PENDIENTE_ADMIN'; cierre.parte_pendiente=(nap?null:'NAP'); if(!nap) cierre.corte_at=ahora; }
+      else if(nap){ cierre.estado='PARCIAL'; cierre.parte_pendiente='EQUIPO'; }   // cortó NAP pero falta el equipo → sigue en el pool para retirarlo
       else if(eqMax){ cierre.estado='IMPOSIBLE'; cierre.resolucion='🚫 Imposible de retirar — '+cierre.intentos_count+' intentos'; cierre.resuelto_at=ahora; }
-      var finMsg=(completo?'Corte completo ✓ — pasa a administrativo':(nada?(eqMax?('🚫 '+cierre.intentos_count+' intentos — pasó a Imposibles'):'✗ Intento registrado'):('🔶 Guardado a medias — falta '+(!eq?'retirar el equipo':'cortar la NAP'))));
+      var finMsg=(eq?(nap?'Corte completo ✓ — pasa a administrativo':'✅ Equipo recuperado — pasa a administrativo · ⚠️ falta cortar la NAP (queda pendiente)'):(nada?(eqMax?('🚫 '+cierre.intentos_count+' intentos — pasó a Imposibles'):'✗ Intento registrado'):'🔶 NAP cortada — falta retirar el equipo (vuelve al listado)'));
       var dxId=CORTE.dx&&CORTE.dx.id;
       var doWrite=function(body){ return dxId ? sbPatchOk('desconexiones?id=eq.'+dxId,body) : sbPostOk('desconexiones',Object.assign({cliente_id:c.id,cuadrilla_id:CUAD.id,origen:'manual'},body)); };
       function sideJobsAndDone(){

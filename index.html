@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.10';
+  var VER='v4.11';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -4712,7 +4712,7 @@
   function _dxInfo(o){
     if(o.estado==='ASIGNADA') return '🔧 '+esc(_cuadNombre(o.cuadrilla_id)||'—')+(o.fecha_agendada?('<br><span class="muted">📅 '+fmtFecha(o.fecha_agendada)+'</span>'):'');
     if(o.estado==='PARCIAL'){ var _f=(o.parte_pendiente==='NAP')?'✂️ cortar NAP (puerto ocupado)':(_icoOnu()+' retirar equipo'); var _h=(o.parte_pendiente==='NAP')?'equipo retirado ✓':'NAP cortada ✓'; var _m=(o.parte_pendiente==='NAP'?o.nap_motivo:o.equipo_motivo); return '🔶 <b>A medias</b><br><span style="font-size:11px;color:#9a3412">Falta: '+_f+'</span><br><span class="muted" style="font-size:11px">'+_h+(_m?(' · '+esc(_m)):'')+'</span>'; }
-    if(o.estado==='PENDIENTE_ADMIN'){ var rec=(o.recupero_equipo===true)?'✅ recuperó':(o.recupero_equipo===false?'⚠️ sin equipo':'—'); return rec+'<br><span style="font-size:11px">'+(o.deposito_hecho?'<span style="color:#166534">✓Depósito</span>':'<span class="muted">☐Depósito</span>')+' '+(o.soporte_hecho?'<span style="color:#166534">✓Soporte</span>':'<span class="muted">☐Soporte</span>')+' '+(o.comercial_hecho?'<span style="color:#166534">✓Comercial</span>':'<span class="muted">☐Comercial</span>')+'</span>'; }
+    if(o.estado==='PENDIENTE_ADMIN'){ var rec=(o.recupero_equipo===true)?'✅ recuperó equipo':(o.recupero_equipo===false?'⚠️ sin equipo':'—'); var _napPend=(o.parte_pendiente==='NAP'&&o.nap_cortada!==true)?'<br><span style="color:#b91c1c;font-weight:700;font-size:11px">⚠️ falta cortar la NAP (liberar puerto '+esc((o.clientes&&o.clientes.puerto)||o.puerto||'')+')</span>':''; return rec+_napPend+'<br><span style="font-size:11px">'+(o.deposito_hecho?'<span style="color:#166534">✓Depósito</span>':'<span class="muted">☐Depósito</span>')+' '+(o.soporte_hecho?'<span style="color:#166534">✓Soporte</span>':'<span class="muted">☐Soporte</span>')+' '+(o.comercial_hecho?'<span style="color:#166534">✓Comercial</span>':'<span class="muted">☐Comercial</span>')+'</span>'; }
     if(o.estado==='COMPROMISO_PAGO'){ var dr=_dxDiasRest(o.compromiso_vence), q=(o.compromiso_count>=2?'2° (último)':'1er'); return '🤝 <b>'+q+' compromiso</b><br><span style="font-size:11px">'+((dr==null)?'—':(dr<0?'<span style="color:var(--rojo);font-weight:700">⏰ vencido</span>':('faltan <b>'+dr+'</b> día'+(dr===1?'':'s'))))+(o.compromiso_vence?(' · vence '+fmtFecha(o.compromiso_vence)):'')+'</span>'+(o.compromiso_obs?('<br><span class="muted" style="font-size:11px">🗣️ '+esc(o.compromiso_obs)+'</span>'):''); }
     if(o.estado==='EN_REVISION') return '⏸️ '+esc(o.resolucion||'a revisar');
     if(o.estado==='FINALIZADO') return '✅ '+(o.finalizado_at?fmtFecha(o.finalizado_at):'')+(o.tenia_deuda?('<br><span class="muted">NC '+esc(o.nota_credito||'')+'</span>'):'');
