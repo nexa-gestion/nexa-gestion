@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.11';
+  var VER='v4.12';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -937,6 +937,8 @@
         mos.forEach(function(m){ h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9"><span style="flex:1;font-size:12.5px">'+esc(m.nombre)+'</span><input type="number" min="0" class="vd-moc" data-id="'+m.id+'" value="'+esc(m.cantidad)+'" style="width:50px;text-align:center;padding:3px">'+_xb('vd-delmo',m.id)+'</div>'; });
         h+='<div id="vd-addmo-p" style="display:none;margin-top:6px;padding:7px;background:#f0fdf4;border:1px dashed #86efac;border-radius:8px"><select id="vd-mo-sel" style="margin-bottom:5px"><option value="">— mano de obra —</option>'+moCat.map(function(x){return '<option value="'+x.id+'">'+esc(x.nombre)+'</option>';}).join('')+'</select><div style="display:flex;gap:5px"><input id="vd-mo-qty" type="number" min="1" value="1" style="width:54px;text-align:center"><button class="btn btn-ok" id="vd-mo-ok" style="flex:1;padding:5px">Agregar</button></div></div></div>';
         h+='</div>';
+        // observación del administrativo (opcional) — queda en la OT y en la ficha del cliente
+        h+='<div style="margin-top:12px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;padding:10px 12px"><label class="l" style="margin:0 0 4px">📝 Observación del administrativo (opcional)</label><textarea id="vd-obsadmin" style="min-height:44px;width:100%" placeholder="Ej: hablé con el cliente y recoordinamos para el viernes (los técnicos no lo encontraron). Queda en la OT y en la ficha del cliente.">'+esc(o.observaciones_admin||'')+'</textarea></div>';
         // barra de acciones
         var esRech=(o.estado==='NO_REALIZADA');
         h+='<div class="toolbar" style="margin-top:12px;flex-wrap:wrap">'
@@ -946,6 +948,8 @@
           +'<button class="btn btn-2" id="vd-reasig">🔄 Reasignar</button><button class="btn btn-2" id="vd-devolver">↩️ Devolver al pool</button><button class="btn btn-ok" id="vd-print">🖨️ Imprimir OT</button></div>';
         view.innerHTML=h;
         document.getElementById('val-back').addEventListener('click',vValidacion);
+        // guarda la observación del admin en la OT + la deja como nota en la ficha del cliente (si hay texto)
+        var _valSaveObs=function(){ var e=document.getElementById('vd-obsadmin'), oa=e?e.value.trim():''; if(!oa) return Promise.resolve(); var jj=[sbPatch('ordenes_trabajo?id=eq.'+o.id,{observaciones_admin:oa}).catch(function(){})]; if(o.cliente_id) jj.push(sbPost('interacciones_cliente',{cliente_id:o.cliente_id,tipo:'nota',titulo:'📝 Validación OT N° '+o.numero,detalle:oa,creado_por:USER.id}).catch(function(){})); return Promise.all(jj).catch(function(){}); };
         // editar cantidades
         Array.prototype.forEach.call(view.querySelectorAll('.vd-matc'),function(i){ i.addEventListener('change',function(){ var v=Math.max(0,parseInt(i.value,10)||0); i.value=v; sbPatch('ot_materiales?id=eq.'+i.getAttribute('data-id'),{cantidad:v}).then(function(){ toast('✓'); }); }); });
         Array.prototype.forEach.call(view.querySelectorAll('.vd-moc'),function(i){ i.addEventListener('change',function(){ var v=Math.max(0,parseInt(i.value,10)||0); i.value=v; sbPatch('ot_mano_obra?id=eq.'+i.getAttribute('data-id'),{cantidad:v}).then(function(){ toast('✓'); }); }); });
@@ -972,18 +976,18 @@
         var vv=document.getElementById('vd-validar'); if(vv) vv.addEventListener('click',function(){
           var b=this; if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Seguro? Tocá de nuevo para validar y descontar stock'; return; }
           b.disabled=true; b.textContent='Validando…';
-          sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=material_id,cantidad,serial').then(function(fresh){ _validarYvolver(o, Array.isArray(fresh)?fresh:mats); });
+          _valSaveObs().then(function(){ sbGet('ot_materiales?ot_id=eq.'+o.id+'&select=material_id,cantidad,serial').then(function(fresh){ _validarYvolver(o, Array.isArray(fresh)?fresh:mats); }); });
         });
         var vb=document.getElementById('vd-baja'); if(vb) vb.addEventListener('click',function(){
           var b=this; if(b.getAttribute('data-ok')!=='1'){ b.setAttribute('data-ok','1'); b.textContent='¿Dar de baja el pedido? Tocá de nuevo'; return; }
           b.disabled=true; b.textContent='Dando de baja…';
-          sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'CANCELADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id }).then(function(){ logOT(o.id,'CAMBIO_ESTADO',{de:o.estado,a:'CANCELADA',cuadId:o.cuadrilla_id,detalle:'Pedido dado de baja desde validación (no realizada · '+(o.motivo_cancelacion||'sin motivo')+')'}); toast('Pedido dado de baja ✓'); vValidacion(); }).catch(function(){ b.disabled=false; b.textContent='🚫 Dar de baja el pedido'; toast('No se pudo dar de baja.'); });
+          _valSaveObs().then(function(){ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'CANCELADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id }).then(function(){ logOT(o.id,'CAMBIO_ESTADO',{de:o.estado,a:'CANCELADA',cuadId:o.cuadrilla_id,detalle:'Pedido dado de baja desde validación (no realizada · '+(o.motivo_cancelacion||'sin motivo')+')'}); toast('Pedido dado de baja ✓'); vValidacion(); }).catch(function(){ b.disabled=false; b.textContent='🚫 Dar de baja el pedido'; toast('No se pudo dar de baja.'); }); });
         });
         var vr=document.getElementById('vd-recup'); if(vr) vr.addEventListener('click',function(){
           var nota=prompt('¿Por qué SE PUEDE hacer este trabajo? (queda en la lista "A solucionar" del dashboard)\nEj: había puerto en otra caja / faltó coordinar con el cliente / revisar acometida', '');
           if(nota===null) return;
           var b=this; b.disabled=true; b.textContent='Guardando…';
-          sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'CANCELADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id, recuperable:true, recuperable_obs:(nota.trim()||null), recuperable_at:new Date().toISOString(), recuperable_por:USER.id }).then(function(){ logOT(o.id,'CAMBIO_ESTADO',{de:o.estado,a:'CANCELADA',cuadId:o.cuadrilla_id,detalle:'Marcada A SOLUCIONAR desde validación'+(nota.trim()?(' · '+nota.trim()):'')}); toast('⚠️ Marcada A solucionar ✓'); vValidacion(); }).catch(function(){ b.disabled=false; b.textContent='⚠️ A solucionar'; toast('No se pudo marcar (¿corriste el SQL de recuperables?).'); });
+          _valSaveObs().then(function(){ sbPatch('ordenes_trabajo?id=eq.'+o.id,{ estado:'CANCELADA', validado_admin_at:new Date().toISOString(), validado_por:USER.id, recuperable:true, recuperable_obs:(nota.trim()||null), recuperable_at:new Date().toISOString(), recuperable_por:USER.id }).then(function(){ logOT(o.id,'CAMBIO_ESTADO',{de:o.estado,a:'CANCELADA',cuadId:o.cuadrilla_id,detalle:'Marcada A SOLUCIONAR desde validación'+(nota.trim()?(' · '+nota.trim()):'')}); toast('⚠️ Marcada A solucionar ✓'); vValidacion(); }).catch(function(){ b.disabled=false; b.textContent='⚠️ A solucionar'; toast('No se pudo marcar (¿corriste el SQL de recuperables?).'); }); });
         });
       });
     });
