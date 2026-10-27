@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.12';
+  var VER='v4.13';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -5135,16 +5135,55 @@
   function _vendLink(token){ var base=location.href.replace(/[#?].*$/,'').replace(/[^/]*$/,''); return base+'solicitud.html?v='+encodeURIComponent(token); }
   function _genToken(){ var s='abcdefghijkmnpqrstuvwxyz23456789', t=''; for(var i=0;i<8;i++) t+=s.charAt(Math.floor(Math.random()*s.length)); return t; }
   function _comTxt(v){ return v.comision_tipo==='PORCENTAJE'?((v.comision_valor||0)+'% del plan') : (v.comision_tipo==='PLAN'?'Según el plan' : ('$'+(v.comision_valor||0)+' por instalación')); }
+  function _ymAdd(ym,delta){ var p=String(ym).split('-'); var d=new Date(Number(p[0]),Number(p[1])-1+delta,1); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2); }
+  function _ymLabel(ym){ var M=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']; var p=String(ym).split('-'); return (M[Number(p[1])-1]||'')+' '+p[0]; }
   function vVendedores(){
     loading();
-    Promise.all([ sbGet('vendedores?select=*&order=nombre'), sbGet('solicitudes_alta?vendedor_id=not.is.null&select=vendedor_id&limit=5000') ]).then(function(r){
-      var vs=Array.isArray(r[0])?r[0]:[], sol=r[1]||[], cnt={}; sol.forEach(function(s){ cnt[s.vendedor_id]=(cnt[s.vendedor_id]||0)+1; });
-      view.innerHTML='<h1>🧑‍💼 Vendedores</h1><p class="sub">Cada vendedor tiene su link de solicitud. Las ventas cargadas por ese link quedan a su nombre. La comisión se paga cuando el cliente queda instalado (lo certificás en 💰 Comisiones).</p>'
+    if(!window._vendMes) window._vendMes=_hoyISO().slice(0,7);
+    var mes=window._vendMes, ini=mes+'-01T00:00:00', fin=_ymAdd(mes,1)+'-01T00:00:00';
+    Promise.all([
+      sbGet('vendedores?select=*&order=nombre'),
+      sbGet('solicitudes_alta?vendedor_id=not.is.null&created_at=gte.'+ini+'&created_at=lt.'+fin+'&select=id,vendedor_id,cliente_id,planes(precio),clientes(pago_detectado_at)&limit=5000'),
+      sbGetAll('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&solicitud_id=not.is.null&select=solicitud_id'),
+      sbGet('solicitudes_alta?vendedor_id=not.is.null&select=vendedor_id&limit=5000')
+    ]).then(function(r){
+      var vs=Array.isArray(r[0])?r[0]:[], ventasMes=r[1]||[], inst=r[2]||[], solAll=r[3]||[];
+      var cnt={}; solAll.forEach(function(s){ cnt[s.vendedor_id]=(cnt[s.vendedor_id]||0)+1; });
+      var instSet={}; inst.forEach(function(o){ instSet[o.solicitud_id]=true; });
+      // métricas del MES por vendedor
+      var m={}, mv=function(id){ return m[id]||(m[id]={ventas:0,monto:0,inst:0,conc:0}); };
+      ventasMes.forEach(function(s){ var a=mv(s.vendedor_id); a.ventas++; a.monto+=Number((s.planes&&s.planes.precio)||0); if(instSet[s.id])a.inst++; if(s.clientes&&s.clientes.pago_detectado_at)a.conc++; });
+      var totV=ventasMes.length, totM=0, totC=0, totI=0; Object.keys(m).forEach(function(k){ totM+=m[k].monto; totC+=m[k].conc; totI+=m[k].inst; });
+      var vmap={}; vs.forEach(function(v){ vmap[v.id]=v.nombre; });
+      var h='<h1>🧑‍💼 Vendedores</h1>';
+      h+='<div class="dash-sec">📊 Resumen por mes</div>';
+      h+='<div class="toolbar" style="align-items:center;gap:8px"><button class="btn btn-2" id="vend-mes-prev">◀</button><b style="min-width:150px;text-align:center;text-transform:capitalize">'+esc(_ymLabel(mes))+'</b><button class="btn btn-2" id="vend-mes-next">▶</button><button class="btn btn-2" id="vend-mes-hoy">Este mes</button></div>';
+      h+='<div class="dkpis" style="margin:4px 0 10px">'+dkpi(totV,'Ventas del mes','solicitudes cargadas','blue')+dkpi(_money(totM),'Monto vendido','suma de abonos mensuales','green')+dkpi(totC,'Concretadas','pagaron la 1ª factura','amber')+dkpi(totI,'Instaladas','instalación finalizada','cyan')+'</div>';
+      h+='<div id="vend-resumen"></div>';
+      h+='<div class="dash-sec" style="margin-top:16px">Gestión de vendedores</div><p class="sub">Cada vendedor tiene su link de solicitud. Las ventas cargadas por ese link quedan a su nombre.</p>'
         +'<div class="toolbar"><input id="vend-q" placeholder="🔎 Buscar vendedor…" style="min-width:240px;flex:1"><button class="btn btn-ok" id="vend-nuevo">+ Nuevo vendedor</button></div><div id="vend-t"></div>';
+      view.innerHTML=h;
+      // tabla RESUMEN del mes (solo vendedores con ventas en el mes)
+      var resRows=vs.map(function(v){ var a=m[v.id]||{ventas:0,monto:0,inst:0,conc:0}; return {nombre:v.nombre,ventas:a.ventas,monto:a.monto,inst:a.inst,conc:a.conc,pct:a.ventas?Math.round(a.conc/a.ventas*100):0}; }).filter(function(x){return x.ventas>0;});
+      var rcols=[
+        {k:'nombre',t:'Vendedor',sort:function(v){return v.nombre||'';},r:function(v){return '<b>'+esc(v.nombre)+'</b>';}},
+        {k:'ventas',t:'Ventas',sort:function(v){return v.ventas;},r:function(v){return '<b>'+v.ventas+'</b>';}},
+        {k:'monto',t:'Monto vendido',sort:function(v){return v.monto;},r:function(v){return _money(v.monto);}},
+        {k:'inst',t:'Instaladas',sort:function(v){return v.inst;},r:function(v){return v.inst;}},
+        {k:'conc',t:'Concretadas (pagó)',sort:function(v){return v.conc;},r:function(v){return '<b style="color:#15803d">'+v.conc+'</b>';}},
+        {k:'pct',t:'% concreción',sort:function(v){return v.pct;},r:function(v){return v.pct+'%';}}
+      ];
+      if(resRows.length) gridRender(document.getElementById('vend-resumen'),rcols,resRows,{key:'vendres',note:resRows.length+' vendedor(es) con ventas en '+_ymLabel(mes)});
+      else document.getElementById('vend-resumen').innerHTML='<div class="card center muted">Sin ventas de vendedores en '+esc(_ymLabel(mes))+'.</div>';
+      // navegación de mes
+      document.getElementById('vend-mes-prev').addEventListener('click',function(){ window._vendMes=_ymAdd(mes,-1); vVendedores(); });
+      document.getElementById('vend-mes-next').addEventListener('click',function(){ window._vendMes=_ymAdd(mes,1); vVendedores(); });
+      document.getElementById('vend-mes-hoy').addEventListener('click',function(){ window._vendMes=_hoyISO().slice(0,7); vVendedores(); });
+      // lista de GESTIÓN (ventas = total histórico)
       var cols=[
         {k:'nombre',t:'Vendedor',sort:function(v){return v.nombre||'';},r:function(v){return '<b>'+esc(v.nombre)+'</b>'+(v.activo?'':' <span class="pill" style="background:#fee2e2;color:#991b1b">inactivo</span>')+(v.telefono?('<br><span class="muted">'+esc(v.telefono)+'</span>'):'');}},
         {k:'com',t:'Comisión',sort:null,r:function(v){return esc(_comTxt(v));}},
-        {k:'ventas',t:'Ventas',sort:function(v){return cnt[v.id]||0;},r:function(v){return '<b>'+(cnt[v.id]||0)+'</b>';}},
+        {k:'ventas',t:'Ventas (total)',sort:function(v){return cnt[v.id]||0;},r:function(v){return '<b>'+(cnt[v.id]||0)+'</b>';}},
         {k:'link',t:'Link de solicitud',sort:null,r:function(v){return v.token?('<button class="btn btn-2 vend-link" data-t="'+esc(v.token)+'" style="padding:3px 9px;font-size:12px">⧉ copiar link</button>'):'<span class="muted">—</span>';}},
         {k:'acc',t:'',sort:null,r:function(v){return '<span class="muted" style="font-size:12px">editar ›</span>';}}
       ];
