@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.14';
+  var VER='v4.15';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1420,10 +1420,12 @@
       if(c.aplica_mora!=null && c.aplica_mora!=='') _chips.push(_chip('⚠️ Mora: '+(c.aplica_mora?'sí':'no')));
       if(c.plan_precio) _chips.push(_chip('📄 Plan '+_money(c.plan_precio)));
       if(c.pago_detectado_at) _chips.push(_chip('✅ Últ. pago detectado '+fmtFecha(c.pago_detectado_at)));
-      var _saldoBox=(_dv>0)
-        ? '<div style="font-size:30px;font-weight:800;color:#dc2626;line-height:1">'+_money(_dv)+'</div><div style="font-size:11px;color:#991b1b;font-weight:600;text-align:right">saldo deudor</div>'
-        : '<div style="font-size:24px;font-weight:800;color:#16a34a;line-height:1">Al día ✓</div><div style="font-size:11px;color:#15803d;font-weight:600;text-align:right">sin deuda</div>';
-      var cuentaHtml='<div class="card" style="margin:10px 0;padding:14px;background:'+(_dv>0?'#fff7f7':'#f6fef9')+'">'
+      var _estCli=(c.estado||'');
+      var _saldoBox;
+      if(_dv>0){ _saldoBox='<div style="font-size:30px;font-weight:800;color:#dc2626;line-height:1">'+_money(_dv)+'</div><div style="font-size:11px;color:#991b1b;font-weight:600;text-align:right">saldo deudor</div>'; }
+      else if(_estCli!=='activo'){ var _em={baja:'De baja',eliminado:'Eliminado',bloqueado:'Bloqueado',nuevo:'Sin instalar',pendiente:'Sin instalar'}, _et=_em[_estCli]||'Sin servicio activo'; _saldoBox='<div style="font-size:20px;font-weight:800;color:#64748b;line-height:1">'+esc(_et)+'</div><div style="font-size:11px;color:#64748b;font-weight:600;text-align:right">no es cliente activo</div>'; }
+      else { _saldoBox='<div style="font-size:24px;font-weight:800;color:#16a34a;line-height:1">Al día ✓</div><div style="font-size:11px;color:#15803d;font-weight:600;text-align:right">sin deuda</div>'; }
+      var cuentaHtml='<div class="card" style="margin:10px 0;padding:14px;background:'+(_dv>0?'#fff7f7':(_estCli!=='activo'?'#f8fafc':'#f6fef9'))+'">'
         +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="font-weight:700;color:#334155;font-size:14px">💳 Cuenta</div><div>'+_saldoBox+'</div></div>'
         +'<div id="f-cx-wrap" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">'+_chips.join('')+'</div>'
         +'<div class="muted" style="font-size:11px;margin-top:9px">Saldo y datos de ISPcube (último sync). El <b>detalle de facturas y cobranzas</b> (cta cte) se sumará cuando ISPcube habilite el endpoint por API.</div></div>';
@@ -5143,15 +5145,15 @@
     var mes=window._vendMes, ini=mes+'-01T00:00:00', fin=_ymAdd(mes,1)+'-01T00:00:00';
     Promise.all([
       sbGet('vendedores?select=*&order=nombre'),
-      sbGet('solicitudes_alta?vendedor_id=not.is.null&created_at=gte.'+ini+'&created_at=lt.'+fin+'&select=id,vendedor_id,cliente_id,created_at,planes(precio),clientes(numero_cliente,nombre,apellido,barrio,estado,pago_detectado_at)&limit=5000'),
-      sbGetAll('ordenes_trabajo?tipo=eq.INSTALACION&estado=eq.FINALIZADA&solicitud_id=not.is.null&select=solicitud_id'),
+      sbGet('solicitudes_alta?vendedor_id=not.is.null&estado=not.in.(rechazada,descartada)&created_at=gte.'+ini+'&created_at=lt.'+fin+'&select=id,vendedor_id,cliente_id,created_at,planes(precio),clientes(numero_cliente,nombre,apellido,barrio,estado,codigo_ispcube,pago_detectado_at)&limit=5000'),
+      sbGetAll('ordenes_trabajo?tipo=eq.INSTALACION&estado=in.(FINALIZADA,CERRADA_TECNICO)&cliente_id=not.is.null&select=cliente_id'),
       sbGet('solicitudes_alta?vendedor_id=not.is.null&select=vendedor_id&limit=5000')
     ]).then(function(r){
       var vs=Array.isArray(r[0])?r[0]:[], ventasMes=r[1]||[], inst=r[2]||[], solAll=r[3]||[];
       var cnt={}; solAll.forEach(function(s){ cnt[s.vendedor_id]=(cnt[s.vendedor_id]||0)+1; });
-      var instSet={}; inst.forEach(function(o){ instSet[o.solicitud_id]=true; });
+      var instSet={}; inst.forEach(function(o){ if(o.cliente_id!=null) instSet[o.cliente_id]=true; });   // instalada POR CLIENTE (evita falso "sin instalar" en solicitudes duplicadas)
       // ventas del mes ENRIQUECIDAS (para tarjetas clickeables + filtro por vendedor)
-      var ventas=ventasMes.map(function(s){ var c=s.clientes||{}; return { id:s.id, vend:s.vendedor_id, cli_id:s.cliente_id, num:c.numero_cliente, nom:((c.nombre||'')+' '+(c.apellido||'')).trim(), barrio:c.barrio, monto:Number((s.planes&&s.planes.precio)||0), inst:!!instSet[s.id], pago:!!(c.pago_detectado_at) }; });
+      var ventas=ventasMes.map(function(s){ var c=s.clientes||{}; return { id:s.id, vend:s.vendedor_id, cli_id:s.cliente_id, num:c.numero_cliente, isp:c.codigo_ispcube, nom:((c.nombre||'')+' '+(c.apellido||'')).trim(), barrio:c.barrio, monto:Number((s.planes&&s.planes.precio)||0), inst:!!(s.cliente_id&&instSet[s.cliente_id]), pago:!!(c.pago_detectado_at) }; });
       var vmap={}; vs.forEach(function(v){ vmap[v.id]=v.nombre; });
       if(window._vendFiltroV==null) window._vendFiltroV='';
       var h='<h1>🧑‍💼 Vendedores</h1>';
@@ -5166,8 +5168,8 @@
       function _vFiltradas(){ var f=window._vendFiltroV; return f?ventas.filter(function(v){return String(v.vend)===String(f);}):ventas; }
       function _vCat(cat){ var a=_vFiltradas(); if(cat==='inst')return a.filter(function(v){return v.inst;}); if(cat==='noinst')return a.filter(function(v){return !v.inst;}); if(cat==='conc')return a.filter(function(v){return v.pago;}); return a; }
       function _vModal(cat){ var titM={ventas:'Ventas del mes',inst:'Instaladas',noinst:'Sin instalar (falta instalar)',conc:'Concretadas (pagaron la 1ª factura)'}; var list=_vCat(cat).slice().sort(function(a,b){return String(a.nom).localeCompare(String(b.nom),'es');});
-        var rows=list.map(function(v){ return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px;font-weight:700">'+esc(v.num||'')+'</td><td style="padding:5px">'+esc(v.nom||'(cliente)')+'</td><td style="padding:5px" class="muted">'+esc(v.barrio||'—')+'</td><td style="padding:5px;white-space:nowrap">'+_money(v.monto)+'</td><td style="padding:5px;text-align:center" title="instalada">'+(v.inst?'✅':'<span class="muted">—</span>')+'</td><td style="padding:5px;text-align:center" title="pagó 1ª factura">'+(v.pago?'💵':'<span class="muted">—</span>')+'</td><td style="padding:5px"><span class="vmod-cli" data-cli="'+(v.cli_id||'')+'" style="cursor:pointer;color:#2563eb">ficha ›</span></td></tr>'; }).join('');
-        modal('<h2>'+titM[cat]+' · '+list.length+'</h2><p class="muted" style="margin:-4px 0 8px;font-size:12px">'+esc(_ymLabel(mes))+(window._vendFiltroV?(' · '+esc(vmap[window._vendFiltroV]||'')):' · todos los vendedores')+'</p><div style="max-height:60vh;overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:5px">N°</th><th style="padding:5px">Cliente</th><th style="padding:5px">Barrio</th><th style="padding:5px">Abono</th><th style="padding:5px">Inst.</th><th style="padding:5px">Pagó</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="muted" style="padding:10px">Sin casos.</td></tr>')+'</tbody></table></div>');
+        var rows=list.map(function(v){ return '<tr style="border-top:1px solid var(--bord)"><td style="padding:5px;font-weight:700">'+esc(v.num||'')+'</td><td style="padding:5px" class="muted">'+esc(v.isp||'—')+'</td><td style="padding:5px">'+esc(v.nom||'(cliente)')+'</td><td style="padding:5px" class="muted">'+esc(v.barrio||'—')+'</td><td style="padding:5px;white-space:nowrap">'+_money(v.monto)+'</td><td style="padding:5px;text-align:center" title="instalada">'+(v.inst?'✅':'<span class="muted">—</span>')+'</td><td style="padding:5px;text-align:center" title="pagó 1ª factura">'+(v.pago?'💵':'<span class="muted">—</span>')+'</td><td style="padding:5px"><span class="vmod-cli" data-cli="'+(v.cli_id||'')+'" style="cursor:pointer;color:#2563eb">ficha ›</span></td></tr>'; }).join('');
+        modal('<h2>'+titM[cat]+' · '+list.length+'</h2><p class="muted" style="margin:-4px 0 8px;font-size:12px">'+esc(_ymLabel(mes))+(window._vendFiltroV?(' · '+esc(vmap[window._vendFiltroV]||'')):' · todos los vendedores')+'</p><div style="max-height:60vh;overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b"><th style="padding:5px">N°</th><th style="padding:5px">ISPcube</th><th style="padding:5px">Cliente</th><th style="padding:5px">Barrio</th><th style="padding:5px">Abono</th><th style="padding:5px">Inst.</th><th style="padding:5px">Pagó</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="8" class="muted" style="padding:10px">Sin casos.</td></tr>')+'</tbody></table></div>');
         Array.prototype.forEach.call(document.querySelectorAll('.vmod-cli'),function(el){ el.addEventListener('click',function(){ var id=el.getAttribute('data-cli'); if(id&&id!=='null'&&typeof fichaCliente==='function'){ cerrarModal(); fichaCliente(id); } }); }); }
       function _vRender(){
         var a=_vFiltradas(); var tV=a.length, tM=0,tI=0,tC=0; a.forEach(function(v){ tM+=v.monto; if(v.inst)tI++; if(v.pago)tC++; }); var tNI=tV-tI;
