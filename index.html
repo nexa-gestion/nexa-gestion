@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.15';
+  var VER='v4.16';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1429,7 +1429,7 @@
         +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="font-weight:700;color:#334155;font-size:14px">💳 Cuenta</div><div>'+_saldoBox+'</div></div>'
         +'<div id="f-cx-wrap" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">'+_chips.join('')+'</div>'
         +'<div class="muted" style="font-size:11px;margin-top:9px">Saldo y datos de ISPcube (último sync). El <b>detalle de facturas y cobranzas</b> (cta cte) se sumará cuando ISPcube habilite el endpoint por API.</div></div>';
-      modal('<h2>Cliente N° '+esc(c.numero_cliente)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+esc(cNom)+' · '+pill(c.estado)+(c.telefono?waLink(c.telefono,cNom,'',c.domicilio_full,'WhatsApp'):'')+'</p>'
+      modal('<h2>Cliente N° '+esc(c.numero_cliente)+'</h2><p class="muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+esc(cNom)+' · '+pill(c.estado)+(c.telefono?waLink(c.telefono,cNom,'',c.domicilio_full,'WhatsApp'):'')+'<button class="btn btn-2" id="f-editcli" style="padding:4px 10px;font-size:12px">✏️ Editar datos</button></p>'
         +cuentaHtml
         +'<div class="fichagrid">'+fr('Empresa',c.empresa)+fr('Documento',(c.tipo_doc||'')+' '+(c.doc_numero||''))+'<div class="ficha-row"><span class="k">Teléfono</span><span class="v">'+esc(c.telefono||'—')+' '+waLink(c.telefono,cNom,'',_domLimpio(c.domicilio_full))+'</span></div>'+'<div class="ficha-row"><span class="k">Tel. alternativo</span><span class="v">'+(c.telefono_alt?(esc(c.telefono_alt)+' '+waLink(c.telefono_alt,cNom,'',_domLimpio(c.domicilio_full))):'<span style="color:#dc2626">— falta 2° número</span>')+'</span></div>'+fr('Email',c.email)
         +fr('Domicilio',_domLimpio(c.domicilio_full))+fr('Barrio',c.barrio)
@@ -1459,6 +1459,7 @@
         if(np!==(c.plan_id||null)){ b.plan_id=np; var pl=REF.planes.filter(function(p){return p.id===np;})[0]; var _t=pl?((pl.tecnologia||'')+' '+(pl.nombre||'')):''; var tec=/ftth/i.test(_t)?'FTTH':(/(wifi|wireless|inalamb)/i.test(_t)?'INALAMBRICO':null); if(tec)b.tecnologia=tec; }
         var btn=this; btn.disabled=true; sbPatch('clientes?id=eq.'+c.id,b).then(function(){ c.caja_nap=b.caja_nap; c.puerto=b.puerto; c.precinto=b.precinto; if(b.plan_id!==undefined){ c.plan_id=b.plan_id; if(b.tecnologia)c.tecnologia=b.tecnologia; } btn.disabled=false; toast('Conexión y plan guardados ✓'); }).catch(function(){ btn.disabled=false; toast('No se pudo guardar.'); });
       });
+      var _edcli=document.getElementById('f-editcli'); if(_edcli) _edcli.addEventListener('click',function(){ editarClienteFicha(c); });
       var ispSave=document.getElementById('f-isp-save');
       if(ispSave) ispSave.addEventListener('click',function(){
         var val=document.getElementById('f-isp').value.trim(); if(!val){ return; }
@@ -2027,8 +2028,10 @@
     });
   }
   // Editar los datos del cliente desde la OT (nombre, DNI, email, tel, domicilio, barrio). El plan va en el modal de la OT.
-  function editarClienteOT(o){
-    var c=o.clientes||{};
+  function editarClienteOT(o){ editarClienteForm(o.clientes||{}, function(saved){ if(saved) logOT(o.id,'EDITADA',{detalle:'Editó datos del cliente'}); detalleOT(o.id); }); }
+  function editarClienteFicha(c){ editarClienteForm(c||{}, function(){ fichaCliente((c||{}).id); }); }
+  function editarClienteForm(c, onDone){
+    c=c||{};
     modal('<h2>✏️ Editar datos del cliente</h2><p class="muted">N° '+esc(c.numero_cliente||'')+(c.codigo_ispcube?(' · ISPcube '+esc(c.codigo_ispcube)):'')+'</p>'
       +'<div class="row"><div><label class="l">Nombre</label><input id="ec-nom" value="'+esc(c.nombre||'')+'"></div><div><label class="l">Apellido</label><input id="ec-ape" value="'+esc(c.apellido||'')+'"></div></div>'
       +'<div class="row"><div><label class="l">Tipo doc.</label><select id="ec-tdoc">'+['DNI','CUIT','CUIL','LC','LE','PAS'].map(function(t){return '<option'+((c.tipo_doc||'DNI')===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div><div><label class="l">N° documento</label><input id="ec-doc" value="'+esc(c.doc_numero||'')+'"></div></div>'
@@ -2039,11 +2042,11 @@
       +'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12.5px">ℹ️ Estos datos se guardan en Nexa. La facturación se maneja en ISPcube.</div>'
       +'<div id="ec-err" style="color:var(--rojo);font-size:13px;min-height:16px;margin-top:8px"></div>'
       +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ok" id="ec-save">💾 Guardar</button><button class="btn btn-2" id="ec-cancel">Cancelar</button></div>','wide');
-    document.getElementById('ec-cancel').addEventListener('click',function(){ detalleOT(o.id); });
+    document.getElementById('ec-cancel').addEventListener('click',function(){ onDone(false); });
     document.getElementById('ec-save').addEventListener('click',function(){
       var b={ nombre:document.getElementById('ec-nom').value.trim()||null, apellido:document.getElementById('ec-ape').value.trim()||null, tipo_doc:document.getElementById('ec-tdoc').value, doc_numero:document.getElementById('ec-doc').value.trim()||null, email:document.getElementById('ec-mail').value.trim()||null, telefono:document.getElementById('ec-tel').value.trim()||null, telefono_alt:document.getElementById('ec-tel2').value.trim()||null, domicilio_full:document.getElementById('ec-dom').value.trim()||null, barrio:document.getElementById('ec-barr').value.trim()||null };
       var btn=this; btn.disabled=true; btn.textContent='Guardando…';
-      sbPatch('clientes?id=eq.'+c.id,b).then(function(){ logOT(o.id,'EDITADA',{detalle:'Editó datos del cliente'}); if(c.id) sbPost('interacciones_cliente',{cliente_id:Number(c.id),tipo:'nota',titulo:'✏️ Editó los datos del cliente',detalle:'Nombre/Doc/Tel/Domicilio actualizados.',creado_por:USER.id}).catch(function(){}); toast('Datos del cliente guardados ✓'); detalleOT(o.id); }).catch(function(){ btn.disabled=false; btn.textContent='💾 Guardar'; document.getElementById('ec-err').textContent='No se pudo guardar (¿DNI duplicado?).'; });
+      sbPatch('clientes?id=eq.'+c.id,b).then(function(){ if(c.id) sbPost('interacciones_cliente',{cliente_id:Number(c.id),tipo:'nota',titulo:'✏️ Editó los datos del cliente',detalle:'Nombre/Doc/Tel/Domicilio actualizados.',creado_por:USER.id}).catch(function(){}); toast('Datos del cliente guardados ✓'); onDone(true); }).catch(function(){ btn.disabled=false; btn.textContent='💾 Guardar'; document.getElementById('ec-err').textContent='No se pudo guardar (¿DNI duplicado?).'; });
     });
   }
   function _uNameG(id){ return (window._uMapG&&window._uMapG[id])||(id?('Usuario '+id):'—'); }
