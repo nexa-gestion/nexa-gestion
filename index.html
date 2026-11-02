@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.18';
+  var VER='v4.19';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1747,7 +1747,8 @@
       +'<div><label class="l">Depto/Casa</label>'+inp('depto',s.depto)+'</div>'
       +'<div><label class="l">Barrio</label>'+selFrom('barrio',REF.barrios.map(function(b){return b.nombre;}),s.barrio)+'</div>'
       +'<div><label class="l">Empresa</label>'+selFrom('empresa',REF.empresas.map(function(e){return e.nombre;}),s.empresa)+'</div>'
-      +'<div><label class="l">Plan</label><select id="fs-plan">'+planOpts+'</select></div>'
+      +'<div><label class="l">Tipo de pedido</label><select id="fs-tipo"><option value="alta"'+((s.tipo_solicitud||'alta')==='alta'?' selected':'')+'>🆕 Alta nueva (instalación)</option><option value="cambio_plan"'+(s.tipo_solicitud==='cambio_plan'?' selected':'')+'>🔄 Cambio de plan / velocidad</option></select></div>'
+      +'<div><label class="l">Plan '+(s.tipo_solicitud==='cambio_plan'?'<span class="muted">(destino)</span>':'')+'</label><select id="fs-plan">'+planOpts+'</select></div>'
       +'<div><label class="l">Extras</label><div style="display:flex;gap:14px;align-items:center;height:40px"><label style="font-weight:600"><input type="checkbox" id="fs-tv"'+(s.tv_online?' checked':'')+'> TV</label><label style="font-weight:600"><input type="checkbox" id="fs-fut"'+(s.pack_futbol?' checked':'')+'> Fútbol</label></div></div>'
       +'<div style="grid-column:1/-1"><label class="l">Código ISPcube <span class="muted">(opcional — si lo cargás, la OT queda lista para asignar sin pasar por «Cargar en ISPcube»)</span></label>'+inp('cod_isp',s.codigo_ispcube)+'</div>'
       +'<div style="grid-column:1/-1"><label class="l">Observaciones</label><textarea id="fs-obs" style="min-height:50px">'+esc(s.observaciones||'')+'</textarea></div>'
@@ -1769,6 +1770,7 @@
         email:v('email')||null,calle:v('calle'),numero:v('numero'),piso:v('piso')||null,depto:v('depto')||null,
         barrio:v('barrio')||null,empresa:v('empresa')||null,observaciones:v('obs')||null,tv_online:v('tv'),pack_futbol:v('fut') };
       var pid=document.getElementById('fs-plan').value; o.plan_id=pid?Number(pid):null;
+      var tipoEl=document.getElementById('fs-tipo'); if(tipoEl) o.tipo_solicitud=tipoEl.value||'alta';
       var diaEl=document.getElementById('fs-dia'), frEl=document.getElementById('fs-franja');
       if(diaEl) o.dia_preferido=diaEl.value||null;
       if(frEl) o.franja_preferida=frEl.value||null;
@@ -1797,7 +1799,7 @@
       if(!o.nombre||!o.telefono){ err.textContent='Nombre y teléfono son obligatorios.'; return; }
       var cod=_codIsp();
       var btn=this; btn.disabled=true; btn.textContent='Creando…';
-      _solPersist(o).then(function(){ return convertirSolicitud(Object.assign({id:s.id,lat:s.lat,lng:s.lng,codigo_ispcube:cod},o)); })
+      _solPersist(o).then(function(){ return convertirSolicitud(Object.assign({id:s.id,lat:s.lat,lng:s.lng,codigo_ispcube:cod,tipo_solicitud:(o.tipo_solicitud||s.tipo_solicitud||null)},o)); })
         .then(function(c){ cerrarModal(); toast(c._reused?('OT creada sobre el cliente existente N° '+c.numero_cliente+' (no se duplicó) ✓'):('Cliente N° '+c.numero_cliente+' y OT creados'+(cod?' · con código ISP, lista para asignar':'')+' ✓')); vSolicitudes(); })
         .catch(function(){ err.textContent='No se pudo completar. Revisá los datos.'; btn.disabled=false; btn.textContent='✓ Convertir a cliente + OT'; });
     });
