@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.19';
+  var VER='v4.20';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -6027,11 +6027,78 @@ var _OC_BARRIOS=[{"id":1921,"nombre":"Las Tacuaritas","rings":[[[-27.400461,-55.
   function vDeposito(){
     view.innerHTML='<h1>Depósito / Stock</h1><p class="sub">Catálogo, ingreso con seriales, entrega a cuadrillas y movimientos — como en FG.</p>'
       +'<div class="toolbar" id="dep-tabs">'
-      +['materiales|📋 Materiales','ingreso|📥 Ingreso','deposito|🏭 Stock depósito','cuadrillas|🚚 Stock cuadrillas','recuperados|♻️ Recuperados','movimientos|🔄 Movimientos']
+      +['materiales|📋 Materiales','ingreso|📥 Ingreso','deposito|🏭 Stock depósito','cuadrillas|🚚 Stock cuadrillas','recuperados|♻️ Recuperados','movimientos|🔄 Movimientos','buscar|🔍 Buscar equipo']
         .map(function(t){ var p=t.split('|'); return '<button class="btn '+(depState.tab===p[0]?'btn-pri':'btn-2')+'" data-tab="'+p[0]+'">'+p[1]+'</button>'; }).join('')
       +'</div><div id="dep-cont"></div>';
     Array.prototype.forEach.call(document.querySelectorAll('#dep-tabs [data-tab]'),function(b){ b.addEventListener('click',function(){ depState.tab=b.getAttribute('data-tab'); vDeposito(); }); });
-    ({materiales:depMateriales,ingreso:depIngreso,deposito:depStock,cuadrillas:depCuadrillas,recuperados:depRecuperados,movimientos:depMovs}[depState.tab]||depMateriales)();
+    ({materiales:depMateriales,ingreso:depIngreso,deposito:depStock,cuadrillas:depCuadrillas,recuperados:depRecuperados,movimientos:depMovs,buscar:depBuscarEquipo}[depState.tab]||depMateriales)();
+  }
+
+  // ===== BUSCAR EQUIPO (por MAC / serial) — solo lectura: estado actual + historial =====
+  function _estLabel(e){
+    var M={EN_DEPOSITO:['🏭 En depósito','#166534','#dcfce7'],EN_CUADRILLA:['🚚 En cuadrilla','#1d4ed8','#dbeafe'],COMPROMETIDO:['📌 Comprometido a OT','#b45309','#fef3c7'],INSTALADO:['🏠 Instalado en cliente','#0f172a','#e2e8f0'],RECUPERADO:['♻️ Recuperado','#b45309','#fef3c7'],EN_REVISION:['🔧 En revisión','#b91c1c','#fee2e2']};
+    return M[e]||[esc(e||'—'),'#475569','#f1f5f9'];
+  }
+  function depBuscarEquipo(){
+    var cont=document.getElementById('dep-cont');
+    cont.innerHTML='<div class="ocard" style="margin-bottom:12px">'
+      +'<div style="font-weight:800;margin-bottom:4px">🔍 Buscar equipo por MAC / serial</div>'
+      +'<div class="muted" style="font-size:12px;margin-bottom:8px">Pegá la MAC o el serial (con o sin «:»). Te muestro dónde está ahora y todo su historial.</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="beq-q" placeholder="Ej: B8:26:D4:99:0E:1A  o  B826D4990E1A" value="'+esc(depState.beq||'')+'" style="flex:1;min-width:220px;font-family:monospace;text-transform:uppercase">'
+      +'<button class="btn btn-pri" id="beq-go">Buscar</button></div></div><div id="beq-res"></div>';
+    var inp=document.getElementById('beq-q');
+    function go(){ depState.beq=inp.value||''; _depBuscarEquipoRun(depState.beq); }
+    document.getElementById('beq-go').addEventListener('click',go);
+    inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); go(); } });
+    inp.focus();
+    if(depState.beq) _depBuscarEquipoRun(depState.beq);
+  }
+  function _depBuscarEquipoRun(raw){
+    var res=document.getElementById('beq-res'); if(!res) return;
+    var norm=String(raw||'').replace(/[^0-9a-zA-Z]/g,'').toUpperCase();
+    if(norm.length<4){ res.innerHTML='<div class="muted" style="padding:6px">Escribí al menos 4 caracteres del serial.</div>'; return; }
+    res.innerHTML='<div class="center"><div class="spin"></div></div>';
+    var arr=function(x){return Array.isArray(x)?x:[];};
+    var conDosp=norm.match(/.{1,2}/g).join(':');
+    var orSer='or=(serial.ilike.*'+norm+'*,serial.ilike.*'+conDosp+'*)';
+    var orEq='or=(equipo_serial.ilike.*'+norm+'*,equipo_serial.ilike.*'+conDosp+'*)';
+    Promise.all([
+      sbGet('stock_seriales?'+orSer+'&select=id,serial,material_id,estado,cliente_id,cuadrilla_id,ot_id,created_at&order=created_at.asc').catch(function(){return [];}),
+      sbGet('ot_materiales?'+orSer+'&select=id,serial,material_id,ordenes_trabajo(id,numero,tipo,estado,created_at,fin_tec_at,cuadrilla_id,clientes(numero_cliente,codigo_ispcube,nombre,apellido,barrio))').catch(function(){return [];}),
+      sbGet('desconexiones?'+orEq+'&select=id,equipo_serial,equipo_motivo,equipo_retirado_at,deposito_at,created_at,cuadrilla_id,recupero_equipo,clientes(numero_cliente,codigo_ispcube,nombre,apellido,barrio)&order=created_at.asc').catch(function(){return [];}),
+      sbGet('catalogo_materiales?select=id,nombre').catch(function(){return [];})
+    ]).then(function(r){
+      var ss=arr(r[0]), om=arr(r[1]), dx=arr(r[2]);
+      var matMap={}; arr(r[3]).forEach(function(m){ matMap[m.id]=m.nombre; });
+      if(!ss.length && !om.length && !dx.length){ res.innerHTML='<div class="ocard"><div style="font-weight:700">Sin resultados</div><div class="muted" style="font-size:13px;margin-top:4px">No encontré ningún equipo con «'+esc(norm)+'». Revisá el serial/MAC, o probá con los últimos dígitos.</div></div>'; return; }
+      var serialTxt=(ss[0]&&ss[0].serial)||(om[0]&&om[0].serial)||(dx[0]&&dx[0].equipo_serial)||norm;
+      var matId=(ss[0]&&ss[0].material_id)||(om[0]&&om[0].material_id)||null;
+      var matTxt=matId?(matMap[matId]||('material '+matId)):'(sin material)';
+      var cliActual='';
+      if(ss.length && ss[0].estado==='INSTALADO' && ss[0].ot_id){
+        for(var i=0;i<om.length;i++){ var o0=om[i].ordenes_trabajo; if(o0 && o0.id===ss[0].ot_id && o0.clientes){ var c0=o0.clientes; cliActual=((c0.nombre||'')+' '+(c0.apellido||'')).trim()+(c0.numero_cliente?(' · N° '+c0.numero_cliente):'')+(c0.barrio?(' · '+c0.barrio):''); break; } }
+      }
+      var head='<div class="ocard" style="margin-bottom:12px"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        +'<div style="font-family:monospace;font-size:18px;font-weight:800;color:#0f172a">'+esc(serialTxt)+'</div>'
+        +'<span class="muted" style="font-size:13px">'+esc(matTxt)+'</span></div>';
+      if(ss.length){ ss.forEach(function(s){ var el=_estLabel(s.estado);
+        head+='<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;background:'+el[2]+';color:'+el[1]+';border-radius:999px;padding:4px 12px;font-size:13px">'+el[0]+'</span>';
+        if(s.estado==='INSTALADO'&&cliActual) head+='<span style="font-size:13px">'+esc(cliActual)+'</span>';
+        else if(s.estado==='EN_CUADRILLA'||s.estado==='COMPROMETIDO'||s.estado==='RECUPERADO'||s.estado==='EN_REVISION') head+='<span style="font-size:13px">'+esc(_cuadNombre(s.cuadrilla_id)||'')+'</span>';
+        head+='</div>'; }); }
+      else head+='<div class="muted" style="margin-top:8px;font-size:12px">⚠️ No figura en el stock actual (sin fila en stock_seriales). Se ve solo por su historial de uso.</div>';
+      head+='</div>';
+      var ev=[];
+      ss.forEach(function(s){ if(s.created_at) ev.push({t:s.created_at,ic:'📥',tit:'Ingresó al depósito',sub:'Alta del equipo en stock'}); });
+      om.forEach(function(m){ var o=m.ordenes_trabajo; if(!o) return; var t=o.fin_tec_at||o.created_at; var c=o.clientes||{}; var cli=((c.nombre||'')+' '+(c.apellido||'')).trim(); var inst=(o.tipo==='INSTALACION'); ev.push({t:t,ic:inst?'🏠':'🔧',tit:(inst?'Instalado':'Usado')+' en OT N° '+esc(o.numero)+' · '+esc(o.tipo)+' ('+esc(o.estado)+')',sub:(cli?('Cliente '+esc(cli)+(c.numero_cliente?(' · N° '+esc(c.numero_cliente)):'')+(c.barrio?(' · '+esc(c.barrio)):'')):'')+(o.cuadrilla_id?(' · '+esc(_cuadNombre(o.cuadrilla_id)||'')):'')}); });
+      dx.forEach(function(d){ var t=d.equipo_retirado_at||d.deposito_at||d.created_at; var c=d.clientes||{}; var cli=((c.nombre||'')+' '+(c.apellido||'')).trim(); ev.push({t:t,ic:'📦',tit:'Retirado del cliente (desconexión)'+(d.recupero_equipo===true?' · equipo recuperado':(d.recupero_equipo===false?' · sin devolución':'')),sub:(cli?('Cliente '+esc(cli)+(c.numero_cliente?(' · N° '+esc(c.numero_cliente)):'')):'')+(d.equipo_motivo?(' · '+esc(d.equipo_motivo)):'')}); });
+      ev.sort(function(a,b){ return new Date(a.t||0)-new Date(b.t||0); });
+      var tl='<div class="ocard"><div style="font-weight:800;margin-bottom:8px">🕑 Historial del equipo ('+ev.length+')</div>';
+      if(!ev.length) tl+='<div class="muted">Sin movimientos registrados.</div>';
+      else { tl+='<div>'; ev.forEach(function(e){ tl+='<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9"><div style="font-size:18px;line-height:1">'+e.ic+'</div><div style="flex:1"><div style="font-weight:600;font-size:13.5px">'+e.tit+'</div>'+(e.sub?('<div class="muted" style="font-size:12px">'+e.sub+'</div>'):'')+'</div><div class="muted" style="font-size:12px;white-space:nowrap">'+esc(e.t?fmtFechaHora(e.t):'—')+'</div></div>'; }); tl+='</div>'; }
+      tl+='</div>';
+      res.innerHTML=head+tl;
+    }).catch(function(){ res.innerHTML='<div class="ocard" style="color:#b91c1c">No se pudo completar la búsqueda. Reintentá.</div>'; });
   }
 
   // ===== RECUPERADOS (equipos que el técnico retiró, esperando el OK del depósito) =====
