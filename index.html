@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.20';
+  var VER='v4.21';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -563,6 +563,7 @@
       view.innerHTML=
         '<div class="dhead"><div class="dhead-logo">NX</div><div style="flex:1"><div class="dhead-eyebrow">Nexa SAS · Inicio</div><div class="dhead-saludo">'+_saludo(now.getHours())+', '+esc(nombre)+'</div><div class="dhead-fecha">'+esc(now.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+' · Posadas, Misiones</div></div><div class="dhead-reloj" id="dash-clock">'+_hhmm(now)+'</div></div>'
         +'<div class="qbar">'+qa.map(function(q){ var n=q[4]||0, bdg=(n>0)?'<span class="qbadge">'+(n>99?'99+':n)+'</span>':''; return '<div class="qbtn" data-act="'+esc(q[2])+'"><div class="qico" style="background:'+q[3]+'">'+q[0]+bdg+'</div><div class="qlbl">'+esc(q[1])+'</div></div>'; }).join('')+'</div>'
+        +'<div id="dash-red"></div>'
         // ===== ESTADO AHORA =====
         +'<div class="dash-sec">⚡ Ahora mismo</div>'
         +'<div class="dkpis">'
@@ -595,6 +596,7 @@
         +((USER.rol==='superadmin'||USER.rol==='gerencial')?'<div id="dash-vend"></div>':'');
       Array.prototype.forEach.call(view.querySelectorAll('.dkpi.kl'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
       if(USER.rol==='superadmin'||USER.rol==='gerencial') _dashDeudaVend();
+      _dashRedWireless();
       Array.prototype.forEach.call(view.querySelectorAll('.qbtn'),function(el){ el.addEventListener('click',function(){ goKpi(el.getAttribute('data-act')); }); });
       var hc=document.getElementById('huer-card'); if(hc) hc.addEventListener('click',function(){ goKpi('ot|ASIGNADA'); });
       var vb=document.getElementById('nav-val-badge'); if(vb){ if(aValidar>0){ vb.textContent=aValidar; vb.style.display=''; } else vb.style.display='none'; }
@@ -620,6 +622,17 @@
       var deuda=0, conDeuda=0; vends.forEach(function(v){ var s=v._dev-(pagMap[v.id]||0); if(s>0){ deuda+=s; conDeuda++; } });
       cont.innerHTML='<div class="dash-sec">💰 Vendedores</div><div class="dkpis">'+dkpi('$'+deuda,'Deuda a vendedores',conDeuda+' vendedor(es) con saldo','red','nav|comisiones')+'</div>';
       var el=cont.querySelector('.dkpi.kl'); if(el) el.addEventListener('click',function(){ goKpi('nav|comisiones'); });
+    }).catch(function(){});
+  }
+  // ── Red wireless (cnMaestro): semáforo de paneles caídos. Lo escribe el bot de Telegram en cnm_alarmas. ──
+  function _dashRedWireless(){
+    var cont=document.getElementById('dash-red'); if(!cont) return;
+    sbGet('cnm_alarmas?activo=eq.true&select=panel,site,clientes,caido_desde&order=clientes.desc').then(function(r){
+      r=r||[];
+      if(!r.length){ cont.innerHTML='<div class="ocard" style="border-left:4px solid #16a34a;background:#f0fdf4">📡 <b>Red wireless OK</b> — no hay paneles caídos.</div>'; return; }
+      var totCli=r.reduce(function(a,x){return a+(Number(x.clientes)||0);},0);
+      var det=r.map(function(x){ return '<div style="margin-top:6px">🔴 <b>'+esc(x.panel)+'</b>'+(x.site?' · '+esc(x.site):'')+' → <b>'+(x.clientes||0)+'</b> cliente'+((x.clientes==1)?'':'s')+' sin servicio'+(x.caido_desde?' (desde '+esc(x.caido_desde)+')':'')+'</div>'; }).join('');
+      cont.innerHTML='<div class="ocard" style="border-left:4px solid #dc2626;background:#fef2f2">📡 <b>'+r.length+' panel'+((r.length==1)?'':'es')+' caído'+((r.length==1)?'':'s')+'</b> — '+totCli+' cliente'+((totCli==1)?'':'s')+' sin servicio'+det+'</div>';
     }).catch(function(){});
   }
   // ── Operación por día: navegador ◀ ▶ que muestra la carga coordinada de cada cuadrilla para el día elegido ──
