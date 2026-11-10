@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.21';
+  var VER='v4.22';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1662,7 +1662,7 @@
         {k:'sel',t:'',sort:null,r:function(s){return '<input type="checkbox" class="sol-chk" data-id="'+s.id+'"'+(_solSel[s.id]?' checked':'')+'>';}},
         {k:'fecha',t:'Fecha',sort:function(s){return s.created_at||'';},r:function(s){return esc(fmtFecha(s.created_at));}},
         {k:'nombre',t:'Nombre',sort:function(s){return (s.nombre||'')+(s.apellido||'');},r:function(s){return esc((s.nombre||'')+' '+(s.apellido||''))+'<br><span class="muted">'+esc(s.empresa||'')+'</span>';}},
-        {k:'tipo',t:'Tipo',sort:function(s){return s.tipo_solicitud||'';},r:function(s){return s.tipo_solicitud==='cambio_plan'?'<span style="white-space:nowrap">🔄 Cambio</span>':'<span style="white-space:nowrap">🆕 Alta</span>';}},
+        {k:'tipo',t:'Tipo',sort:function(s){return s.tipo_solicitud||'';},r:function(s){return s.tipo_solicitud==='cambio_plan'?'<span style="white-space:nowrap">🔄 Cambio</span>':(s.tipo_solicitud==='cambio_titularidad'?'<span style="white-space:nowrap">👤 Titularidad</span>':'<span style="white-space:nowrap">🆕 Alta</span>');}},
         {k:'dni',t:'DNI',sort:function(s){return s.doc_numero||'';},r:function(s){return esc(s.doc_numero||'');}},
         {k:'telefono',t:'Teléfono',sort:function(s){return s.telefono||'';},r:function(s){return '<span class="telcell">'+esc(s.telefono||'')+waMini(s.telefono,(s.nombre||'')+' '+(s.apellido||''),'INSTALACION',s.domicilio_full)+'</span>';}},
         {k:'barrio',t:'Barrio',sort:function(s){return s.barrio||'';},r:function(s){return esc(s.barrio||'');}},
@@ -1760,7 +1760,7 @@
       +'<div><label class="l">Depto/Casa</label>'+inp('depto',s.depto)+'</div>'
       +'<div><label class="l">Barrio</label>'+selFrom('barrio',REF.barrios.map(function(b){return b.nombre;}),s.barrio)+'</div>'
       +'<div><label class="l">Empresa</label>'+selFrom('empresa',REF.empresas.map(function(e){return e.nombre;}),s.empresa)+'</div>'
-      +'<div><label class="l">Tipo de pedido</label><select id="fs-tipo"><option value="alta"'+((s.tipo_solicitud||'alta')==='alta'?' selected':'')+'>🆕 Alta nueva (instalación)</option><option value="cambio_plan"'+(s.tipo_solicitud==='cambio_plan'?' selected':'')+'>🔄 Cambio de plan / velocidad</option></select></div>'
+      +'<div><label class="l">Tipo de pedido</label><select id="fs-tipo"><option value="alta"'+((s.tipo_solicitud||'alta')==='alta'?' selected':'')+'>🆕 Alta nueva (instalación)</option><option value="cambio_plan"'+(s.tipo_solicitud==='cambio_plan'?' selected':'')+'>🔄 Cambio de plan / velocidad</option><option value="cambio_titularidad"'+(s.tipo_solicitud==='cambio_titularidad'?' selected':'')+'>👤 Cambio de titularidad</option></select></div>'
       +'<div><label class="l">Plan '+(s.tipo_solicitud==='cambio_plan'?'<span class="muted">(destino)</span>':'')+'</label><select id="fs-plan">'+planOpts+'</select></div>'
       +'<div><label class="l">Extras</label><div style="display:flex;gap:14px;align-items:center;height:40px"><label style="font-weight:600"><input type="checkbox" id="fs-tv"'+(s.tv_online?' checked':'')+'> TV</label><label style="font-weight:600"><input type="checkbox" id="fs-fut"'+(s.pack_futbol?' checked':'')+'> Fútbol</label></div></div>'
       +'<div style="grid-column:1/-1"><label class="l">Código ISPcube <span class="muted">(opcional — si lo cargás, la OT queda lista para asignar sin pasar por «Cargar en ISPcube»)</span></label>'+inp('cod_isp',s.codigo_ispcube)+'</div>'
@@ -1810,8 +1810,18 @@
     document.getElementById('fs-conv').addEventListener('click',function(){
       var err=document.getElementById('fs-err'); var o=leer();
       if(!o.nombre||!o.telefono){ err.textContent='Nombre y teléfono son obligatorios.'; return; }
+      var btn=this;
+      // Cambio de titularidad = trámite administrativo: el servicio YA existe, así que NO se crea cliente ni OT.
+      // Solo se guarda el pedido y se marca gestionado; el cambio real lo hace el admin en ISPcube.
+      if(o.tipo_solicitud==='cambio_titularidad'){
+        btn.disabled=true; btn.textContent='Registrando…';
+        _solPersist(o).then(function(){ return sbPatch('solicitudes_alta?id=eq.'+s.id,{ estado:'convertida', gestionado_por:USER.id, gestionado_at:new Date().toISOString() }); })
+          .then(function(){ cerrarModal(); toast('Cambio de titularidad registrado (sin OT · gestionalo en ISPcube) ✓'); vSolicitudes(); })
+          .catch(function(){ err.textContent='No se pudo guardar.'; btn.disabled=false; btn.textContent='✓ Convertir a cliente + OT'; });
+        return;
+      }
       var cod=_codIsp();
-      var btn=this; btn.disabled=true; btn.textContent='Creando…';
+      btn.disabled=true; btn.textContent='Creando…';
       _solPersist(o).then(function(){ return convertirSolicitud(Object.assign({id:s.id,lat:s.lat,lng:s.lng,codigo_ispcube:cod,tipo_solicitud:(o.tipo_solicitud||s.tipo_solicitud||null)},o)); })
         .then(function(c){ cerrarModal(); toast(c._reused?('OT creada sobre el cliente existente N° '+c.numero_cliente+' (no se duplicó) ✓'):('Cliente N° '+c.numero_cliente+' y OT creados'+(cod?' · con código ISP, lista para asignar':'')+' ✓')); vSolicitudes(); })
         .catch(function(){ err.textContent='No se pudo completar. Revisá los datos.'; btn.disabled=false; btn.textContent='✓ Convertir a cliente + OT'; });
