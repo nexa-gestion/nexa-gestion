@@ -66,7 +66,7 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.65';
+  var VER='v0.66';
   var _ALARM_MS=2*3600000; // OT en curso +2h = alarma (te olvidaste de cerrarla)
 
   // ══════════ COMODATO / CONTRATO (BETA — apagado hasta validar) ══════════
@@ -460,6 +460,7 @@
         +dInput('precinto','Precinto')+dInput('caja_nap','Caja (NAP)')+dInput('puerto','Puerto de fibra')+dInput('access_point','Access Point')+dInput('mac','MAC')+dInput('serial','Serial / Modelo')+'</div>'
         +'<div class="card"><div class="label">Fotos</div><div id="cie-fotos">'+renderFotos()+'</div><input type="file" accept="image/*" multiple id="cie-foto-in" style="margin-top:8px;border:0;padding:6px 0"></div>'
         +'<div class="card"><div class="label">Observaciones</div><textarea id="cie-obs" rows="3" style="width:100%"></textarea></div>';
+      if(COMODATO_ON && _cieEsInst()) h+=_cieComodatoHTML();
     } else {
       h+='<div class="card"><div class="label">Motivo</div><select id="cie-motivo"><option value="">— elegí —</option>'+CIE.motivos.map(function(m){return '<option>'+esc(m.nombre)+'</option>';}).join('')+'</select>'
         +'<div class="label" style="margin-top:10px">Observación <span style="color:var(--rojo)">(obligatoria)</span></div><textarea id="cie-obs" rows="3" style="width:100%" placeholder="Contá qué pasó: por qué no se pudo hacer…"></textarea></div>'
@@ -486,6 +487,7 @@
     each('.cie-dato',function(inp){ inp.oninput=function(){ if(!CIE.datos)CIE.datos={}; CIE.datos[inp.getAttribute('data-k')]=inp.value; _cieGuardar(); }; });
     each('.foto-del',function(b){ b.onclick=function(){ CIE.fotos.splice(+b.getAttribute('data-i'),1); renderCierre(); }; });
     var fin=document.getElementById('cie-foto-in'); if(fin) fin.addEventListener('change',function(e){ subirFotos(e.target.files); });
+    if(COMODATO_ON && _cieEsInst()) _cieWireComodato();
     document.getElementById('cie-confirmar').addEventListener('click',confirmarCierre);
     _cieGuardar();   // guarda el borrador tras cada render (cambios de tipo, seriales, fotos, accion)
   }
@@ -531,6 +533,68 @@
       })();
     }).catch(function(){ toast('No pude abrir la cámara. ¿Diste el permiso?'); cerrar(); });
   }
+  // ══════════ COMODATO en el cierre de instalación (solo si COMODATO_ON) ══════════
+  function _cieEsInst(){ return !!(CIE && CIE.o && CIE.o.tipo==='INSTALACION'); }
+  function _cieComodatoHTML(){
+    function box(which,lbl,st){
+      return '<div style="flex:1;min-width:130px"><div class="muted" style="font-size:12px;margin-bottom:4px">'+lbl+'</div>'
+        +(st&&st.preview?'<img src="'+st.preview+'" style="width:100%;height:92px;object-fit:cover;border-radius:8px;border:1px solid var(--bord)">'+(st.url?'':'<div class="muted" style="font-size:11px">subiendo…</div>'):'<div style="height:92px;border:1px dashed var(--bord);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--gris);font-size:12px">sin foto</div>')
+        +'<label class="btn btn-2 btn-sm" style="margin-top:6px;display:block;text-align:center">📷 '+(st?'Cambiar':'Sacar foto')+'<input type="file" accept="image/*" capture="environment" class="cie-dni-in" data-w="'+which+'" style="display:none"></label></div>';
+    }
+    return '<div class="card" style="border-left:4px solid var(--azul2)"><div class="label">📄 Contrato + Comodato <span style="color:var(--rojo)">(obligatorio)</span></div>'
+      +'<div class="muted" style="font-size:12px;margin-bottom:8px">Sacá foto del DNI del cliente (frente y dorso) y que firmen el cliente y vos. Se genera el contrato en PDF.</div>'
+      +'<div style="display:flex;gap:10px">'+box('frente','DNI frente',CIE.dnifrente)+box('dorso','DNI dorso',CIE.dnidorso)+'</div>'
+      +'<div class="label" style="margin-top:12px">✍️ Firma del cliente</div>'+_firmaPad('cli')
+      +'<div class="label" style="margin-top:10px">✍️ Firma del técnico</div>'+_firmaPad('tec')
+      +'</div>';
+  }
+  function _cieSubirDni(which,file){
+    comprimir(file).then(function(blob){
+      var rd=new FileReader();
+      rd.onload=function(){ CIE['dni'+which]={ preview:rd.result, data:rd.result, url:null }; renderCierre();
+        var nombre=CIE.o.id+'/dni_'+which+'_'+Date.now()+'.jpg';
+        fetch(SB_URL+'/storage/v1/object/ot-fotos/'+nombre,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'image/jpeg','x-upsert':'true'},body:blob})
+          .then(function(r){ if(!r.ok) throw 0; if(CIE['dni'+which]) CIE['dni'+which].url=SB_URL+'/storage/v1/object/public/ot-fotos/'+nombre; renderCierre(); })
+          .catch(function(){ toast('No se pudo subir el DNI. Reintentá.'); });
+      };
+      rd.readAsDataURL(blob);
+    });
+  }
+  function _cieWireComodato(){
+    each('.cie-dni-in',function(inp){ inp.addEventListener('change',function(e){ if(e.target.files[0]) _cieSubirDni(inp.getAttribute('data-w'),e.target.files[0]); }); });
+    _initFirma('cli',CIE); _initFirma('tec',CIE);
+    var cc=document.getElementById('fp-clear-cli'); if(cc) cc.addEventListener('click',function(){ _clearFirma('cli',CIE); });
+    var ct=document.getElementById('fp-clear-tec'); if(ct) ct.addEventListener('click',function(){ _clearFirma('tec',CIE); });
+  }
+  function _cieSerialComodato(){ var out=[]; CIE.kitMat.forEach(function(m){ var s=CIE.mats[m.id]; if(s&&s.sel&&s.sel.length) s.sel.forEach(function(v){ out.push(v); }); }); if(CIE.datos&&CIE.datos.mac) out.push('MAC '+CIE.datos.mac); return out.join(' · ')||'—'; }
+  function _cieMatComodato(){ var out=[]; CIE.kitMat.forEach(function(m){ var s=CIE.mats[m.id]; if(!s)return; var cant=s.sel&&s.sel.length?s.sel.length:(s.cant||0); if(cant>0) out.push(m.nombre+' x'+cant); }); return out.join(', ')||'—'; }
+  // Genera y sube el comodato; devuelve los campos a guardar en la OT (o null si no aplica).
+  function _cieComodatoExtra(g){
+    if(!(COMODATO_ON && _cieEsInst() && CIE.accion==='REALIZADA')) return Promise.resolve(null);
+    var o=CIE.o;
+    return sbGet('ordenes_trabajo?id=eq.'+o.id+'&select=numero,clientes(numero_cliente,nombre,apellido,doc_numero,domicilio_full,barrio,telefono,email,lat,lng,tecnologia,planes(nombre,bajada_mbps))&limit=1').then(function(rr){
+      var ot=(rr&&rr[0])||{}, c=ot.clientes||{}, pl=c.planes||{};
+      return Promise.all([_uploadFirma('cli',CIE), _uploadFirma('tec',CIE)]).then(function(fu){
+        var d={ cliente_nombre:((c.nombre||'')+' '+(c.apellido||'')).trim(), cliente_doc:c.doc_numero||'', cliente_iva:'Consumidor Final',
+          domicilio:c.domicilio_full||'', barrio:c.barrio||'', lat:(c.lat!=null?c.lat:(g?g.lat:'')), lng:(c.lng!=null?c.lng:(g?g.lng:'')),
+          telefono:c.telefono||'', email:c.email||'', plan_nombre:pl.nombre||'', mbps:(pl.bajada_mbps||''), tecnologia:c.tecnologia||'',
+          precio_mensual:'', instalacion:'', cuotas:'1', fecha_conexion:new Date().toLocaleDateString('es-AR'),
+          equipo_tipo:'ONU / Router', equipo_modelo:(CIE.datos&&CIE.datos.serial)||'', equipo_serial:_cieSerialComodato(), equipo_valor:'',
+          materiales:_cieMatComodato(), ot_numero:ot.numero||o.numero||'', cliente_numero:c.numero_cliente||'', cuadrilla:CUAD.nombre||'',
+          fecha_hora:new Date().toLocaleString('es-AR'), gps_firma:(g?(g.lat+', '+g.lng):'') };
+        var doc=_comodatoPDF(d,{ cliente:CIE.firmaCliData, tecnico:CIE.firmaTecData, dniF:(CIE.dnifrente&&CIE.dnifrente.data), dniD:(CIE.dnidorso&&CIE.dnidorso.data) });
+        var blob=doc.output('blob'), nombre=o.id+'/comodato_'+Date.now()+'.pdf';
+        return fetch(SB_URL+'/storage/v1/object/ot-fotos/'+nombre,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/pdf','x-upsert':'true'},body:blob}).then(function(r){
+          if(!r.ok) throw 0;
+          return { comodato_pdf_url:SB_URL+'/storage/v1/object/public/ot-fotos/'+nombre,
+            dni_frente_url:(CIE.dnifrente&&CIE.dnifrente.url)||null, dni_dorso_url:(CIE.dnidorso&&CIE.dnidorso.url)||null,
+            firma_cliente_url:fu[0]||null, firma_tecnico_url:fu[1]||null,
+            comodato_firmado_at:new Date().toISOString(), comodato_gps:(g?(g.lat+','+g.lng):null), comodato_version:COMODATO_VER };
+        });
+      });
+    });
+  }
+
   function confirmarCierre(){
     var err=document.getElementById('cie-err'); err.textContent='';
     var o=CIE.o, btn=document.getElementById('cie-confirmar');
@@ -547,10 +611,17 @@
       }
     }
     if(CIE.fotos.some(function(f){return !f.url;})){ err.textContent='Esperá a que terminen de subir las fotos.'; return; }
+    if(COMODATO_ON && _cieEsInst() && CIE.accion==='REALIZADA'){
+      if(!(CIE.dnifrente&&CIE.dnifrente.url)||!(CIE.dnidorso&&CIE.dnidorso.url)){ err.textContent='Sacá foto del DNI del cliente (frente y dorso) y esperá que suban.'; return; }
+      if(!CIE.firmaCliInk||!CIE.firmaCliData){ err.textContent='Falta la firma del cliente.'; return; }
+      if(!CIE.firmaTecInk||!CIE.firmaTecData){ err.textContent='Falta la firma del técnico.'; return; }
+    }
     btn.disabled=true; btn.textContent='Guardando…';
     getGPS().then(function(g){
+     _cieComodatoExtra(g).then(function(_cx){
       var datos={}; each('.cie-dato',function(inp){ var v=inp.value.trim(); if(v) datos[inp.getAttribute('data-k')]=v; });
       var jobs=[], upd={ estado:(CIE.accion==='REALIZADA'?'CERRADA_TECNICO':'NO_REALIZADA'), fin_tec_at:new Date().toISOString(), observaciones_tec:obs||null };
+      if(_cx) Object.assign(upd,_cx);   // campos del comodato (PDF/DNI/firmas + metadatos) — sin comodato queda null y no toca nada
       if(CIE.ttId) upd.tipo_trabajo_id=CIE.ttId;   // guarda el tipo de trabajo que eligió el técnico
       if(g){ upd.lat_fin=g.lat; upd.lng_fin=g.lng; }
       if(CIE.accion==='NO_REALIZADA') upd.motivo_cancelacion=CIE._motivo;
@@ -576,6 +647,7 @@
       }
       var eraRechazo=(CIE.accion==='NO_REALIZADA');
       Promise.all(jobs).then(function(){ _cieBorrar(); toast(eraRechazo?'Visita rechazada ✓':'Cierre guardado ✓'); CIE=null; listState.filtro='cerradas'; vLista(); }).catch(function(){ err.textContent='Error al guardar. Reintentá.'; btn.disabled=false; btn.textContent=eraRechazo?'✕ Confirmar rechazo':'✔️ Confirmar cierre'; });
+     }).catch(function(){ err.textContent='No se pudo generar el comodato. Revisá las fotos del DNI, las firmas y la señal, y reintentá.'; btn.disabled=false; btn.textContent='✔️ Confirmar cierre'; });
     });
   }
 
