@@ -58,6 +58,7 @@
   .menu-card a{display:block;padding:15px 18px;border-bottom:1px solid var(--bord);font-weight:600;color:var(--tinta);cursor:pointer}
   .menu-card a:last-child{border-bottom:0}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 <div id="app"><div class="center"><div class="spin"></div></div></div>
@@ -65,8 +66,88 @@
 <script>
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
-  var VER='v0.64';
+  var VER='v0.65';
   var _ALARM_MS=2*3600000; // OT en curso +2h = alarma (te olvidaste de cerrarla)
+
+  // ══════════ COMODATO / CONTRATO (BETA — apagado hasta validar) ══════════
+  // Con COMODATO_ON=false el cierre de instalación funciona EXACTAMENTE como hoy (no pide DNI ni firma).
+  var COMODATO_ON=false;                       // <-- poner true SOLO cuando esté probado
+  var COMODATO_VER='NEXA-CSC-v1-2026-11';
+  // Datos fijos de NEXA para el documento (completar los « » cuando Gastón los confirme):
+  var NEXA_DOC={ enacom:'Licencia TIC · RESOL-2026-892-APN-ENACOM#JGM', web:'«www.nexa____.com.ar»',
+    atencion:'«tel / WhatsApp ____»', cierre_fact:'«día __ / vence el __»', dias_devolucion:'«__»' };
+  // Genera el PDF del contrato+comodato. d=datos (strings), imgs={cliente,tecnico,dniF,dniD} (dataURL). Devuelve el doc jsPDF.
+  function _comodatoPDF(d, imgs){
+    imgs=imgs||{};
+    var jsPDF=window.jspdf.jsPDF, doc=new jsPDF({unit:'mm',format:'a4'});
+    var M=16,W=210,Wc=W-M*2,y=M;
+    function ln(h){ y+=h; if(y>272){ doc.addPage(); y=M; } }
+    function need(h){ if(y+h>272){ doc.addPage(); y=M; } }
+    function P(txt,o){ o=o||{}; doc.setFont('times',o.b?'bold':(o.i?'italic':'normal')); doc.setFontSize(o.s||9.5);
+      var L=doc.splitTextToSize(txt,o.w||Wc); for(var i=0;i<L.length;i++){ need(5); doc.text(L[i],o.x||M,y,{align:o.align||'left'}); ln(o.lh||4.4); } }
+    function H2(t){ ln(3); need(9); doc.setFont('times','bold'); doc.setFontSize(11); doc.text(t,M,y); ln(1.5); doc.setDrawColor(30,30,30); doc.setLineWidth(0.4); doc.line(M,y,W-M,y); ln(3.5); }
+    function fila(k,v){ need(7); doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
+      var kh=doc.splitTextToSize(k,38), vh=doc.splitTextToSize(v||'—',Wc-42), h=Math.max(kh.length,vh.length)*4.2+2.5;
+      doc.setFillColor(241,245,249); doc.rect(M,y-0.5,40,h,'F'); doc.rect(M,y-0.5,40,h); doc.rect(M+40,y-0.5,Wc-40,h);
+      doc.setFont('times','bold'); doc.setFontSize(8.5); doc.text(kh,M+1.5,y+3);
+      doc.setFont('times','normal'); doc.setTextColor(29,78,216); doc.text(vh,M+42,y+3); doc.setTextColor(26,26,26); ln(h); }
+    function OL(items){ for(var i=0;i<items.length;i++){ need(8); doc.setFont('times','bold'); doc.setFontSize(9.5); doc.text((i+1)+'.',M,y); P(items[i],{x:M+6,w:Wc-6}); ln(1); } }
+    doc.setFont('times','bold'); doc.setFontSize(20); doc.setTextColor(29,78,216); doc.text('NEXA',W/2,y+2,{align:'center'}); doc.setTextColor(26,26,26); ln(7);
+    doc.setFont('times','bold'); doc.setFontSize(11.5);
+    var tt=doc.splitTextToSize('SOLICITUD / CONTRATO DE SERVICIO DE ACCESO A INTERNET Y COMODATO DE EQUIPO',Wc);
+    for(var i=0;i<tt.length;i++){ doc.text(tt[i],W/2,y,{align:'center'}); ln(5); }
+    P('NEXA S.A.S. — CUIT 30-71927954-2 — Ayacucho 1903, Piso 1, Posadas (3300), Misiones — Responsable Inscripto',{s:8,align:'center',x:W/2,w:Wc,lh:3.6});
+    P(NEXA_DOC.enacom+' · Web: '+NEXA_DOC.web+' · Atención/reclamos: '+NEXA_DOC.atencion,{s:8,align:'center',x:W/2,w:Wc,lh:3.6}); ln(1);
+    H2('A · DATOS DEL CLIENTE Y DEL SERVICIO');
+    fila('Cliente',d.cliente_nombre); fila('DNI / CUIT',(d.cliente_doc||'')+'    ·    Condición IVA: '+(d.cliente_iva||'Consumidor Final'));
+    fila('Domicilio',(d.domicilio||'')+' — '+(d.barrio||'')+' · Posadas/Garupá, Misiones');
+    fila('Ubicación (GPS)',(d.lat||'')+', '+(d.lng||'')+'    ·    Tel: '+(d.telefono||''));
+    fila('Correo',d.email||'—'); fila('Plan',(d.plan_nombre||'')+' — hasta '+(d.mbps||'')+' Mbps    ·    '+(d.tecnologia||''));
+    fila('Precio mensual','$ '+(d.precio_mensual||'____')+' (IVA incl.)    ·    Instalación: $ '+(d.instalacion||'____')+' ('+(d.cuotas||'1')+' cuota/s)');
+    fila('Fecha de conexión',(d.fecha_conexion||'')+'    ·    Facturación: '+NEXA_DOC.cierre_fact); ln(2);
+    doc.setFont('times','bold'); doc.setFontSize(10); doc.text('Equipo entregado en comodato',M,y); ln(4);
+    fila('Equipo',(d.equipo_tipo||'ONU / Router')+'    ·    Modelo: '+(d.equipo_modelo||'—'));
+    fila('Serie / MAC',(d.equipo_serial||'—')+'    ·    Valor reposición: $ '+(d.equipo_valor||'____'));
+    fila('Materiales',d.materiales||'—');
+    H2('B · CONDICIONES GENERALES DEL SERVICIO');
+    OL(['Objeto y aceptación. La presente constituye la Solicitud y el Contrato de Servicio de Acceso a Internet (el "Servicio") entre NEXA S.A.S. (el "Prestador") y el cliente del apartado A (el "Cliente"). El Cliente declara haber leído y aceptado estas condiciones y las Políticas de Uso Aceptable (PUAS) publicadas en la web del Prestador. El Servicio se presta en el marco de la Ley 27.078 y el Reglamento de Clientes de los Servicios TIC.',
+      'Vigencia. Por tiempo indeterminado desde la fecha de conexión, sin plazo mínimo de permanencia, rescindible por el Cliente en cualquier momento conforme la cláusula 8.',
+      'Precio y facturación. El Cliente abona el abono mensual del apartado A, más impuestos y cargos que correspondan. La factura se emite con no menos de diez (10) días corridos de antelación al vencimiento. Toda modificación de precios se notifica con sesenta (60) días de antelación; si el Cliente no la acepta, puede rescindir sin cargo.',
+      'Mora. Se produce de pleno derecho por el vencimiento del plazo. Los saldos impagos devengan el interés informado en la factura. La falta de pago no habilita recargos ni suspensión si la factura se remitió fuera del plazo del punto 3.',
+      'Suspensión por falta de pago. Impaga la factura, el Prestador podrá suspender el Servicio previo aviso. Acreditado el pago o convenido un plan, se reactiva dentro de las veinticuatro (24) horas. Si la suspensión fuera indebida, se revierte sin cargo.',
+      'Baja por el Prestador. Podrá darse por falta de pago, con notificación fehaciente y antelación no menor a cinco (5) días hábiles. La baja no libera de las deudas devengadas.',
+      'Uso y responsabilidad. El Cliente es responsable del contenido que transmita y usa el Servicio conforme a la ley y las PUAS, con fines lícitos y dentro del domicilio de instalación, sin cederlo ni revenderlo. El Prestador puede realizar mantenimientos con interrupciones programadas, procurando avisar.',
+      'Baja o rescisión por el Cliente. El Cliente puede dar de baja en cualquier momento, por la misma vía por la que contrató o cualquier otra (teléfono, WhatsApp, web o personalmente). Se hace efectiva al solicitarla y el Prestador remite constancia dentro de las setenta y dos (72) horas. La baja no puede condicionarse al pago previo de deudas. Los créditos pagados y no consumidos se reintegran dentro de los treinta (30) días.',
+      'Derecho de revocación. Si se contrató por medios electrónicos o telefónicos, el Cliente puede revocar dentro de los diez (10) días corridos de celebrado el contrato o de la instalación, sin causa ni costo (art. 34, Ley 24.240).',
+      'Protección de datos. Los datos se tratan conforme a la Ley 25.326, solo para prestación, facturación y soporte. El Cliente puede ejercer acceso, rectificación y supresión.',
+      'Reclamos. Por los canales de atención del encabezado y, ante falta de solución, ante el ENACOM (www.enacom.gob.ar).',
+      'Características técnicas y factibilidad. El plan ofrece velocidad de bajada de HASTA '+(d.mbps||'__')+' Mbps (máxima), que puede variar según cableado interno, cantidad de dispositivos, uso por WiFi, distancia y congestión. Sujeto a factibilidad técnica y cobertura. Servicios o equipos adicionales tienen su propio precio informado.',
+      'Domicilio y jurisdicción. Las partes constituyen domicilio en los indicados. Competente la justicia ordinaria de Posadas, Misiones, sin perjuicio del derecho del Cliente consumidor a demandar ante el juez de su domicilio.']);
+    H2('C · CONTRATO DE COMODATO DEL EQUIPO');
+    OL(['Entrega en comodato. El Prestador entrega y el Cliente recibe de conformidad el/los equipo(s) del apartado A en calidad de comodato (préstamo de uso gratuito, arts. 1533 y ss. CCyC), por el plazo del Servicio. La propiedad del equipo permanece en cabeza del Prestador; el Cliente adquiere solo la tenencia para el uso del Servicio.',
+      'Conservación y uso. El Cliente conserva el/los equipo(s) en buen estado, los usa conforme a su destino y solo en el domicilio de instalación, sin cederlos, modificarlos ni abrirlos. Responde por daños por su culpa, mal uso o negligencia.',
+      'Restitución. Finalizado el Servicio por cualquier causa, el Cliente restituye el/los equipo(s) dentro de '+NEXA_DOC.dias_devolucion+' días, en el estado en que lo recibió salvo desgaste normal. El Prestador entrega constancia de devolución.',
+      'Pérdida, robo o no restitución. En caso de pérdida, robo, destrucción o falta de restitución, el Cliente abona el valor de reposición del apartado A. Ante robo o hurto, acompañará la denuncia policial.']);
+    H2('D · DECLARACIÓN Y FIRMA');
+    P('El Cliente declara bajo juramento que los datos son verdaderos, que recibió copia de este contrato, de las PUAS y del equipo en comodato en perfecto estado de funcionamiento, y presta conformidad firmando al pie. Se considera aceptado con la firma del Cliente y la efectiva instalación del Servicio.');
+    ln(3); need(42); var colW=(Wc-16)/2;
+    if(imgs.cliente) doc.addImage(imgs.cliente,'PNG',M,y,colW,16);
+    if(imgs.tecnico) doc.addImage(imgs.tecnico,'PNG',M+colW+16,y,colW,16);
+    y+=17; doc.setDrawColor(26,26,26); doc.setLineWidth(0.3); doc.line(M,y,M+colW,y); doc.line(M+colW+16,y,M+colW+16+colW,y); ln(4);
+    doc.setFont('times','normal'); doc.setFontSize(8.5);
+    doc.text('Firma del Cliente',M,y); doc.text('Firma del Técnico',M+colW+16,y); ln(4);
+    doc.text('Aclaración: '+(d.cliente_nombre||''),M,y); doc.text('Cuadrilla: '+(d.cuadrilla||''),M+colW+16,y); ln(4);
+    doc.text('DNI: '+(d.cliente_doc||''),M,y); ln(6);
+    need(32); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text('Documento de identidad (frente / dorso):',M,y); ln(2);
+    if(imgs.dniF) doc.addImage(imgs.dniF,'JPEG',M,y,42,26);
+    if(imgs.dniD) doc.addImage(imgs.dniD,'JPEG',M+48,y,42,26); ln(28);
+    need(18); doc.setDrawColor(203,213,225); doc.setLineWidth(0.2); doc.line(M,y,W-M,y); ln(3);
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(85,85,85); doc.text('REGISTRO DE LA FIRMA ELECTRÓNICA (automático):',M,y); ln(3.2);
+    doc.setFont('helvetica','normal');
+    P('Fecha y hora: '+(d.fecha_hora||'')+'  ·  GPS de la firma: '+(d.gps_firma||'')+'  ·  Versión: '+COMODATO_VER+'  ·  N° OT / Cliente: '+(d.ot_numero||'')+' / '+(d.cliente_numero||'')+'  ·  Firma electrónica Ley 25.506.',{s:7.5,lh:3.2});
+    doc.setTextColor(120,120,120); doc.setFontSize(7); doc.text('NEXA S.A.S. · Documento firmado electrónicamente · Original para el Cliente — copia para NEXA.',W/2,y,{align:'center'});
+    return doc;
+  }
   // Íconos SVG del rubro (no cartón): caja NAP (bocas de fibra) y ONU (equipo con antena)
   function _icoNap(sz){ var s=sz||15; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block"><rect x="3" y="4" width="18" height="16" rx="2.5" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/><line x1="3.6" y1="9" x2="20.4" y2="9" stroke="#2563eb" stroke-width="1.2"/><circle cx="8" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="12" cy="14.6" r="1.4" fill="#2563eb"/><circle cx="16" cy="14.6" r="1.4" fill="#2563eb"/></svg>'; }
   function _icoOnu(sz){ var s=sz||15; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" style="vertical-align:-2px;display:inline-block"><rect x="3" y="11" width="18" height="8" rx="2" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/><circle cx="6.8" cy="15" r="1.3" fill="#16a34a"/><circle cx="10.4" cy="15" r="1.1" fill="#94a3b8"/><line x1="16.5" y1="11" x2="16.5" y2="5" stroke="#475569" stroke-width="1.5"/><circle cx="16.5" cy="4.2" r="1.4" fill="#475569"/></svg>'; }
