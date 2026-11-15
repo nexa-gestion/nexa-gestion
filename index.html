@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.26';
+  var VER='v4.27';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3480,6 +3480,7 @@
       +'</div>'
       +'<div class="card" style="height:300px;margin-bottom:14px;padding:10px"><canvas id="g-canvas"></canvas></div>'
       +'<div id="g-bloq-wrap" style="margin-bottom:14px"></div>'
+      +'<div id="g-altas-wrap" style="margin-bottom:14px"></div>'
       +'<div id="g-kpis"><div class="center"><div class="spin"></div></div></div>'
       +'<div id="g-comp" style="margin-top:14px"></div>'
       +'<div id="g-tiempos" style="margin-top:14px"></div>';
@@ -3548,19 +3549,22 @@
     cont.innerHTML='<div class="card"><div class="label">🧩 Composición de la base</div><div class="center"><div class="spin"></div></div></div>';
     sbGetAll('clientes?estado=in.(activo,bloqueado)&es_508=is.false&gratis=is.false&select=tecnologia,empresa,plan_precio,estado').then(function(d){
       d=Array.isArray(d)?d:[];
-      var tot=d.length, mrr=0, act=0, blo=0, tec={}, emp={};
-      d.forEach(function(c){ var p=Number(c.plan_precio||0); mrr+=p; if(c.estado==='activo')act++; else blo++; var t=(c.tecnologia||'(sin dato)'); var te=tec[t]||(tec[t]={n:0,mrr:0}); te.n++; te.mrr+=p; var e=(c.empresa&&String(c.empresa).trim())||'(sin empresa)'; var ee=emp[e]||(emp[e]={n:0,mrr:0}); ee.n++; ee.mrr+=p; });
-      var arpu=tot?mrr/tot:0;
+      var mrr=0, act=0, blo=0, bloMrr=0, tec={}, emp={};
+      d.forEach(function(c){ var p=Number(c.plan_precio||0);
+        if(c.estado==='activo'){ act++; mrr+=p; var t=(c.tecnologia||'(sin dato)'); var te=tec[t]||(tec[t]={n:0,mrr:0}); te.n++; te.mrr+=p; var e=(c.empresa&&String(c.empresa).trim())||'(sin empresa)'; var ee=emp[e]||(emp[e]={n:0,mrr:0}); ee.n++; ee.mrr+=p; }
+        else { blo++; bloMrr+=p; }   // bloqueados: cortados por deuda, NO son base que paga
+      });
+      var base=act, arpu=act?mrr/act:0;
       var fmt=function(n){ return '$'+Math.round(n).toLocaleString('es-AR'); };
       var mini=function(ico,lab,val,sub,col){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--bord);border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase">'+ico+' '+lab+'</div><div style="font-size:23px;font-weight:800;color:'+col+';margin:2px 0;line-height:1.1">'+val+'</div><div style="font-size:11.5px;color:#94a3b8">'+sub+'</div></div>'; };
-      var barr=function(obj,titulo,money){ var arr=Object.keys(obj).map(function(k){return [k,obj[k]];}).sort(function(a,b){return b[1].n-a[1].n;}); var max=arr.length?arr[0][1].n:1; return '<div class="card" style="flex:1;min-width:260px"><div class="label">'+titulo+'</div>'+arr.map(function(m){ var pct=Math.round(m[1].n/(tot||1)*100); return '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12.5px"><span style="width:92px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span><div style="flex:1;background:#eef2f7;border-radius:6px;height:15px;overflow:hidden"><div style="width:'+Math.round(m[1].n/max*100)+'%;background:#2563eb;height:100%"></div></div><b style="width:116px;text-align:right">'+m[1].n.toLocaleString('es-AR')+' ('+pct+'%)'+(money?(' · '+fmt(m[1].mrr)):'')+'</b></div>'; }).join('')+'</div>'; };
+      var barr=function(obj,titulo,money){ var arr=Object.keys(obj).map(function(k){return [k,obj[k]];}).sort(function(a,b){return b[1].n-a[1].n;}); var max=arr.length?arr[0][1].n:1; return '<div class="card" style="flex:1;min-width:260px"><div class="label">'+titulo+'</div>'+arr.map(function(m){ var pct=Math.round(m[1].n/(base||1)*100); return '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12.5px"><span style="width:92px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m[0])+'</span><div style="flex:1;background:#eef2f7;border-radius:6px;height:15px;overflow:hidden"><div style="width:'+Math.round(m[1].n/max*100)+'%;background:#2563eb;height:100%"></div></div><b style="width:116px;text-align:right">'+m[1].n.toLocaleString('es-AR')+' ('+pct+'%)'+(money?(' · '+fmt(m[1].mrr)):'')+'</b></div>'; }).join('')+'</div>'; };
       var h='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
-        +mini('👥','Base que paga',tot.toLocaleString('es-AR'),act.toLocaleString('es-AR')+' activos · '+blo.toLocaleString('es-AR')+' bloqueados','#0f172a')
-        +mini('💵','Facturación / mes (MRR)',fmt(mrr),'ingreso recurrente teórico','#16a34a')
-        +mini('📊','ARPU',fmt(arpu),'ingreso promedio por cliente','#2563eb')
+        +mini('👥','Base que paga',act.toLocaleString('es-AR'),'activos al día · +'+blo.toLocaleString('es-AR')+' bloqueados (deben)','#0f172a')
+        +mini('💵','Ingreso recurrente (MRR)',fmt(mrr),'teórico de los activos','#16a34a')
+        +mini('📊','ARPU',fmt(arpu),'promedio por cliente activo','#2563eb')
         +'</div>'
         +'<div style="display:flex;gap:12px;flex-wrap:wrap">'+barr(tec,'📡 Por tecnología',true)+barr(emp,'🏢 Por empresa',true)+'</div>'
-        +'<div class="muted" style="font-size:11.5px;margin-top:8px">Base = clientes <b>activos + bloqueados</b> que facturan (sin traspaso 508 ni gratis). MRR = suma de <code>plan_precio</code> de ISPcube (ingreso teórico si todos pagan; la cobranza real está en 💰 Cobranza).</div>';
+        +'<div class="muted" style="font-size:11.5px;margin-top:8px">Base que paga = clientes <b>activos</b> (sin 508 ni gratis). Los <b>bloqueados</b> están cortados por deuda → no cuentan como base. MRR = suma de <code>plan_precio</code> (teórico de los activos). La facturación/cobranza real está en 💰 Cobranza.</div>';
       cont.innerHTML=h;
     }).catch(function(){ cont.innerHTML='<div class="card muted" style="font-size:13px">No se pudo cargar la composición.</div>'; });
   }
@@ -3572,22 +3576,50 @@
     window._gState.hasta=_hoyISO();
   }
   // Bloqueados en el tiempo (foto diaria): sube con el corte del 22-23 y baja a medida que pagan
+  var _gSnap=null, _gBloqPer=90;   // datos cacheados + período elegido (días; 0 = todo)
   function _gGraficoBloq(){
     var w=document.getElementById('g-bloq-wrap'); if(!w) return;
+    if(_gSnap){ _gBloqRender(); return; }
     sbGetAll('snapshots_diarios?select=fecha,activos,bloqueados&order=fecha.asc').then(function(d){
-      d=Array.isArray(d)?d:[];
-      if(d.length<2){ w.innerHTML='<div class="card" style="background:#f8fafc"><div style="font-weight:700;margin-bottom:4px">🔒 Bloqueados en el tiempo</div><div class="muted" style="font-size:13px">📸 Empezamos a guardar la <b>foto diaria</b> de la base. La curva de bloqueados (cómo sube con el corte del 22-23 y baja cuando pagan) se va a ir dibujando día a día — el sync corre 2 veces por día. Mañana ya vas a ver los primeros puntos.'+(d.length?(' <span style="color:#16a34a">Ya hay '+d.length+' día guardado.</span>'):'')+'</div></div>'; return; }
-      w.innerHTML='<div class="card"><div style="font-weight:700;margin-bottom:8px">🔒 Bloqueados en el tiempo <span class="muted" style="font-weight:400;font-size:12.5px">· foto diaria</span></div><div style="height:260px"><canvas id="g-canvas-bloq"></canvas></div></div>';
-      ensureChartJs(function(){
-        if(window._gChartBloq){ try{window._gChartBloq.destroy();}catch(e){} }
-        var cv=document.getElementById('g-canvas-bloq'); if(!cv||!window.Chart) return;
-        var lbl=d.map(function(x){var p=String(x.fecha).split('-');return p[2]+'/'+p[1];});
-        window._gChartBloq=new Chart(cv.getContext('2d'),{type:'line',data:{labels:lbl,datasets:[
-          {label:'Bloqueados',data:d.map(function(x){return x.bloqueados;}),borderColor:'#d97706',backgroundColor:'rgba(217,119,6,.12)',tension:.3,fill:true,borderWidth:2,pointRadius:2,pointHoverRadius:5},
-          {label:'Activos',data:d.map(function(x){return x.activos;}),borderColor:'#16a34a',tension:.3,fill:false,borderWidth:2,pointRadius:1,pointHoverRadius:4,hidden:true}
-        ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}}},scales:{y:{beginAtZero:false,ticks:{precision:0}}}}});
-      });
+      _gSnap=Array.isArray(d)?d:[]; _gBloqRender();
     }).catch(function(){ w.innerHTML='<div class="card muted" style="font-size:13px">🔒 Bloqueados en el tiempo — corré el SQL de snapshots para activarlo.</div>'; });
+  }
+  window._gBloqSet=function(p){ _gBloqPer=p; _gBloqRender(); };
+  function _gBloqFiltra(){ var d=_gSnap||[]; if(!_gBloqPer) return d; var lim=new Date(); lim.setDate(lim.getDate()-_gBloqPer); var li=lim.toISOString().slice(0,10); var r=d.filter(function(x){return String(x.fecha)>=li;}); return r.length>=2?r:d.slice(-2); }
+  function _gBloqRender(){
+    var w=document.getElementById('g-bloq-wrap'); if(!w) return; var all=_gSnap||[];
+    if(all.length<2){ w.innerHTML='<div class="card" style="background:#f8fafc"><div style="font-weight:700;margin-bottom:4px">🔒 Bloqueados en el tiempo</div><div class="muted" style="font-size:13px">📸 Empezamos a guardar la <b>foto diaria</b> de la base. La curva se va a dibujar día a día — el sync corre 2 veces por día.'+(all.length?(' <span style="color:#16a34a">Ya hay '+all.length+' día guardado.</span>'):'')+'</div></div>'; return; }
+    var d=_gBloqFiltra();
+    var pers=[['Todo',0],['1 mes',30],['2 meses',60],['3 meses',90],['6 meses',180]];
+    var btns=pers.map(function(p){ return '<button class="btn btn-2" style="width:auto;padding:4px 11px;font-size:12px'+(_gBloqPer===p[1]?';background:#2563eb;color:#fff;border-color:#2563eb':'')+'" onclick="_gBloqSet('+p[1]+')">'+p[0]+'</button>'; }).join(' ');
+    w.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px"><div style="font-weight:700">🔒 Bloqueados en el tiempo <span class="muted" style="font-weight:400;font-size:12.5px">· foto diaria</span></div><div style="display:flex;gap:5px;flex-wrap:wrap">'+btns+'</div></div><div style="height:260px"><canvas id="g-canvas-bloq"></canvas></div></div>';
+    ensureChartJs(function(){
+      if(window._gChartBloq){ try{window._gChartBloq.destroy();}catch(e){} }
+      var cv=document.getElementById('g-canvas-bloq'); if(!cv||!window.Chart) return;
+      var lbl=d.map(function(x){var p=String(x.fecha).split('-');return p[2]+'/'+p[1];});
+      window._gChartBloq=new Chart(cv.getContext('2d'),{type:'line',data:{labels:lbl,datasets:[
+        {label:'Bloqueados',data:d.map(function(x){return x.bloqueados;}),borderColor:'#d97706',backgroundColor:'rgba(217,119,6,.12)',tension:.3,fill:true,borderWidth:2,pointRadius:2,pointHoverRadius:5},
+        {label:'Activos',data:d.map(function(x){return x.activos;}),borderColor:'#16a34a',tension:.3,fill:false,borderWidth:2,pointRadius:1,pointHoverRadius:4,hidden:true}
+      ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}}},scales:{y:{beginAtZero:false,ticks:{precision:0}}}}});
+    });
+    _gAltasRender();
+  }
+  // Base activa en el tiempo (foto diaria): sube con las altas, baja con las bajas. Mismo selector que bloqueados.
+  function _gAltasRender(){
+    var w=document.getElementById('g-altas-wrap'); if(!w) return; var all=_gSnap||[];
+    if(all.length<2){ w.innerHTML=''; return; }
+    var d=_gBloqFiltra();
+    var pers=[['Todo',0],['1 mes',30],['2 meses',60],['3 meses',90],['6 meses',180]];
+    var btns=pers.map(function(p){ return '<button class="btn btn-2" style="width:auto;padding:4px 11px;font-size:12px'+(_gBloqPer===p[1]?';background:#16a34a;color:#fff;border-color:#16a34a':'')+'" onclick="_gBloqSet('+p[1]+')">'+p[0]+'</button>'; }).join(' ');
+    w.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px"><div style="font-weight:700">📈 Base activa en el tiempo <span class="muted" style="font-weight:400;font-size:12.5px">· sube con las altas, baja con las bajas</span></div><div style="display:flex;gap:5px;flex-wrap:wrap">'+btns+'</div></div><div style="height:260px"><canvas id="g-canvas-altas"></canvas></div></div>';
+    ensureChartJs(function(){
+      if(window._gChartAltas){ try{window._gChartAltas.destroy();}catch(e){} }
+      var cv=document.getElementById('g-canvas-altas'); if(!cv||!window.Chart) return;
+      var lbl=d.map(function(x){var p=String(x.fecha).split('-');return p[2]+'/'+p[1];});
+      window._gChartAltas=new Chart(cv.getContext('2d'),{type:'line',data:{labels:lbl,datasets:[
+        {label:'Clientes activos',data:d.map(function(x){return x.activos;}),borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.12)',tension:.3,fill:true,borderWidth:2,pointRadius:2,pointHoverRadius:5}
+      ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}}},scales:{y:{beginAtZero:false,ticks:{precision:0}}}}});
+    });
   }
   // Gráfico de ondas: evolución mensual de altas / bajas / netas / desconexiones (Chart.js, tooltip al pasar el mouse)
   function _gGrafico(meses){
