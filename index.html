@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.27';
+  var VER='v4.28';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -3590,7 +3590,7 @@
     var w=document.getElementById('g-bloq-wrap'); if(!w) return; var all=_gSnap||[];
     if(all.length<2){ w.innerHTML='<div class="card" style="background:#f8fafc"><div style="font-weight:700;margin-bottom:4px">🔒 Bloqueados en el tiempo</div><div class="muted" style="font-size:13px">📸 Empezamos a guardar la <b>foto diaria</b> de la base. La curva se va a dibujar día a día — el sync corre 2 veces por día.'+(all.length?(' <span style="color:#16a34a">Ya hay '+all.length+' día guardado.</span>'):'')+'</div></div>'; return; }
     var d=_gBloqFiltra();
-    var pers=[['Todo',0],['1 mes',30],['2 meses',60],['3 meses',90],['6 meses',180]];
+    var pers=[['Todo',0],['7 días',7],['15 días',15],['1 mes',30],['3 meses',90],['6 meses',180]];
     var btns=pers.map(function(p){ return '<button class="btn btn-2" style="width:auto;padding:4px 11px;font-size:12px'+(_gBloqPer===p[1]?';background:#2563eb;color:#fff;border-color:#2563eb':'')+'" onclick="_gBloqSet('+p[1]+')">'+p[0]+'</button>'; }).join(' ');
     w.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px"><div style="font-weight:700">🔒 Bloqueados en el tiempo <span class="muted" style="font-weight:400;font-size:12.5px">· foto diaria</span></div><div style="display:flex;gap:5px;flex-wrap:wrap">'+btns+'</div></div><div style="height:260px"><canvas id="g-canvas-bloq"></canvas></div></div>';
     ensureChartJs(function(){
@@ -3609,7 +3609,7 @@
     var w=document.getElementById('g-altas-wrap'); if(!w) return; var all=_gSnap||[];
     if(all.length<2){ w.innerHTML=''; return; }
     var d=_gBloqFiltra();
-    var pers=[['Todo',0],['1 mes',30],['2 meses',60],['3 meses',90],['6 meses',180]];
+    var pers=[['Todo',0],['7 días',7],['15 días',15],['1 mes',30],['3 meses',90],['6 meses',180]];
     var btns=pers.map(function(p){ return '<button class="btn btn-2" style="width:auto;padding:4px 11px;font-size:12px'+(_gBloqPer===p[1]?';background:#16a34a;color:#fff;border-color:#16a34a':'')+'" onclick="_gBloqSet('+p[1]+')">'+p[0]+'</button>'; }).join(' ');
     w.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px"><div style="font-weight:700">📈 Base activa en el tiempo <span class="muted" style="font-weight:400;font-size:12.5px">· sube con las altas, baja con las bajas</span></div><div style="display:flex;gap:5px;flex-wrap:wrap">'+btns+'</div></div><div style="height:260px"><canvas id="g-canvas-altas"></canvas></div></div>';
     ensureChartJs(function(){
