@@ -566,6 +566,8 @@ def anular_desconexiones_rehabilitados():
     try:
         pago  = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
         pago += sb_get("desconexiones?estado=eq.COMPROMISO_PAGO&select=id,clientes!inner(deuda)&clientes.deuda=lte.0&limit=2000") or []
+        # (c) cliente YA reactivado a 'activo' → NO debe seguir en desconexión aunque quede un residuo de deuda (centavos)
+        activos = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA,PENDIENTE_ADMIN)&origen=in.(baja_isp,bloqueado_30d)&select=id,clientes!inner(estado)&clientes.estado=eq.activo&limit=2000") or []
         # cortes auto con deuda null (cliente activo o baja) + su cliente_id/estado
         nulls = sb_get("desconexiones?estado=in.(PENDIENTE,ASIGNADA)&origen=in.(baja_isp,bloqueado_30d)&select=id,cliente_id,clientes!inner(estado,deuda)&clientes.deuda=is.null&limit=2000") or []
         nulls = nulls if isinstance(nulls, list) else []
@@ -584,6 +586,8 @@ def anular_desconexiones_rehabilitados():
     seen, items = set(), []   # items = [(id, resolucion)]
     for o in (pago if isinstance(pago, list) else []):
         if o["id"] not in seen: seen.add(o["id"]); items.append((o["id"], "El cliente pagó (deuda 0) — cerrada por el sync"))
+    for o in (activos if isinstance(activos, list) else []):
+        if o["id"] not in seen: seen.add(o["id"]); items.append((o["id"], "Cliente reactivado (activo) — cerrada por el sync"))
     for o in nulls:
         if o["id"] in seen: continue
         est = (o.get("clientes") or {}).get("estado")
