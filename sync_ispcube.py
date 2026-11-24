@@ -144,6 +144,11 @@ def sb_insert_one(path, body):
     d = json.load(r)
     return d[0] if isinstance(d, list) and d else None
 
+# Prioridad de estado para resolver COLISIONES de código normalizado (dos registros
+# distintos de Nexa cuyo código, al rellenar a 6 dígitos, queda igual — p.ej. "6453" y
+# "006453"). Sin esto, el último pisaba al primero y un registro basura (eliminado/baja)
+# podía TAPAR a un cliente vivo → el sync no lo actualizaba y quedaba en falsa baja.
+_EST_PRIO = {"activo": 3, "bloqueado": 2, "prospecto": 1, "baja": 0, "eliminado": -1}
 def fetch_nexa():
     out, page = {}, 0
     while True:
@@ -151,7 +156,15 @@ def fetch_nexa():
             SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde,plan_id,empresa,deuda_fecha,medio_pago,aplica_mora,plan_precio,fecha_alta&codigo_ispcube=not.is.null&order=id.asc",
             headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
         chunk = json.load(urllib.request.urlopen(r, timeout=60))
-        for c in chunk: out[_ncode(c["codigo_ispcube"])] = c
+        for c in chunk:
+            k = _ncode(c["codigo_ispcube"])
+            prev = out.get(k)
+            if prev is not None and prev.get("id") != c.get("id"):
+                # colisión entre dos registros distintos → conservar el MÁS VIVO (avisar para depurar)
+                print(f"  ⚠️ COLISIÓN código {k}: id={prev.get('id')}({prev.get('estado')}) vs id={c.get('id')}({c.get('estado')}) — se conserva el más activo")
+                if _EST_PRIO.get(c.get("estado"), 0) <= _EST_PRIO.get(prev.get("estado"), 0):
+                    continue   # el nuevo no es más vivo que el guardado → NO pisar
+            out[k] = c
         if len(chunk) < 1000: break
         page += 1
     return out
