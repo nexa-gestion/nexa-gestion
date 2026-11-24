@@ -153,7 +153,7 @@ def fetch_nexa():
     out, page = {}, 0
     while True:
         r = urllib.request.Request(
-            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde,plan_id,empresa,deuda_fecha,medio_pago,aplica_mora,plan_precio,fecha_alta&codigo_ispcube=not.is.null&order=id.asc",
+            SB_URL + "/rest/v1/clientes?select=id,codigo_ispcube,nombre,doc_numero,estado,deuda,caja_nap,puerto,precinto,portal_password,bloqueado_desde,plan_id,empresa,deuda_fecha,medio_pago,aplica_mora,plan_precio,fecha_alta&codigo_ispcube=not.is.null&order=id.asc",
             headers=sb_headers({"Range": f"{page*1000}-{page*1000+999}"}))
         chunk = json.load(urllib.request.urlopen(r, timeout=60))
         for c in chunk:
@@ -816,6 +816,12 @@ def main():
             # quede uniforme y no vuelva a fallar el matcheo / las búsquedas del panel
             if str(cur.get("codigo_ispcube") or "") != code: upd["codigo_ispcube"] = code
             if est and est != cur["estado"]: upd["estado"] = est
+            # NOMBRE y DOCUMENTO: reflejar CAMBIOS DE TITULARIDAD (ISPcube = fuente de verdad de quién factura).
+            # Antes no se tocaban → un cambio de titular (mismo código, otro nombre) nunca llegaba a Nexa.
+            nm = (c.get("name") or "").strip()
+            if nm and nm != (cur.get("nombre") or "").strip(): upd["nombre"] = nm
+            dnc = re.sub(r"\D", "", str(c.get("doc_number") or ""))
+            if dnc and dnc != re.sub(r"\D", "", str(cur.get("doc_numero") or "")): upd["doc_numero"] = dnc
             # fecha REAL de bloqueo desde ISPcube (block_date) → vía "bloqueado +30d" de desconexiones
             if est == "bloqueado":
                 bd = c.get("block_date")
