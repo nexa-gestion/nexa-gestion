@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.31';
+  var VER='v4.32';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1282,6 +1282,8 @@
       +'<button class="btn '+(clState.pend?'btn-x':'btn-2')+'" id="cl-pend" title="Solo clientes que faltan cargar en ISPcube">⚠️ Falta en ISPcube'+(clState.pend?' ✓':'')+'</button>'
       +'<button class="btn btn-2" id="cl-sync" title="Traer estado/deuda/caja/puerto/precinto de ISPcube ahora">🔄 Actualizar de ISPcube</button>'
       +'<button class="btn btn-2" id="cl-geozs" title="Geolocalizar por dirección los clientes de Zona Sur que todavía no tienen ubicación (corre acá, en tu navegador)">📍 Geolocalizar Zona Sur</button>'
+      +'<button class="btn btn-2" id="cl-impbrain" title="Actualizar deuda anterior y estado de Zona Sur desde un Excel exportado de ISPBrain">📂 Importar de Brain (Excel)</button>'
+      +'<input type="file" id="cl-impbrain-file" accept=".xlsx,.xls" style="display:none">'
       +'<button class="btn btn-2" id="cl-export" title="Exportar a Excel la lista filtrada">⬇️ Excel</button>'
       +'</div><div id="cl-syncinfo" class="muted" style="font-size:12px;margin:-4px 0 10px;min-height:16px"></div><div id="cl-tabla"></div>';
     document.getElementById('cl-buscar').addEventListener('click',function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); });
@@ -1290,6 +1292,8 @@
     document.getElementById('cl-pend').addEventListener('click',function(){ leerFiltrosCl(); clState.pend=!clState.pend; clState.page=0; vClientes(); });
     document.getElementById('cl-sync').addEventListener('click',function(){ pedirSyncISP(this); });
     var _gzs=document.getElementById('cl-geozs'); if(_gzs) _gzs.addEventListener('click',function(){ geoZonaSur(this); });
+    var _ib=document.getElementById('cl-impbrain'), _ibf=document.getElementById('cl-impbrain-file');
+    if(_ib&&_ibf){ _ib.addEventListener('click',function(){ _ibf.click(); }); _ibf.addEventListener('change',function(){ if(this.files&&this.files[0]) importarBrainExport(this.files[0]); this.value=''; }); }
     document.getElementById('cl-export').addEventListener('click',function(){ leerFiltrosCl(); _clExport(this); });
     cargarStatsCl(); cargarClientes(); cargarSyncInfo();
   }
@@ -2810,6 +2814,55 @@
         })();
       });
     }).catch(function(){ msg('Error buscando clientes.'); if(btn)btn.disabled=false; });
+  }
+  // Parsea un monto que puede venir "34000.00" (US) o "34.000,00" (AR) → número
+  function _numAR(v){ if(v==null||v==='')return 0; if(typeof v==='number')return v;
+    var s=String(v).replace(/[^0-9,.-]/g,'');
+    if(s.indexOf(',')>=0&&s.indexOf('.')>=0) s=s.replace(/\./g,'').replace(',','.');
+    else if(s.indexOf(',')>=0) s=s.replace(',','.');
+    return parseFloat(s)||0; }
+  // Importa un Excel exportado de ISPBrain y actualiza deuda_antigua + estado de los clientes Zona Sur.
+  // Cruza por codigo_ispbrain = columna "Id" del export. Corre en el navegador de Gastón.
+  function importarBrainExport(file){
+    var info=document.getElementById('cl-syncinfo'); function msg(t){ if(info) info.textContent=t; }
+    if(!file) return;
+    msg('📂 Leyendo el Excel de Brain…');
+    _ocEnsureXLSX(function(){
+      var rd=new FileReader();
+      rd.onload=function(e){
+        try{
+          var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+          var sh=wb.Sheets[wb.SheetNames[0]];
+          var rows=XLSX.utils.sheet_to_json(sh,{defval:null});
+          if(!rows.length){ msg('El Excel no tiene filas.'); return; }
+          var keys=Object.keys(rows[0]);
+          function col(cands){ for(var i=0;i<cands.length;i++){ var f=keys.filter(function(x){return x.toLowerCase().trim()===cands[i];})[0]; if(f)return f; } return null; }
+          var cId=col(['id']), cSal=col(['saldo total','saldo']), cBlq=col(['conexiones bloqueadas']), cCon=col(['cant. conexiones','cant conexiones','conexiones']);
+          if(!cId||!cSal){ msg('No encontré las columnas "Id" y "Saldo total" en el Excel. ¿Es el export de clientes de Brain?'); return; }
+          var brain={};
+          rows.forEach(function(r){ var id=String(r[cId]==null?'':r[cId]).trim(); if(id) brain[id]={ saldo:_numAR(r[cSal]), blq:Number(r[cBlq]||0), con:Number(r[cCon]||0) }; });
+          msg('🔎 Cruzando '+Object.keys(brain).length+' clientes con Nexa…');
+          sbGet("clientes?cartera=eq.ZONA%20SUR&codigo_ispbrain=not.is.null&select=id,codigo_ispbrain,estado,deuda_antigua&limit=2000").then(function(cs){
+            cs=Array.isArray(cs)?cs:[];
+            var jobs=[], n=0, nd=0, ne=0;
+            cs.forEach(function(c){ var b=brain[String(c.codigo_ispbrain)]; if(!b)return;
+              var upd={};
+              if(b.saldo!=null && Number(b.saldo)!==Number(c.deuda_antigua||0)){ upd.deuda_antigua=b.saldo; nd++; }
+              var est=(b.blq>0?'bloqueado':(b.con>0?'activo':'baja'));
+              if(est!==c.estado){ upd.estado=est; ne++; }
+              if(Object.keys(upd).length){ n++; jobs.push(sbPatch('clientes?id=eq.'+c.id,upd)); }
+            });
+            if(!jobs.length){ msg('✅ Todo ya estaba al día — nada para actualizar.'); return; }
+            msg('💾 Actualizando '+n+' clientes ('+nd+' deuda · '+ne+' estado)…');
+            var i=0; (function run(){
+              if(i>=jobs.length){ msg('✅ Importado desde Brain: '+n+' clientes actualizados ('+nd+' deuda anterior · '+ne+' estado).'); if(typeof cargarClientes==='function') cargarClientes(); return; }
+              jobs[i++].then(run).catch(run);
+            })();
+          }).catch(function(){ msg('No pude leer los clientes de Nexa.'); });
+        }catch(err){ msg('Error leyendo el Excel: '+err); }
+      };
+      rd.readAsArrayBuffer(file);
+    });
   }
   function vAgenda(){
     var pesos=agPesos(), dep=agDepot();
