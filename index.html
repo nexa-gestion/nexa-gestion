@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.29';
+  var VER='v4.30';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1281,6 +1281,7 @@
       +'<button class="btn btn-pri" id="cl-buscar">Buscar</button>'
       +'<button class="btn '+(clState.pend?'btn-x':'btn-2')+'" id="cl-pend" title="Solo clientes que faltan cargar en ISPcube">⚠️ Falta en ISPcube'+(clState.pend?' ✓':'')+'</button>'
       +'<button class="btn btn-2" id="cl-sync" title="Traer estado/deuda/caja/puerto/precinto de ISPcube ahora">🔄 Actualizar de ISPcube</button>'
+      +'<button class="btn btn-2" id="cl-geozs" title="Geolocalizar por dirección los clientes de Zona Sur que todavía no tienen ubicación (corre acá, en tu navegador)">📍 Geolocalizar Zona Sur</button>'
       +'<button class="btn btn-2" id="cl-export" title="Exportar a Excel la lista filtrada">⬇️ Excel</button>'
       +'</div><div id="cl-syncinfo" class="muted" style="font-size:12px;margin:-4px 0 10px;min-height:16px"></div><div id="cl-tabla"></div>';
     document.getElementById('cl-buscar').addEventListener('click',function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); });
@@ -1288,6 +1289,7 @@
     document.getElementById('cl-q').addEventListener('input',function(){ clearTimeout(window._clBuscaTmr); window._clBuscaTmr=setTimeout(function(){ leerFiltrosCl(); clState.page=0; cargarClientes(); },350); });
     document.getElementById('cl-pend').addEventListener('click',function(){ leerFiltrosCl(); clState.pend=!clState.pend; clState.page=0; vClientes(); });
     document.getElementById('cl-sync').addEventListener('click',function(){ pedirSyncISP(this); });
+    var _gzs=document.getElementById('cl-geozs'); if(_gzs) _gzs.addEventListener('click',function(){ geoZonaSur(this); });
     document.getElementById('cl-export').addEventListener('click',function(){ leerFiltrosCl(); _clExport(this); });
     cargarStatsCl(); cargarClientes(); cargarSyncInfo();
   }
@@ -2782,6 +2784,29 @@
         });
       });
     });
+  }
+  // Geolocaliza por dirección los clientes de la cartera Zona Sur que no tienen lat/lng.
+  // Reusa el motor _agGeo (NAP → centroide de barrio → OpenStreetMap). Corre en el navegador de Gastón.
+  function geoZonaSur(btn){
+    var info=document.getElementById('cl-syncinfo');
+    function msg(t){ if(info) info.textContent=t; }
+    if(btn) btn.disabled=true;
+    msg('🔎 Buscando clientes de Zona Sur sin ubicación…');
+    sbGet("clientes?cartera=eq.ZONA%20SUR&lat=is.null&select=id,numero_cliente,domicilio_full,barrio,caja_nap&limit=400").then(function(cs){
+      cs=Array.isArray(cs)?cs:[];
+      if(!cs.length){ msg('✅ Zona Sur: todos los clientes ya tienen ubicación.'); if(btn)btn.disabled=false; return; }
+      var visitas=cs.map(function(c){ return {cliId:c.id,num:c.numero_cliente,dir:c.domicilio_full||'',barrio:c.barrio||'',caja_nap:c.caja_nap,lat:null,lng:null}; });
+      _agGeo(visitas,msg).then(function(){
+        var ok=visitas.filter(function(v){ return v.lat!=null; });
+        if(!ok.length){ msg('No se pudo ubicar ninguno en esta tanda. Volvé a intentar en un rato.'); if(btn)btn.disabled=false; return; }
+        msg('💾 Guardando '+ok.length+' ubicaciones…');
+        var i=0; (function save(){
+          if(i>=ok.length){ var rest=cs.length-ok.length; msg('✅ Geolocalizados '+ok.length+' de Zona Sur.'+(rest>0?(' Quedan ~'+rest+' — volvé a tocar el botón.'):' ¡Zona Sur completa! 🎉')); if(btn)btn.disabled=false; return; }
+          var v=ok[i++];
+          sbPatch('clientes?id=eq.'+v.cliId,{lat:v.lat,lng:v.lng,geo_origen:(v.geo_src||'geo')}).then(save).catch(save);
+        })();
+      });
+    }).catch(function(){ msg('Error buscando clientes.'); if(btn)btn.disabled=false; });
   }
   function vAgenda(){
     var pesos=agPesos(), dep=agDepot();
