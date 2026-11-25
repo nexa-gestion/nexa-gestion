@@ -72,14 +72,14 @@
 (function(){
   'use strict';
   // ── CONFIG ────────────────────────────────────────────────────────────
-  var VER = 'v0.18';
+  var VER = 'v0.21';
   var SB_URL = 'https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
   var CONFIGURADO = SB_URL.indexOf('TU-PROYECTO') === -1;
 
   var app = document.getElementById('app');
-  var PLANES = [], BARRIOS = [], PROMOS = [], CONFIG = {}, VENDEDOR = null, CUPOS = {};
+  var PLANES = [], BARRIOS = [], PROMOS = [], CONFIG = {}, VENDEDOR = null, CUPOS = {}, INSTAL_TEC = {};
   var BARRIO_ITAEMBE = 'Itaembé Guazú';
   var BARRIOS_NO_VENDE = ['508 Viviendas','597 Viviendas','Hipódromo'];   // zona del nodo FTTH: no se ofrece por el link
   var FRANJAS = [ {id:'mañana', lbl:'Mañana', rango:'8 a 12 hs', cfg:'cupo_manana', def:8}, {id:'tarde', lbl:'Tarde', rango:'12 a 15 hs', cfg:'cupo_tarde', def:4} ];
@@ -120,15 +120,20 @@
     return PLANES.filter(function(p){ return p.tecnologia===tec && p.mostrar_form!==false && (tec!=='INALAMBRICO' || Number(p.bajada_mbps)>=50); });
   }
   // precio de instalación para el barrio+tipo (nuevo/cambio). Override por barrio; si no, global; si no cobra → 0.
+  // Precio de instalación: prioridad TECNOLOGÍA (solapa Instalación) > override por barrio (respaldo) > global viejo.
   function instalacionDe(nombre, tipoSolic){
-    var b=barrioData(nombre), cuotas=(b&&b.instalacion_cuotas)||3, cobra, precio;
-    if(b && b.instalacion_cobrar!=null){ cobra=!!b.instalacion_cobrar; }
-    else { cobra=!!(CONFIG&&CONFIG.instalacion_cobrar); }
-    if(!cobra) return { cobra:false, precio:0, cuotas:cuotas };
-    if(b && tipoSolic==='cambio' && b.instalacion_precio_cambio!=null) precio=Number(b.instalacion_precio_cambio);
-    else if(b && b.instalacion_precio_nuevo!=null) precio=Number(b.instalacion_precio_nuevo);
-    else precio=Number((CONFIG&&CONFIG.instalacion_precio)||0);
-    return { cobra:precio>0, precio:precio, cuotas:cuotas };
+    var b=barrioData(nombre), tec=tecDeBarrio(nombre), it=INSTAL_TEC[tec];
+    var cobra, precioNuevo, precioCambio, cuotas;
+    if(it){
+      cobra=!!it.cobrar; precioNuevo=it.precio_nuevo; precioCambio=it.precio_cambio; cuotas=it.cuotas||3;
+    } else if(b && b.instalacion_cobrar!=null){
+      cobra=!!b.instalacion_cobrar; precioNuevo=b.instalacion_precio_nuevo; precioCambio=b.instalacion_precio_cambio; cuotas=b.instalacion_cuotas||3;
+    } else {
+      cobra=!!(CONFIG&&CONFIG.instalacion_cobrar); precioNuevo=(CONFIG&&CONFIG.instalacion_precio); precioCambio=(CONFIG&&CONFIG.instalacion_precio); cuotas=(b&&b.instalacion_cuotas)||3;
+    }
+    if(!cobra) return { cobra:false, precio:0, cuotas:cuotas||3 };
+    var precio = (tipoSolic==='cambio' && precioCambio!=null) ? Number(precioCambio) : Number(precioNuevo!=null?precioNuevo:0);
+    return { cobra:precio>0, precio:precio, cuotas:cuotas||3 };
   }
   // ── días y cupos (agenda) ──────────────────────────────────────────────
   function _hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -154,13 +159,14 @@
     if(!CONFIGURADO){ cb(); return; }
     var p1 = fetch(SB_URL+'/rest/v1/planes?activo=eq.true&select=id,nombre,tecnologia,bajada_mbps,precio,mostrar_form&order=bajada_mbps.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PLANES=Array.isArray(d)?d:[]; }).catch(function(){});
     var p2 = fetch(SB_URL+'/rest/v1/barrios?activo=eq.true&select=nombre,tipo,empresa_sugerida,instalacion_cobrar,instalacion_precio_nuevo,instalacion_precio_cambio,instalacion_cuotas&order=tipo.asc,nombre.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ BARRIOS=Array.isArray(d)?d:[]; }).catch(function(){});
-    var p3 = fetch(SB_URL+'/rest/v1/promos?activo=eq.true&select=nombre,meses,descuento_pct,tecnologia,orden&order=orden.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PROMOS=Array.isArray(d)?d:[]; }).catch(function(){});
+    var p3 = fetch(SB_URL+'/rest/v1/promos?activo=eq.true&select=nombre,meses,descuento_pct,tecnologia,plan_id,orden&order=orden.asc', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ PROMOS=Array.isArray(d)?d:[]; }).catch(function(){});
     var p4 = fetch(SB_URL+'/rest/v1/config_comercial?id=eq.1&select=*', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ CONFIG=(Array.isArray(d)&&d[0])||{}; }).catch(function(){});
     var tok=_vendTokenURL();
     var p5 = tok ? fetch(SB_URL+'/rest/v1/vendedores?token=eq.'+encodeURIComponent(tok)+'&activo=eq.true&select=id,nombre&limit=1', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ VENDEDOR=(Array.isArray(d)&&d[0])||null; }).catch(function(){}) : Promise.resolve();
     // cupos ya reservados por día+franja (solicitudes pendientes de hoy en adelante) para no pasarnos del tope
     var p6 = fetch(SB_URL+'/rest/v1/solicitudes_alta?estado=eq.pendiente&dia_preferido=gte.'+_hoyISO()+'&select=dia_preferido,franja_preferida', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ CUPOS={}; (Array.isArray(d)?d:[]).forEach(function(r){ if(!r.dia_preferido)return; var k=r.dia_preferido+'|'+(r.franja_preferida||''); CUPOS[k]=(CUPOS[k]||0)+1; }); }).catch(function(){});
-    Promise.all([p1,p2,p3,p4,p5,p6]).then(cb);
+    var p7 = fetch(SB_URL+'/rest/v1/instalacion_precios?select=*', {headers:H}).then(function(r){return r.ok?r.json():[];}).then(function(d){ INSTAL_TEC={}; (Array.isArray(d)?d:[]).forEach(function(r){ INSTAL_TEC[r.tecnologia]=r; }); }).catch(function(){});
+    Promise.all([p1,p2,p3,p4,p5,p6,p7]).then(cb);
   }
 
   function optsBarrios(){
@@ -184,19 +190,50 @@
   }
   function planById(id){ return PLANES.filter(function(p){return String(p.id)===String(id);})[0]; }
   function addonItem(tec){ return PLANES.filter(function(p){return p.tecnologia===tec;})[0]; }
-  function promoDe(plan){ if(!plan) return null; var ps=PROMOS.filter(function(pr){return !pr.tecnologia||pr.tecnologia===plan.tecnologia;}).sort(function(a,b){return (a.orden||0)-(b.orden||0);}); return ps[0]||null; }
+  function promoDe(plan){
+    if(!plan) return null;
+    function byOrden(a,b){ return (a.orden||0)-(b.orden||0); }
+    // 1) promo apuntada a ESTE plan manda sobre todo
+    var porPlan=PROMOS.filter(function(pr){ return pr.plan_id!=null && String(pr.plan_id)===String(plan.id); }).sort(byOrden);
+    if(porPlan[0]) return porPlan[0];
+    // 2) promo por tecnología (sin plan_id)
+    var porTec=PROMOS.filter(function(pr){ return pr.plan_id==null && pr.tecnologia && pr.tecnologia===plan.tecnologia; }).sort(byOrden);
+    if(porTec[0]) return porTec[0];
+    // 3) promo "Todas" (sin plan ni tecnología)
+    var todas=PROMOS.filter(function(pr){ return pr.plan_id==null && !pr.tecnologia; }).sort(byOrden);
+    return todas[0]||null;
+  }
+  function itemPromo(it){ var full=Number(it&&it.precio)||0, pr=promoDe(it), promo=full; if(pr && pr.descuento_pct!=null) promo=Math.round(full*(1-Number(pr.descuento_pct)/100)); return {full:full, promo:promo, pr:pr}; }
+  // Arma los tramos de precio mensual según cuándo vence cada promo (ej: meses 1-3, 4-6, 7+).
+  function _tramosPrecio(items){
+    var bps={}; items.forEach(function(x){ if(x.ip.pr && x.ip.pr.meses) bps[Number(x.ip.pr.meses)]=true; });
+    var cortes=Object.keys(bps).map(Number).sort(function(a,b){return a-b;});
+    var tramos=[], prev=0;
+    cortes.forEach(function(c){ tramos.push({desde:prev+1,hasta:c}); prev=c; });
+    tramos.push({desde:prev+1,hasta:null});
+    tramos.forEach(function(t){ t.total=items.reduce(function(s,x){ var p=x.ip, usa=p.pr && (p.pr.meses==null || t.desde<=Number(p.pr.meses)); return s+(usa?p.promo:p.full); },0); });
+    return tramos;
+  }
+  function _tramoLbl(t){ if(t.hasta==null) return 'Desde el mes '+t.desde; if(t.desde===t.hasta) return 'Mes '+t.desde; return 'Meses '+t.desde+' a '+t.hasta; }
   function pintarPlanDetalle(){
     var cont=document.getElementById('plan-detalle'); var tp=document.getElementById('terms-precio');
-    var pl=planById(f.plan_id), html='', total=0, totalPromo=0, hayPromo=false;
-    if(pl && pl.precio){
-      total+=Number(pl.precio); totalPromo+=Number(pl.precio);
-      html+='<div style="display:flex;justify-content:space-between;padding:3px 0"><b>'+esc(pl.nombre)+'</b><span><b>'+fmtPesos(pl.precio)+'</b>/mes</span></div>';
-      var pr=promoDe(pl);
-      if(pr){ hayPromo=true; var pp=Math.round(Number(pl.precio)*(1-Number(pr.descuento_pct)/100)); totalPromo=pp;
-        html+='<div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:14px">🎁 '+esc(pr.nombre)+(pr.meses?(' ('+pr.meses+' meses)'):'')+': <b>'+fmtPesos(pp)+'/mes</b> · luego '+fmtPesos(pl.precio)+'/mes</div>'; }
+    var pl=planById(f.plan_id), html='', items=[];
+    function lineaItem(it, prefijo){
+      var ip=itemPromo(it); items.push({it:it, ip:ip});
+      var nomHtml = prefijo ? (esc(prefijo)+esc(it.nombre)) : ('<b>'+esc(it.nombre)+'</b>');
+      var chip = ip.pr ? ' <span style="font-size:11px;color:#15803d;background:#ecfdf5;border-radius:6px;padding:1px 6px;white-space:nowrap">🎁 -'+esc(ip.pr.descuento_pct)+'%'+(ip.pr.meses?(' · '+ip.pr.meses+'m'):'')+'</span>' : '';
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0"><span>'+nomHtml+chip+'</span><span><b>'+fmtPesos(it.precio)+'</b>/mes</span></div>';
     }
-    var tvI=addonItem('TV'); if(f.tv && tvI && tvI.precio){ total+=Number(tvI.precio); totalPromo+=Number(tvI.precio); html+='<div style="display:flex;justify-content:space-between;padding:3px 0">+ '+esc(tvI.nombre)+'<span>'+fmtPesos(tvI.precio)+'/mes</span></div>'; }
-    var pkI=addonItem('PACK'); if(f.futbol && pkI && pkI.precio){ total+=Number(pkI.precio); totalPromo+=Number(pkI.precio); html+='<div style="display:flex;justify-content:space-between;padding:3px 0">+ '+esc(pkI.nombre)+'<span>'+fmtPesos(pkI.precio)+'/mes</span></div>'; }
+    if(pl && pl.precio){ lineaItem(pl, ''); }
+    var tvI=addonItem('TV'); if(f.tv && tvI && tvI.precio){ lineaItem(tvI, '+ '); }
+    var pkI=addonItem('PACK'); if(f.futbol && pkI && pkI.precio){ lineaItem(pkI, '+ '); }
+    // Cronograma: solo si hay descuentos que vencen en distintos momentos
+    var tramos = items.length ? _tramosPrecio(items) : [{total:0,desde:1,hasta:null}];
+    if(tramos.length>1){
+      html+='<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;margin:8px 0"><div style="font-weight:700;color:#1e3a5f;margin-bottom:4px;font-size:14px">💳 Tu precio mes a mes</div>';
+      tramos.forEach(function(t){ html+='<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:14px"><span>'+_tramoLbl(t)+'</span><b>'+fmtPesos(t.total)+'/mes</b></div>'; });
+      html+='</div>';
+    }
     var inst=instalacionDe(f.barrio, f.tipoSolic), instTxt;
     if(inst.cobra){
       var cuotaVal=Math.round(inst.precio/(inst.cuotas||3));
@@ -207,7 +244,11 @@
     }
     else { instTxt='sin cargo'; html+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #e2e8f0;margin-top:4px;color:#15803d">Instalación<span>sin cargo</span></div>'; }
     if(cont) cont.innerHTML = html ? ('<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-top:10px">'+html+'<div style="font-size:12px;color:#64748b;margin-top:8px">Precios sujetos a modificación. El detalle final se confirma al coordinar la instalación.</div></div>') : '';
-    if(tp){ if(pl&&pl.precio){ tp.style.display='block'; tp.innerHTML='Tu pedido: <b>'+esc(pl.nombre)+'</b> · '+(hayPromo?(fmtPesos(totalPromo)+'/mes los primeros meses, luego '):'')+fmtPesos(total)+'/mes · instalación '+instTxt+'.'; } else { tp.style.display='none'; tp.innerHTML=''; } }
+    if(tp){ if(pl&&pl.precio){ tp.style.display='block';
+      var tF=tramos[tramos.length-1]||{total:0}, t0=tramos[0]||tF;
+      var resumen = (tramos.length>1) ? (fmtPesos(t0.total)+'/mes los primeros meses, luego '+fmtPesos(tF.total)+'/mes') : (fmtPesos(tF.total)+'/mes');
+      tp.innerHTML='Tu pedido: <b>'+esc(pl.nombre)+'</b>'+(f.tv?' + TV Online':'')+(f.futbol?' + Pack Fútbol':'')+' · '+resumen+' · instalación '+instTxt+'.';
+    } else { tp.style.display='none'; tp.innerHTML=''; } }
   }
 
   // ── formulario ────────────────────────────────────────────────────────
