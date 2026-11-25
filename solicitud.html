@@ -72,7 +72,7 @@
 (function(){
   'use strict';
   // ── CONFIG ────────────────────────────────────────────────────────────
-  var VER = 'v0.22';
+  var VER = 'v0.23';
   var SB_URL = 'https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
@@ -225,7 +225,10 @@
       var ip=itemPromo(it); items.push({it:it, ip:ip});
       var nomHtml = prefijo ? (esc(prefijo)+esc(it.nombre)) : ('<b>'+esc(it.nombre)+'</b>');
       var chip = ip.pr ? ' <span style="font-size:11px;color:#15803d;background:#ecfdf5;border-radius:6px;padding:1px 6px;white-space:nowrap">🎁 -'+esc(ip.pr.descuento_pct)+'%'+(ip.pr.meses?(' · '+ip.pr.meses+'m'):'')+'</span>' : '';
-      html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0"><span>'+nomHtml+chip+'</span><span><b>'+fmtPesos(it.precio)+'</b>/mes</span></div>';
+      var precioHtml = (ip.pr && ip.promo!==ip.full)
+        ? '<span style="text-decoration:line-through;color:#94a3b8;font-size:13px">'+fmtPesos(ip.full)+'</span> <b style="color:#15803d">'+fmtPesos(ip.promo)+'</b>/mes'
+        : '<b>'+fmtPesos(it.precio)+'</b>/mes';
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0"><span>'+nomHtml+chip+'</span><span style="white-space:nowrap">'+precioHtml+'</span></div>';
     }
     if(pl && pl.precio){ lineaItem(pl, ''); }
     var tvI=addonItem('TV'); if(f.tv && tvI && tvI.precio){ lineaItem(tvI, '+ '); }
