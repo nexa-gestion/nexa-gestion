@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.37';
+  var VER='v4.38';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1715,7 +1715,7 @@
   // ── MAPA DE SOLICITUDES ── (demanda sobre la red: estados + NAPs + cobertura + heatmap; filtros estado y fecha)
   var _heatLoading=false,_heatCbs=[];
   function ensureHeat(cb){ if(window.L&&L.heatLayer){cb();return;} _heatCbs.push(cb); if(_heatLoading)return; _heatLoading=true; var s=document.createElement('script'); s.src='https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js'; s.onload=function(){_heatLoading=false;_heatCbs.forEach(function(f){f();});_heatCbs=[];}; s.onerror=function(){_heatLoading=false;_heatCbs=[];}; document.head.appendChild(s); }
-  var _solMapState={ est:{pendiente:true,convertida:true,rechazada:true}, desde:'', hasta:'', naps:true, cob:false, heat:false };
+  var _solMapState={ est:{pendiente:false,convertida:false,rechazada:true}, desde:'', hasta:'', naps:true, cob:false, heat:false };
   var _solMap=null, _solMapData=[], _solNaps=[], _solPolig=[], _smL={};
   function _smTog(lyr,on){ if(!lyr||!_solMap) return; if(on){ if(!_solMap.hasLayer(lyr)) lyr.addTo(_solMap); } else { if(_solMap.hasLayer(lyr)) _solMap.removeLayer(lyr); } }
   function vSolMapa(){
@@ -1724,8 +1724,8 @@
     for(var y=yA;y>=yA-1;y--){ for(var m=12;m>=1;m--){ var mm=('0'+m).slice(-2); optMes+='<option value="'+y+'-'+mm+'">'+meses[m]+' '+y+'</option>'; } }
     var h='<h1>Solicitudes de alta</h1>'+_solTabBar('mapa')+'<p class="sub">Mapa de demanda sobre tu red. 🟢 efectivas · 🔴 rechazadas (demanda que no captaste) · 🔵 pendientes · 🟣 NAPs. Cruzá los rechazos con la red para ver dónde conviene extender.</p>';
     h+='<div class="toolbar" style="gap:10px;align-items:center;flex-wrap:wrap">'
-      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#2563eb"><input type="checkbox" id="sm-pend" checked> 🔵 Pendientes</label>'
-      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#16a34a"><input type="checkbox" id="sm-conv" checked> 🟢 Efectivas</label>'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#2563eb"><input type="checkbox" id="sm-pend"> 🔵 Pendientes</label>'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#16a34a"><input type="checkbox" id="sm-conv"> 🟢 Efectivas</label>'
       +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#dc2626"><input type="checkbox" id="sm-rech" checked> 🔴 Rechazadas</label>'
       +'<span style="width:1px;height:20px;background:var(--bord)"></span>'
       +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#7c3aed"><input type="checkbox" id="sm-naps" checked> 🟣 Red</label>'
