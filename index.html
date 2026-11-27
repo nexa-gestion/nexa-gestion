@@ -214,6 +214,7 @@
       <a data-v="tickets">🎫 Tickets ISP</a>
       <a data-v="cobertura">📍 Cobertura / Red</a>
       <a data-v="ocupacion">📊 Ocupación de red</a>
+      <a data-v="expansion">🎯 Expansión de red</a>
       <div class="sec">Servicios</div>
       <a data-v="servicios">🧰 Servicios (fuera de internet)</a>
       <div class="sec">Telemetría</div>
@@ -254,7 +255,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.38';
+  var VER='v4.39';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -479,7 +480,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,rechazos:vRechazos,solrechazadas:vSolRechazadas,recuperables:vRecuperables,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,expansion:vExpansion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,rechazos:vRechazos,solrechazadas:vSolRechazadas,recuperables:vRecuperables,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -1786,6 +1787,74 @@
     else if(_smL.heat){ try{_solMap.removeLayer(_smL.heat);}catch(e){} _smL.heat=null; }
     var info=document.getElementById('sm-info'); if(info) info.innerHTML='🔵 '+cnt.pendiente+' · 🟢 '+cnt.convertida+' · 🔴 '+cnt.rechazada+' = '+(cnt.pendiente+cnt.convertida+cnt.rechazada)+' pedidos · 🟣 '+_solNaps.length+' NAPs';
     if(fit&&bounds.length) _solMap.fitBounds(bounds,{padding:[30,30]});
+  }
+  // ══ EXPANSIÓN DE RED ══ (dónde extender: agrupa la demanda fuera de cobertura y la rankea por demanda/distancia)
+  function _haversine(a,b){ var R=6371000,dLa=(b[0]-a[0])*Math.PI/180,dLn=(b[1]-a[1])*Math.PI/180,l1=a[0]*Math.PI/180,l2=b[0]*Math.PI/180; var x=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(l1)*Math.cos(l2)*Math.sin(dLn/2)*Math.sin(dLn/2); return 2*R*Math.asin(Math.min(1,Math.sqrt(x))); }
+  function _dbscanGeo(pts,eps,minPts){ var n=pts.length,lab=new Array(n).fill(0); function reg(i){ var nb=[]; for(var j=0;j<n;j++){ if(_haversine(pts[i],pts[j])<=eps) nb.push(j); } return nb; } var C=0; for(var i=0;i<n;i++){ if(lab[i]!==0) continue; var nb=reg(i); if(nb.length<minPts){ lab[i]=-1; continue; } C++; lab[i]=C; var s=nb.slice(); for(var k=0;k<s.length;k++){ var q=s[k]; if(lab[q]===-1) lab[q]=C; if(lab[q]!==0) continue; lab[q]=C; var nb2=reg(q); if(nb2.length>=minPts) s=s.concat(nb2); } } return lab; }
+  var _expState={ umbral:250, eps:300, min:3 }, _expMap=null, _expLayer=null, _expData=[], _expNaps=[], _expClusters=[];
+  function _napCerca(la,ln){ var best=1e12,bi=-1; for(var i=0;i<_expNaps.length;i++){ var d=_haversine([la,ln],_expNaps[i]); if(d<best){best=d;bi=i;} } return {d:best,nap:_expNaps[bi]||[0,0,'']}; }
+  function vExpansion(){ loading(); ensureLeaflet(_expRender); }
+  function _expRender(){
+    view.innerHTML='<h1>🎯 Expansión de red</h1><p class="sub">Dónde conviene extender: agrupa la demanda que cae <b>fuera de cobertura</b> (pedidos lejos de tus NAPs) en zonas y las ordena por <b>demanda ÷ distancia a la red</b>. Más leads y más cerca = mayor prioridad.</p>'
+      +'<div class="toolbar" style="gap:10px;align-items:center;flex-wrap:wrap">'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#dc2626"><input type="checkbox" id="ex-rech" checked> Rechazadas</label>'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#2563eb"><input type="checkbox" id="ex-pend" checked> Pendientes</label>'
+      +'<span style="width:1px;height:20px;background:var(--bord)"></span>'
+      +'<label class="l" style="margin:0" title="Distancia mínima al NAP más cercano para considerar un pedido fuera de cobertura">Fuera de cob. &gt;</label><input type="number" id="ex-umbral" value="250" style="width:72px"> m'
+      +'<label class="l" style="margin:0" title="Radio para agrupar pedidos en una misma zona">Radio zona</label><input type="number" id="ex-eps" value="300" style="width:72px"> m'
+      +'<label class="l" style="margin:0" title="Mínimo de pedidos para que una zona cuente">Mín./zona</label><input type="number" id="ex-min" value="3" style="width:56px">'
+      +'<button class="btn btn-pri" id="ex-calc">Calcular</button>'
+      +'<span class="muted" id="ex-info" style="margin-left:auto;font-weight:700"></span></div>';
+    view.innerHTML+='<div id="exmap" style="height:56vh;min-height:340px;border:1px solid var(--bord);border-radius:12px;overflow:hidden;margin-bottom:12px"></div><div id="exrank"></div>';
+    document.getElementById('ex-calc').addEventListener('click',_expCalc);
+    var cont=document.getElementById('exmap'); cont.innerHTML='<div class="center" style="padding-top:40px"><div class="spin"></div></div>';
+    Promise.all([
+      sbGet('solicitudes_alta?estado=in.(rechazada,pendiente)&lat=not.is.null&select=nombre,apellido,barrio,estado,created_at,observaciones,lat,lng&limit=4000').catch(function(){return [];}),
+      sbGet('geo_naps?select=codigo,lat,lng&activo=eq.true&limit=3000').catch(function(){return [];})
+    ]).then(function(r){
+      var inZ=function(la,ln){ return la>-28.5&&la<-26&&ln>-57&&ln<-54; };
+      _expData=(Array.isArray(r[0])?r[0]:[]).filter(function(s){ return inZ(+s.lat,+s.lng); });
+      _expNaps=(Array.isArray(r[1])?r[1]:[]).filter(function(n){ return n.lat&&n.lng&&inZ(+n.lat,+n.lng); }).map(function(n){ return [+n.lat,+n.lng,n.codigo]; });
+      if(_expMap){ try{_expMap.remove();}catch(e){} _expMap=null; }
+      cont.innerHTML='';
+      _expMap=L.map(cont,{preferCanvas:true}).setView([-27.42,-55.92],12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_expMap);
+      setTimeout(function(){ if(_expMap) _expMap.invalidateSize(); },200);
+      _expCalc();
+    });
+  }
+  function _expCalc(){
+    if(!_expMap) return;
+    _expState.umbral=+document.getElementById('ex-umbral').value||250;
+    _expState.eps=+document.getElementById('ex-eps').value||300;
+    _expState.min=+document.getElementById('ex-min').value||3;
+    var incR=document.getElementById('ex-rech').checked, incP=document.getElementById('ex-pend').checked;
+    if(_expLayer){ try{_expMap.removeLayer(_expLayer);}catch(e){} } _expLayer=L.layerGroup().addTo(_expMap);
+    _expNaps.forEach(function(n){ L.circleMarker([n[0],n[1]],{radius:2.5,color:'#7c3aed',fillColor:'#a78bfa',fillOpacity:.75,weight:1}).addTo(_expLayer); });
+    var fuera=[];
+    _expData.forEach(function(s){ if(s.estado==='rechazada'&&!incR) return; if(s.estado==='pendiente'&&!incP) return; var nc=_napCerca(+s.lat,+s.lng); if(nc.d>_expState.umbral){ s._d=nc.d; fuera.push(s); } });
+    var pts=fuera.map(function(s){ return [+s.lat,+s.lng]; });
+    var lab=_dbscanGeo(pts,_expState.eps,_expState.min);
+    fuera.forEach(function(s,i){ if(lab[i]===-1){ L.circleMarker([+s.lat,+s.lng],{radius:4,color:'#94a3b8',fillColor:'#cbd5e1',fillOpacity:.6,weight:1}).bindPopup(esc(((s.nombre||'')+' '+(s.apellido||'')).trim())+'<br>'+esc(s.barrio||'')+'<br><i>pedido aislado</i>').addTo(_expLayer); } });
+    var cl={}; fuera.forEach(function(s,i){ var c=lab[i]; if(c<=0) return; if(!cl[c]) cl[c]={pts:[],barrios:{}}; cl[c].pts.push(s); var b=s.barrio||'?'; cl[c].barrios[b]=(cl[c].barrios[b]||0)+1; });
+    _expClusters=Object.keys(cl).map(function(c){ var g=cl[c].pts; var la=g.reduce(function(a,s){return a+(+s.lat);},0)/g.length, ln=g.reduce(function(a,s){return a+(+s.lng);},0)/g.length; var nc=_napCerca(la,ln); var barrio=Object.keys(cl[c].barrios).sort(function(a,b){return cl[c].barrios[b]-cl[c].barrios[a];})[0]; return { n:g.length, la:la, ln:ln, dist:nc.d, nap:nc.nap, barrio:barrio, score:g.length/(Math.max(nc.d,50)/1000) }; }).sort(function(a,b){return b.score-a.score;});
+    var maxScore=_expClusters.length?_expClusters[0].score:1;
+    _expClusters.forEach(function(k,idx){ var t=Math.min(1,k.score/maxScore); var color=t>0.66?'#15803d':(t>0.33?'#d97706':'#dc2626');
+      L.circle([k.la,k.ln],{radius:Math.max(130,_expState.eps),color:color,weight:2,fillColor:color,fillOpacity:.15}).addTo(_expLayer);
+      L.polyline([[k.la,k.ln],[k.nap[0],k.nap[1]]],{color:color,weight:1.5,dashArray:'5 4'}).bindTooltip(Math.round(k.dist)+' m al NAP').addTo(_expLayer);
+      L.marker([k.la,k.ln],{icon:L.divIcon({className:'',html:'<div style="background:'+color+';color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.4)">'+k.n+'</div>',iconSize:[26,26],iconAnchor:[13,13]})}).bindPopup('<b>Zona #'+(idx+1)+' · '+esc(k.barrio)+'</b><br>'+k.n+' pedidos sin cobertura<br>A '+Math.round(k.dist)+' m del NAP '+esc(k.nap[2]||'')+'<br>Score: <b>'+k.score.toFixed(1)+'</b>').addTo(_expLayer);
+    });
+    _expRank();
+    var info=document.getElementById('ex-info'); if(info) info.innerHTML='<b>'+_expClusters.length+'</b> zonas · '+fuera.length+' pedidos fuera de cobertura';
+    if(_expClusters.length){ _expMap.setView([_expClusters[0].la,_expClusters[0].ln],14); }
+  }
+  function _expRank(){
+    var c=document.getElementById('exrank'); if(!c) return;
+    if(!_expClusters.length){ c.innerHTML='<div class="center muted">No se formaron zonas con esos parámetros. Probá bajar el "mín./zona" o subir el "radio zona".</div>'; return; }
+    var h='<h3 style="margin:4px 0 8px">🏆 Top zonas para expandir</h3><table><thead><tr><th>#</th><th>Zona (barrio)</th><th>Pedidos</th><th>Dist. al NAP</th><th>NAP más cercano</th><th>Score</th></tr></thead><tbody>';
+    _expClusters.forEach(function(k,i){ h+='<tr data-i="'+i+'" style="cursor:pointer"><td><b>'+(i+1)+'</b></td><td>'+esc(k.barrio)+'</td><td><b>'+k.n+'</b></td><td>'+Math.round(k.dist)+' m</td><td>'+esc(k.nap[2]||'—')+'</td><td><b>'+k.score.toFixed(1)+'</b></td></tr>'; });
+    c.innerHTML=h+'</tbody></table><p class="muted" style="font-size:12px;margin-top:6px">Score = pedidos ÷ distancia a la red (en km). Más alto = más demanda y más cerca → conviene primero. El costo y payback los sumamos con tus números de obra (costo por metro de fibra) y ARPU.</p>';
+    Array.prototype.forEach.call(c.querySelectorAll('tr[data-i]'),function(tr){ tr.addEventListener('click',function(){ var k=_expClusters[+tr.getAttribute('data-i')]; _expMap.setView([k.la,k.ln],15); }); });
   }
   var _solSel={};
   function vSolicitudes(){
