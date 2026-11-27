@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.34';
+  var VER='v4.35';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -479,7 +479,7 @@
   // Drawer del menú en celular (hamburguesa + fondo)
   function _sideToggle(open){ var s=document.getElementById('side'), bd=document.getElementById('side-bd'); if(!s)return; var w=(open==null)?!s.classList.contains('open'):open; s.classList.toggle('open',w); if(bd)bd.classList.toggle('open',w); }
   (function(){ var h=document.getElementById('mham'), bd=document.getElementById('side-bd'); if(h)h.addEventListener('click',function(){ _sideToggle(); }); if(bd)bd.addEventListener('click',function(){ _sideToggle(false); }); })();
-  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,rechazos:vRechazos,recuperables:vRecuperables,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
+  function ir(v){ ({dashboard:vDashboard,clientes:vClientes,solicitudes:vSolicitudes,ordenes:vOrdenes,asignar:vAsignar,agenda:vAgenda,mapadia:vMapaDia,cerrarot:vCerrarOT,validacion:vValidacion,deposito:vDeposito,'cuadrillas-adm':vCuadrillas,manoobra:vTiposTrabajo,cuentastv:vCuentasTV,desconexiones:vDesconexiones,bajas:vBajas,cobranza:vCobranza,ispcargar:vIspCargar,tickets:vTickets,precios:vPrecios,cobertura:vCobertura,ocupacion:vOcupacion,usuarios:vUsuarios,vendedores:vVendedores,comisiones:vComisiones,actividad:vActividad,informes:vInformes,gerencial:vGerencial,ranking:vRanking,rechazos:vRechazos,solrechazadas:vSolRechazadas,recuperables:vRecuperables,servicios:vServicios,telemetria:vTelemetria,config:vConfig}[v]||vDashboard)(); }
   function setNav(v){ Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(x){ x.classList.toggle('on', x.getAttribute('data-v')===v); }); }
   function navTo(v){ setNav(v); ir(v); }
   function refrescarOT(){ var on=document.querySelector('#nav a.on'); var v=on?on.getAttribute('data-v'):''; if(v==='validacion'){ vValidacion(); } else if(v==='cerrarot'){ if(typeof cargarCerrarOT==='function') cargarCerrarOT(); } else if(typeof cargarOT==='function'&&document.getElementById('ot-tabla')){ cargarOT(); } }
@@ -1663,14 +1663,63 @@
       });
     });
   }
+  // ── TABS compartidas entre Solicitudes pendientes y rechazadas ──
+  function _solTabBar(active){ return '<div style="display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap"><button class="btn '+(active==='rech'?'btn-2':'btn-pri')+'" id="soltab-pend">📥 Pendientes</button><button class="btn '+(active==='rech'?'btn-pri':'btn-2')+'" id="soltab-rech">🗂️ Rechazadas</button></div>'; }
+  function _wireSolTabs(){ var p=document.getElementById('soltab-pend'); if(p)p.addEventListener('click',function(){ vSolicitudes(); }); var r=document.getElementById('soltab-rech'); if(r)r.addEventListener('click',function(){ vSolRechazadas(); }); }
+  // ── SOLICITUDES RECHAZADAS ── (las que se desestimaron y no pasaron a OT; quedan en la base con su motivo)
+  function vSolRechazadas(){
+    loading();
+    Promise.all([
+      sbGet('solicitudes_alta?estado=eq.rechazada&select=*,planes(nombre)&order=gestionado_at.desc.nullslast&limit=3000').catch(function(){return [];}),
+      sbGet('usuarios?select=id,nombre&limit=300').catch(function(){return [];}),
+      sbGet('vendedores?select=id,nombre&limit=600').catch(function(){return [];})
+    ]).then(function(r){
+      var d=Array.isArray(r[0])?r[0]:[]; var umap={},vmap={};
+      (Array.isArray(r[1])?r[1]:[]).forEach(function(u){ umap[u.id]=u.nombre; });
+      (Array.isArray(r[2])?r[2]:[]).forEach(function(v){ vmap[v.id]=v.nombre; });
+      var _tipo=function(s){ return s.tipo_solicitud==='cambio_plan'?'🔄 Cambio':(s.tipo_solicitud==='cambio_titularidad'?'👤 Titularidad':'🆕 Alta'); };
+      var h='<h1>Solicitudes de alta</h1>'+_solTabBar('rech')+'<p class="sub">Pedidos que se <b>desestimaron</b> y no pasaron a OT. Quedan guardados con su motivo. Tocá uno para revisarlo (si se rechazó por error, podés reactivarlo convirtiéndolo).</p>';
+      if(!d.length){ view.innerHTML=h+'<div class="center">No hay solicitudes rechazadas. 🎉</div>'; _wireSolTabs(); return; }
+      view.innerHTML=h+'<div class="toolbar" style="align-items:center;gap:10px"><input id="sr-q" placeholder="🔎 Buscar nombre, DNI, teléfono, barrio, plan, motivo…" style="min-width:260px;flex:1"><span class="muted" id="sr-info"></span><button class="btn btn-2" id="sr-csv">⬇️ Exportar CSV</button></div><div id="sr-tabla"></div>'; _wireSolTabs();
+      var cols=[
+        {k:'rech',t:'Rechazada',sort:function(s){return s.gestionado_at||'';},r:function(s){return esc(fmtFecha(s.gestionado_at))+((s.gestionado_por&&umap[s.gestionado_por])?('<br><span class="muted">por '+esc(umap[s.gestionado_por])+'</span>'):'');}},
+        {k:'ing',t:'Ingresó',sort:function(s){return s.created_at||'';},r:function(s){return esc(fmtFecha(s.created_at));}},
+        {k:'nombre',t:'Nombre',sort:function(s){return (s.nombre||'')+(s.apellido||'');},r:function(s){return esc((s.nombre||'')+' '+(s.apellido||''))+(s.empresa?('<br><span class="muted">'+esc(s.empresa)+'</span>'):'');}},
+        {k:'tipo',t:'Tipo',sort:function(s){return s.tipo_solicitud||'';},r:function(s){return '<span style="white-space:nowrap">'+_tipo(s)+'</span>';}},
+        {k:'dni',t:'DNI',sort:function(s){return s.doc_numero||'';},r:function(s){return esc(s.doc_numero||'');}},
+        {k:'tel',t:'Teléfono',sort:function(s){return s.telefono||'';},r:function(s){return esc(s.telefono||'');}},
+        {k:'barrio',t:'Barrio',sort:function(s){return s.barrio||'';},r:function(s){return esc(s.barrio||'');}},
+        {k:'plan',t:'Plan',sort:function(s){return s.planes?s.planes.nombre:(s.plan_texto||'');},r:function(s){return esc(s.planes?s.planes.nombre:(s.plan_texto||'—'));}},
+        {k:'origen',t:'Origen',sort:function(s){return s.origen||'';},r:function(s){return esc(s.origen||'—');}},
+        {k:'vend',t:'Vendedor',sort:function(s){return vmap[s.vendedor_id]||'';},r:function(s){return esc(vmap[s.vendedor_id]||'—');}},
+        {k:'motivo',t:'Motivo del rechazo',sort:function(s){return s.observaciones||'';},r:function(s){return s.observaciones?esc(s.observaciones):'<span class="muted">—</span>';}}
+      ];
+      var cont=document.getElementById('sr-tabla'), info=document.getElementById('sr-info'), _flt=d;
+      function pinta(q){ q=(q||'').toLowerCase().trim(); var toks=q.split(/\s+/).filter(Boolean);
+        _flt=toks.length? d.filter(function(s){ var hay=((s.nombre||'')+' '+(s.apellido||'')+' '+(s.empresa||'')+' '+(s.doc_numero||'')+' '+(s.telefono||'')+' '+(s.barrio||'')+' '+(s.planes?s.planes.nombre:(s.plan_texto||''))+' '+(s.origen||'')+' '+(vmap[s.vendedor_id]||'')+' '+(s.observaciones||'')).toLowerCase(); return toks.every(function(t){return hay.indexOf(t)>=0;}); }) : d;
+        if(info) info.textContent=_flt.length+' de '+d.length;
+        gridRender(cont,cols,_flt,{key:'srT',onRow:function(s){ fichaSolicitud(s); }});
+      }
+      pinta('');
+      document.getElementById('sr-q').addEventListener('input',function(){ pinta(this.value); });
+      document.getElementById('sr-csv').addEventListener('click',function(){
+        var head=['Rechazada','Rechazó','Ingresó','Nombre','Apellido','Empresa','Tipo','DNI','Teléfono','Barrio','Plan','Origen','Vendedor','Motivo'];
+        var lines=[head.join(';')];
+        _flt.forEach(function(s){ var row=[fmtFecha(s.gestionado_at),(umap[s.gestionado_por]||''),fmtFecha(s.created_at),(s.nombre||''),(s.apellido||''),(s.empresa||''),(s.tipo_solicitud==='cambio_plan'?'Cambio':(s.tipo_solicitud==='cambio_titularidad'?'Titularidad':'Alta')),(s.doc_numero||''),(s.telefono||''),(s.barrio||''),(s.planes?s.planes.nombre:(s.plan_texto||'')),(s.origen||''),(vmap[s.vendedor_id]||''),String(s.observaciones||'').replace(/[\r\n;]+/g,' ')];
+          lines.push(row.map(function(x){return '"'+String(x==null?'':x).replace(/"/g,'""')+'"';}).join(';')); });
+        var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='solicitudes_rechazadas.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('CSV exportado ('+_flt.length+')');
+      });
+    }).catch(function(){ view.innerHTML='<h1>🗂️ Solicitudes rechazadas</h1><div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
+  }
+
   var _solSel={};
   function vSolicitudes(){
     loading(); _solSel={};
     sbGet('solicitudes_alta?estado=eq.pendiente&select=*,planes(nombre)&order=created_at.desc').then(function(d){
-      var h='<h1>Solicitudes de alta</h1><p class="sub">Pedidos del formulario público y de la planilla. Tildá una o varias para convertir, o tocá una para revisar.</p>';
-      if(!d.length){ view.innerHTML=h+'<div class="toolbar"><button class="btn btn-ok" id="sol-nueva">➕ Carga manual</button></div><div class="center">No hay solicitudes pendientes. 🎉</div>'; document.getElementById('sol-nueva').addEventListener('click',function(){ fichaSolicitud({}); }); return; }
+      var h='<h1>Solicitudes de alta</h1>'+_solTabBar('pend')+'<p class="sub">Pedidos del formulario público y de la planilla. Tildá una o varias para convertir, o tocá una para revisar.</p>';
+      if(!d.length){ view.innerHTML=h+'<div class="toolbar"><button class="btn btn-ok" id="sol-nueva">➕ Carga manual</button></div><div class="center">No hay solicitudes pendientes. 🎉</div>'; document.getElementById('sol-nueva').addEventListener('click',function(){ fichaSolicitud({}); }); _wireSolTabs(); return; }
       var byId={}; d.forEach(function(s){ byId[s.id]=s; });
-      view.innerHTML=h+'<div class="toolbar" style="align-items:center;gap:10px"><input id="sol-q" placeholder="🔎 Buscar nombre, DNI, teléfono, barrio, plan…" style="min-width:260px;flex:1"><button class="btn btn-ok" id="sol-nueva">➕ Carga manual</button><span class="muted" id="sol-selinfo"></span><button class="btn btn-x" id="sol-del" style="display:none">🗑️ Eliminar</button><button class="btn btn-ok" id="sol-conv" style="display:none">✅ Convertir seleccionadas a cliente + OT</button></div><div id="sol-tabla"></div>';
+      view.innerHTML=h+'<div class="toolbar" style="align-items:center;gap:10px"><input id="sol-q" placeholder="🔎 Buscar nombre, DNI, teléfono, barrio, plan…" style="min-width:260px;flex:1"><button class="btn btn-ok" id="sol-nueva">➕ Carga manual</button><span class="muted" id="sol-selinfo"></span><button class="btn btn-x" id="sol-del" style="display:none">🗑️ Eliminar</button><button class="btn btn-ok" id="sol-conv" style="display:none">✅ Convertir seleccionadas a cliente + OT</button></div><div id="sol-tabla"></div>'; _wireSolTabs();
       var cols=[
         {k:'sel',t:'',sort:null,r:function(s){return '<input type="checkbox" class="sol-chk" data-id="'+s.id+'"'+(_solSel[s.id]?' checked':'')+'>';}},
         {k:'fecha',t:'Fecha',sort:function(s){return s.created_at||'';},r:function(s){return esc(fmtFecha(s.created_at));}},
