@@ -254,7 +254,7 @@
   var SB_URL='https://xlfntplfhdjoqrofhcwe.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsZm50cGxmaGRqb3Fyb2ZoY3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTIyMjEsImV4cCI6MjA5NjUyODIyMX0.7uqzHQyrir23uCQ_GUabvX5kavr3VC_6UzaOizdZJI4';
   var H={ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY };
-  var VER='v4.36';
+  var VER='v4.37';
   var _DUR_MAX_MS=6*3600000; // tope de tiempo "en domicilio" confiable: arriba de 6h = OT dejada abierta / cerrada tarde, no se cuenta
   var _ALARM_MS=2*3600000; // una OT en curso más de 2h = alarma (técnico se olvidó de cerrarla)
   // Íconos SVG "del rubro" (no emojis de cartón). Caja NAP = caja de distribución de fibra con bocas; ONU = equipo del cliente con antena.
@@ -1712,56 +1712,79 @@
     }).catch(function(){ view.innerHTML='<h1>🗂️ Solicitudes rechazadas</h1><div class="center" style="color:var(--rojo)">No se pudo cargar.</div>'; });
   }
 
-  // ── MAPA DE SOLICITUDES ── (pendientes / efectivas / rechazadas, con filtro por estado y fecha)
-  var _solMapState={ est:{pendiente:true,convertida:true,rechazada:true}, desde:'', hasta:'' }, _solMap=null, _solMapLayer=null, _solMapData=[];
+  // ── MAPA DE SOLICITUDES ── (demanda sobre la red: estados + NAPs + cobertura + heatmap; filtros estado y fecha)
+  var _heatLoading=false,_heatCbs=[];
+  function ensureHeat(cb){ if(window.L&&L.heatLayer){cb();return;} _heatCbs.push(cb); if(_heatLoading)return; _heatLoading=true; var s=document.createElement('script'); s.src='https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js'; s.onload=function(){_heatLoading=false;_heatCbs.forEach(function(f){f();});_heatCbs=[];}; s.onerror=function(){_heatLoading=false;_heatCbs=[];}; document.head.appendChild(s); }
+  var _solMapState={ est:{pendiente:true,convertida:true,rechazada:true}, desde:'', hasta:'', naps:true, cob:false, heat:false };
+  var _solMap=null, _solMapData=[], _solNaps=[], _solPolig=[], _smL={};
+  function _smTog(lyr,on){ if(!lyr||!_solMap) return; if(on){ if(!_solMap.hasLayer(lyr)) lyr.addTo(_solMap); } else { if(_solMap.hasLayer(lyr)) _solMap.removeLayer(lyr); } }
   function vSolMapa(){
     var meses=['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'], yA=new Date().getFullYear();
     var optMes='<option value="">— Mes —</option>';
     for(var y=yA;y>=yA-1;y--){ for(var m=12;m>=1;m--){ var mm=('0'+m).slice(-2); optMes+='<option value="'+y+'-'+mm+'">'+meses[m]+' '+y+'</option>'; } }
-    var h='<h1>Solicitudes de alta</h1>'+_solTabBar('mapa')+'<p class="sub">Mapa de solicitudes por estado. Filtrá por estado y fecha para ver dónde se concentran los pedidos (y las oportunidades que caen fuera de cobertura).</p>';
-    h+='<div class="toolbar" style="gap:12px;align-items:center;flex-wrap:wrap">'
-      +'<label style="display:flex;align-items:center;gap:5px;font-weight:700;color:#2563eb"><input type="checkbox" id="sm-pend" checked> 🔵 Pendientes</label>'
-      +'<label style="display:flex;align-items:center;gap:5px;font-weight:700;color:#16a34a"><input type="checkbox" id="sm-conv" checked> 🟢 Efectivas</label>'
-      +'<label style="display:flex;align-items:center;gap:5px;font-weight:700;color:#dc2626"><input type="checkbox" id="sm-rech" checked> 🔴 Rechazadas</label>'
-      +'<span style="width:1px;height:22px;background:var(--bord)"></span>'
-      +'<label class="l" style="margin:0">Mes</label><select id="sm-mes" style="width:auto">'+optMes+'</select>'
-      +'<label class="l" style="margin:0">Desde</label><input type="date" id="sm-desde" style="width:auto">'
-      +'<label class="l" style="margin:0">Hasta</label><input type="date" id="sm-hasta" style="width:auto">'
+    var h='<h1>Solicitudes de alta</h1>'+_solTabBar('mapa')+'<p class="sub">Mapa de demanda sobre tu red. 🟢 efectivas · 🔴 rechazadas (demanda que no captaste) · 🔵 pendientes · 🟣 NAPs. Cruzá los rechazos con la red para ver dónde conviene extender.</p>';
+    h+='<div class="toolbar" style="gap:10px;align-items:center;flex-wrap:wrap">'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#2563eb"><input type="checkbox" id="sm-pend" checked> 🔵 Pendientes</label>'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#16a34a"><input type="checkbox" id="sm-conv" checked> 🟢 Efectivas</label>'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#dc2626"><input type="checkbox" id="sm-rech" checked> 🔴 Rechazadas</label>'
+      +'<span style="width:1px;height:20px;background:var(--bord)"></span>'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#7c3aed"><input type="checkbox" id="sm-naps" checked> 🟣 Red</label>'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#0891b2"><input type="checkbox" id="sm-cob"> 🟦 Cobertura</label>'
+      +'<label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#ea580c"><input type="checkbox" id="sm-heat"> 🔥 Densidad</label>'
+      +'<span style="width:1px;height:20px;background:var(--bord)"></span>'
+      +'<select id="sm-mes" style="width:auto" title="Mes">'+optMes+'</select>'
+      +'<input type="date" id="sm-desde" style="width:auto" title="Desde">'
+      +'<input type="date" id="sm-hasta" style="width:auto" title="Hasta">'
       +'<button class="btn btn-2" id="sm-todo">Todo</button>'
       +'<span class="muted" id="sm-info" style="margin-left:auto;font-weight:700"></span></div>';
-    h+='<div id="solmap" style="height:70vh;min-height:420px;border:1px solid var(--bord);border-radius:12px;overflow:hidden"></div>';
+    h+='<div id="solmap" style="height:72vh;min-height:440px;border:1px solid var(--bord);border-radius:12px;overflow:hidden"></div>';
     view.innerHTML=h; _wireSolTabs();
-    function onFlt(){ _solMapState.est.pendiente=document.getElementById('sm-pend').checked; _solMapState.est.convertida=document.getElementById('sm-conv').checked; _solMapState.est.rechazada=document.getElementById('sm-rech').checked; _solMapState.desde=document.getElementById('sm-desde').value; _solMapState.hasta=document.getElementById('sm-hasta').value; _solMapPinta(); }
-    ['sm-pend','sm-conv','sm-rech','sm-desde','sm-hasta'].forEach(function(id){ document.getElementById(id).addEventListener('change',onFlt); });
+    function onFlt(){ var g=function(id){return document.getElementById(id);}; var s=_solMapState; s.est.pendiente=g('sm-pend').checked; s.est.convertida=g('sm-conv').checked; s.est.rechazada=g('sm-rech').checked; s.naps=g('sm-naps').checked; s.cob=g('sm-cob').checked; s.heat=g('sm-heat').checked; s.desde=g('sm-desde').value; s.hasta=g('sm-hasta').value; _solMapPinta(); }
+    ['sm-pend','sm-conv','sm-rech','sm-naps','sm-cob','sm-heat','sm-desde','sm-hasta'].forEach(function(id){ document.getElementById(id).addEventListener('change',onFlt); });
     document.getElementById('sm-mes').addEventListener('change',function(){ var v=this.value; if(v){ var p=v.split('-'),y=+p[0],m=+p[1]; document.getElementById('sm-desde').value=y+'-'+('0'+m).slice(-2)+'-01'; var last=new Date(y,m,0).getDate(); document.getElementById('sm-hasta').value=y+'-'+('0'+m).slice(-2)+'-'+('0'+last).slice(-2); } onFlt(); });
     document.getElementById('sm-todo').addEventListener('click',function(){ document.getElementById('sm-mes').value=''; document.getElementById('sm-desde').value=''; document.getElementById('sm-hasta').value=''; onFlt(); });
     var cont=document.getElementById('solmap'); cont.innerHTML='<div class="center" style="padding-top:40px"><div class="spin"></div></div>';
     Promise.all([
       sbGet('solicitudes_alta?lat=not.is.null&select=id,nombre,apellido,barrio,calle,numero,estado,created_at,plan_texto,planes(nombre),observaciones,lat,lng&limit=6000').catch(function(){return [];}),
+      sbGet('geo_naps?select=codigo,lat,lng&activo=eq.true&limit=3000').catch(function(){return [];}),
+      sbGet('geo_poligonos?select=nombre,coords&activo=eq.true').catch(function(){return [];}),
       new Promise(function(res){ ensureLeaflet(res); })
     ]).then(function(r){
-      _solMapData=(Array.isArray(r[0])?r[0]:[]).filter(function(s){ var la=+s.lat,ln=+s.lng; return la>-28.5&&la<-26&&ln>-57&&ln<-54; });
+      var inZ=function(la,ln){ return la>-28.5&&la<-26&&ln>-57&&ln<-54; };
+      _solMapData=(Array.isArray(r[0])?r[0]:[]).filter(function(s){ return inZ(+s.lat,+s.lng); });
+      _solNaps=(Array.isArray(r[1])?r[1]:[]).filter(function(n){ return n.lat&&n.lng&&inZ(+n.lat,+n.lng); });
+      _solPolig=Array.isArray(r[2])?r[2]:[];
       cont.innerHTML='';
-      _solMap=L.map(cont).setView([-27.39,-55.92],12);
+      _solMap=L.map(cont,{preferCanvas:true}).setView([-27.42,-55.92],12);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_solMap);
-      _solMapLayer=L.layerGroup().addTo(_solMap);
+      setTimeout(function(){ if(_solMap) _solMap.invalidateSize(); },200);
+      _smL={ sol:L.layerGroup().addTo(_solMap), naps:L.layerGroup(), cob:L.layerGroup(), polig:L.layerGroup(), heat:null };
+      _solPolig.forEach(function(p){ if(Array.isArray(p.coords)&&p.coords.length>2){ try{ L.polygon(p.coords,{color:'#0891b2',weight:1.2,fillColor:'#0891b2',fillOpacity:.06,interactive:false}).addTo(_smL.polig); }catch(e){} } });
+      _solNaps.forEach(function(n){ L.circleMarker([+n.lat,+n.lng],{radius:3,color:'#7c3aed',fillColor:'#a78bfa',fillOpacity:.9,weight:1}).bindPopup('🟣 NAP '+esc(n.codigo||'')).addTo(_smL.naps); });
       _solMapPinta(true);
     });
   }
   function _solMapPinta(fit){
-    if(!_solMap||!_solMapLayer) return;
-    _solMapLayer.clearLayers();
+    if(!_solMap) return;
+    var st=_solMapState;
+    _smL.sol.clearLayers();
     var col={pendiente:'#2563eb',convertida:'#16a34a',rechazada:'#dc2626'}, lbl={pendiente:'Pendiente',convertida:'Efectiva',rechazada:'Rechazada'};
-    var est=_solMapState.est, de=_solMapState.desde, ha=_solMapState.hasta, cnt={pendiente:0,convertida:0,rechazada:0}, bounds=[];
+    var cnt={pendiente:0,convertida:0,rechazada:0}, bounds=[], heatPts=[];
     _solMapData.forEach(function(s){
-      var e=s.estado||''; if(!(e in col)||!est[e]) return;
-      var f=(s.created_at||'').slice(0,10); if(de&&f<de) return; if(ha&&f>ha) return;
-      cnt[e]++; var la=+s.lat,ln=+s.lng; bounds.push([la,ln]);
+      var e=s.estado||''; if(!(e in col)||!st.est[e]) return;
+      var f=(s.created_at||'').slice(0,10); if(st.desde&&f<st.desde) return; if(st.hasta&&f>st.hasta) return;
+      cnt[e]++; var la=+s.lat,ln=+s.lng; bounds.push([la,ln]); heatPts.push([la,ln,1]);
       var nom=((s.nombre||'')+' '+(s.apellido||'')).trim()||'Sin nombre', dire=[s.calle,s.numero,s.barrio].filter(Boolean).join(' '), plan=s.planes?s.planes.nombre:(s.plan_texto||'');
       var pop='<b>'+esc(nom)+'</b><br>'+esc(dire)+'<br><span style="color:'+col[e]+';font-weight:700">'+lbl[e]+'</span> · '+esc(f)+(plan?(' · '+esc(plan)):'')+(s.observaciones?('<br><i>'+esc(s.observaciones)+'</i>'):'');
-      L.circleMarker([la,ln],{radius:7,color:col[e],fillColor:col[e],fillOpacity:.75,weight:1.5}).bindPopup(pop).addTo(_solMapLayer);
+      L.circleMarker([la,ln],{radius:6,color:col[e],fillColor:col[e],fillOpacity:.8,weight:1}).bindPopup(pop).addTo(_smL.sol);
     });
-    var info=document.getElementById('sm-info'); if(info) info.innerHTML='🔵 '+cnt.pendiente+' · 🟢 '+cnt.convertida+' · 🔴 '+cnt.rechazada+' = '+(cnt.pendiente+cnt.convertida+cnt.rechazada)+' puntos';
+    _smTog(_smL.naps, st.naps);
+    _smTog(_smL.polig, st.cob);
+    if(st.cob && _smL.cob.getLayers().length===0){ _solNaps.forEach(function(n){ try{ L.circle([+n.lat,+n.lng],{radius:150,color:'#0891b2',weight:0,fillColor:'#0891b2',fillOpacity:.05,interactive:false}).addTo(_smL.cob); }catch(e){} }); }
+    _smTog(_smL.cob, st.cob);
+    if(st.heat){ ensureHeat(function(){ if(!_solMap) return; if(_smL.heat){ try{_solMap.removeLayer(_smL.heat);}catch(e){} } _smL.heat=L.heatLayer(heatPts,{radius:28,blur:20,maxZoom:15}); _smL.heat.addTo(_solMap); }); }
+    else if(_smL.heat){ try{_solMap.removeLayer(_smL.heat);}catch(e){} _smL.heat=null; }
+    var info=document.getElementById('sm-info'); if(info) info.innerHTML='🔵 '+cnt.pendiente+' · 🟢 '+cnt.convertida+' · 🔴 '+cnt.rechazada+' = '+(cnt.pendiente+cnt.convertida+cnt.rechazada)+' pedidos · 🟣 '+_solNaps.length+' NAPs';
     if(fit&&bounds.length) _solMap.fitBounds(bounds,{padding:[30,30]});
   }
   var _solSel={};
